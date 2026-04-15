@@ -1,14 +1,15 @@
 /* 글로벌 다크 테마 정의 */
 :root {
   --bg:       #e0e0e0;
-  --panel:    #13131a;
+  --panel:    #9e9ed0;
   --border:   #252530;
-  --accent:   #7c6ef5;
-  --accent2:  #a78bfa;
-  --text:     #e8e8f0;
+  --accent:   #161616;
+  --accent2:  #4c4c4c;
+  --text:     rgb(50,50,50);
   --sub:      #6b6b80;
   --err:      #f87171;
   --success:  #34d399;
   --mono:     'DM Mono', monospace;
   --sans:     'Noto Sans KR', sans-serif;
+  --bar: #458ee2;
 }
