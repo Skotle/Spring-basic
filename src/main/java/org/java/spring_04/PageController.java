@@ -1,26 +1,33 @@
 package org.java.spring_04;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+
 import java.time.LocalDateTime;
 
 @Controller
 public class PageController {
+
+    // 로그 출력을 담당하는 공통 메소드
+    private void logRequest(String pageName) {
+        System.out.printf("[%s] GET %s PAGE\n", LocalDateTime.now(), pageName);
+    }
+
     @GetMapping("/")
     public String index() {
-        System.out.print("["+LocalDateTime.now()+"]");
-        System.out.print("GET INDEX PAGE\n");
-        return "index"; // ← templates/home.html
+        logRequest("INDEX");
+        return "index";
     }
+
     @GetMapping("/signin")
     public String login() {
-        System.out.print("["+LocalDateTime.now()+"]");
-        System.out.print("GET LOGIN PAGE\n");
-        return "login"; // ← templates/home.html
+        logRequest("LOGIN");
+        return "login";
     }
+
     @GetMapping("/nid")
     public String nid() {
-        System.out.print("["+LocalDateTime.now()+"]");
-        System.out.print("GET NEWID PAGE\n");
-        return "nid"; // ← templates/nid.html
+        logRequest("NEWID");
+        return "nid";
     }
 }

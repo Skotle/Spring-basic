@@ -1,40 +1,27 @@
-console.log("call script");
+async function doLogin() {
+    const btn = document.getElementById('loginBtn');
+    const uid = document.getElementById('uid');
+    const pw = document.getElementById('pw');
 
-async function login() {
-  const userID = document.getElementById("userID").value;
-  const password = document.getElementById("password").value;
-  const message = document.getElementById("message");
+    if (!uid.value.trim()) { showError('errorMsg', '아이디를 입력해주세요.'); uid.focus(); return; }
+    if (!pw.value) { showError('errorMsg', '비밀번호를 입력해주세요.'); pw.focus(); return; }
 
-  try {
-    const response = await fetch("/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userID, password }),
-      credentials: "include" // ✅ 쿠키 포함
-    });
+    setBtnLoading(btn, true);
 
-    const data = await response.json();
+    try {
+      const data = await apiFetch('/login', {
+        method: 'POST',
+        body: JSON.stringify({ userID: uid.value.trim(), password: pw.value })
+      });
 
-    if (response.ok) {
-      // 스토리지에 토큰 저장 제거
-      message.style.color = "green";
-      message.textContent = "로그인 성공!";
-      window.location.href = "/";
-    } else {
-      message.style.color = "red";
-      message.textContent = data.message;
+      if (data.success) {
+        window.location.href = '/';
+      } else {
+        showError('errorMsg', data.message || '로그인 실패');
+      }
+    } catch (e) {
+      showError('errorMsg', e.message);
+    } finally {
+      setBtnLoading(btn, false);
     }
-  } catch (err) {
-    message.style.color = "red";
-    message.textContent = "서버와 연결할 수 없습니다.";
   }
-}
-document.getElementById("loginBtn").addEventListener("click", login);
-
-document.addEventListener("DOMContentLoaded", () => {
-    const btn = document.getElementById("loginBtn");
-    if (btn) {
-        btn.addEventListener("click", login);
-        console.log("이벤트 리스너 등록 완료");
-    }
-});

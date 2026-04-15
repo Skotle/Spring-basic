@@ -8,7 +8,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
     <link rel="stylesheet" href="/css/global.css">
     <style>
-        /* 로그인 페이지와 동일한 구성 (위의 style 태그 내용과 동일하게 유지하거나 global.css에 포함 권장) */
         .logo-mark { width: 40px; height: 40px; border-radius: 10px; background: linear-gradient(135deg, var(--accent), var(--accent2)); margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: center; }
         .logo-mark svg { width: 20px; height: 20px; fill: #fff; }
         h1 { font-size: 1.35rem; font-weight: 500; letter-spacing: -.02em; }
@@ -47,6 +46,12 @@
                 <label for="nick">닉네임</label>
                 <input id="nick" type="text" placeholder="닉네임 입력"/>
             </div>
+
+            <div class="field">
+                <label for="email">이메일 (선택)</label>
+                <input id="email" type="email" placeholder="example@domain.com"/>
+            </div>
+
             <div class="field">
                 <label for="pw">비밀번호</label>
                 <input id="pw" type="password" placeholder="••••••••"/>
@@ -56,7 +61,7 @@
                 <span class="spinner"></span>
             </button>
         </div>
-        <div class="footer-link">이미 계정이 있나요? <a href="/login">로그인</a></div>
+        <div class="footer-link">이미 계정이 있나요? <a href="/signin">로그인</a></div>
     </div>
 </div>
 
@@ -66,10 +71,19 @@
       const btn = document.getElementById('signupBtn');
       const uid = document.getElementById('uid');
       const nick = document.getElementById('nick');
+      const email = document.getElementById('email'); // 추가
       const pw = document.getElementById('pw');
 
       if (!uid.value.trim()) { showError('errorMsg', '아이디를 입력해주세요.'); uid.focus(); return; }
       if (!nick.value.trim()) { showError('errorMsg', '닉네임을 입력해주세요.'); nick.focus(); return; }
+
+      // 이메일이 입력된 경우에만 간단한 형식 검사
+      if (email.value.trim() && !email.value.includes('@')) {
+          showError('errorMsg', '올바른 이메일 형식을 입력해주세요.');
+          email.focus();
+          return;
+      }
+
       if (pw.value.length < 4) { showError('errorMsg', '비밀번호는 4자 이상이어야 합니다.'); pw.focus(); return; }
 
       setBtnLoading(btn, true);
@@ -80,13 +94,14 @@
           body: JSON.stringify({
             userID: uid.value.trim(),
             username: nick.value.trim(),
+            email: email.value.trim(), // 이메일 데이터 추가
             password: pw.value
           })
         });
 
         if (data.success) {
           alert('가입 완료! 로그인 해주세요.');
-          window.location.href = '/login';
+          window.location.href = '/signin';
         } else {
           showError('errorMsg', data.message || '가입 실패');
         }
@@ -97,5 +112,6 @@
       }
     }
 </script>
+<script src="/js/address.js"></script>
 </body>
 </html>
