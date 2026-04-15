@@ -1,3 +1,5 @@
+console.log("call script");
+
 async function login() {
   const userID = document.getElementById("userID").value;
   const password = document.getElementById("password").value;
@@ -27,3 +29,12 @@ async function login() {
     message.textContent = "서버와 연결할 수 없습니다.";
   }
 }
+document.getElementById("loginBtn").addEventListener("click", login);
+
+document.addEventListener("DOMContentLoaded", () => {
+    const btn = document.getElementById("loginBtn");
+    if (btn) {
+        btn.addEventListener("click", login);
+        console.log("이벤트 리스너 등록 완료");
+    }
+});

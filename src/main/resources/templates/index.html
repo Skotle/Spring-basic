@@ -1,75 +1,372 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8" />
-    <title>메인</title>
-    <link rel="icon" href="img/favicon.png" type="image/png">
+    <meta charset="UTF-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <link href="styles/index.css" rel="stylesheet">
-    <link href="styles/top_bar.css" rel="stylesheet">
-    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2102648357013948"
-            crossorigin="anonymous"></script>
+    <title>메인</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com"/>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+          --bg:      #0d0d0f;
+          --panel:   #13131a;
+          --border:  #252530;
+          --accent:  #7c6ef5;
+          --accent2: #a78bfa;
+          --text:    #e8e8f0;
+          --sub:     #6b6b80;
+          --success: #34d399;
+          --mono:    'DM Mono', monospace;
+          --sans:    'Noto Sans KR', sans-serif;
+        }
+
+        html, body {
+          height: 100%;
+          background: var(--bg);
+          color: var(--text);
+          font-family: var(--sans);
+          -webkit-font-smoothing: antialiased;
+        }
+
+        body::before {
+          content: '';
+          position: fixed; inset: 0;
+          background-image:
+            radial-gradient(ellipse 80% 60% at 20% 10%, rgba(124,110,245,.1) 0%, transparent 60%),
+            radial-gradient(ellipse 60% 50% at 80% 90%, rgba(167,139,250,.07) 0%, transparent 55%);
+          pointer-events: none;
+          z-index: 0;
+        }
+
+        /* ── NAV ── */
+        nav {
+          position: relative; z-index: 10;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 1.1rem 2rem;
+          border-bottom: 1px solid var(--border);
+          background: rgba(13,13,15,.85);
+          backdrop-filter: blur(12px);
+        }
+
+        .nav-logo {
+          display: flex; align-items: center; gap: .7rem;
+          font-family: var(--mono);
+          font-size: .9rem;
+          color: var(--text);
+          text-decoration: none;
+        }
+        .nav-logo .dot {
+          width: 10px; height: 10px;
+          border-radius: 50%;
+          background: linear-gradient(135deg, var(--accent), var(--accent2));
+        }
+
+        .nav-right { display: flex; align-items: center; gap: 1rem; }
+
+        /* 로그인 상태 배지 */
+        .status-badge {
+          display: flex; align-items: center; gap: .5rem;
+          font-family: var(--mono);
+          font-size: .78rem;
+          color: var(--sub);
+          padding: .35rem .75rem;
+          border: 1px solid var(--border);
+          border-radius: 20px;
+          transition: all .3s;
+        }
+        .status-badge .indicator {
+          width: 7px; height: 7px;
+          border-radius: 50%;
+          background: var(--sub);
+          transition: background .3s;
+        }
+        .status-badge.online .indicator { background: var(--success); animation: pulse 2s infinite; }
+        .status-badge.online { color: var(--success); border-color: rgba(52,211,153,.25); }
+
+        @keyframes pulse {
+          0%,100% { box-shadow: 0 0 0 0 rgba(52,211,153,.4); }
+          50%      { box-shadow: 0 0 0 5px rgba(52,211,153,0); }
+        }
+
+        .nick-text { font-family: var(--sans); font-size: .85rem; }
+
+        /* 버튼 */
+        .btn {
+          padding: .45rem 1.1rem;
+          border-radius: 7px;
+          font-family: var(--sans);
+          font-size: .82rem;
+          font-weight: 500;
+          cursor: pointer;
+          border: none;
+          transition: opacity .2s, transform .15s;
+        }
+        .btn:active { transform: scale(.97); }
+
+        .btn-primary {
+          background: linear-gradient(135deg, var(--accent), var(--accent2));
+          color: #fff;
+        }
+        .btn-ghost {
+          background: transparent;
+          border: 1px solid var(--border);
+          color: var(--sub);
+        }
+        .btn-ghost:hover { border-color: var(--accent); color: var(--accent2); }
+        .btn:hover { opacity: .85; }
+
+        /* ── MAIN ── */
+        main {
+          position: relative; z-index: 1;
+          max-width: 720px;
+          margin: 0 auto;
+          padding: 5rem 2rem 3rem;
+          animation: fadeUp .5s cubic-bezier(.22,.8,.44,1) both .1s;
+        }
+
+        @keyframes fadeUp {
+          from { opacity: 0; transform: translateY(20px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+
+        /* 게스트 뷰 */
+        .guest-view { text-align: center; }
+        .guest-view h2 {
+          font-size: 2rem; font-weight: 300;
+          letter-spacing: -.03em;
+          line-height: 1.3;
+        }
+        .guest-view h2 span {
+          background: linear-gradient(90deg, var(--accent), var(--accent2));
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          font-weight: 500;
+        }
+        .guest-view p {
+          margin-top: 1rem;
+          color: var(--sub);
+          font-size: .9rem;
+          line-height: 1.7;
+        }
+        .guest-view .cta {
+          margin-top: 2rem;
+          display: inline-flex;
+          gap: .75rem;
+        }
+
+        /* 로그인 뷰 */
+        .user-view { display: none; }
+
+        .greeting {
+          font-family: var(--mono);
+          font-size: .78rem;
+          color: var(--sub);
+          letter-spacing: .1em;
+          text-transform: uppercase;
+          margin-bottom: .6rem;
+        }
+        .user-view h2 {
+          font-size: 1.8rem;
+          font-weight: 400;
+          letter-spacing: -.02em;
+        }
+        .user-view h2 strong {
+          color: var(--accent2);
+          font-weight: 500;
+        }
+
+        /* 정보 카드 */
+        .info-card {
+          margin-top: 2.5rem;
+          background: var(--panel);
+          border: 1px solid var(--border);
+          border-radius: 14px;
+          overflow: hidden;
+        }
+        .info-card-header {
+          padding: .85rem 1.25rem;
+          border-bottom: 1px solid var(--border);
+          font-family: var(--mono);
+          font-size: .72rem;
+          color: var(--sub);
+          letter-spacing: .08em;
+          text-transform: uppercase;
+          display: flex;
+          align-items: center;
+          gap: .5rem;
+        }
+        .info-card-header::before {
+          content: '';
+          display: inline-block;
+          width: 6px; height: 6px;
+          border-radius: 50%;
+          background: var(--success);
+        }
+
+        .info-rows { padding: .5rem 0; }
+        .info-row {
+          display: flex;
+          align-items: center;
+          gap: 1rem;
+          padding: .75rem 1.25rem;
+          border-bottom: 1px solid var(--border);
+          transition: background .15s;
+        }
+        .info-row:last-child { border-bottom: none; }
+        .info-row:hover { background: rgba(255,255,255,.025); }
+
+        .info-key {
+          width: 110px;
+          font-family: var(--mono);
+          font-size: .75rem;
+          color: var(--sub);
+          flex-shrink: 0;
+        }
+        .info-val {
+          font-family: var(--mono);
+          font-size: .85rem;
+          color: var(--text);
+        }
+        .badge-div {
+          display: inline-block;
+          padding: .15rem .55rem;
+          border-radius: 4px;
+          font-size: .72rem;
+        }
+        .badge-0 { background: rgba(107,107,128,.2); color: var(--sub); }
+        .badge-1 { background: rgba(124,110,245,.2); color: var(--accent2); }
+    </style>
 </head>
-
 <body>
-<div class="top-right-auth">
-    <a href="/signin" id="login">로그인</a> |
-    <a href="/newsign" id="newsign">가입</a>
-</div>
 
-<!-- 상단 가로 배너 -->
-<div class="header-banner">
-    <div class="banner-left">
-        <img src="img/botjebbi.png" alt="로고" class="banner-logo">
-        <div class="banner-text">
-            <h2>host main</h2>
-            <p>irisen project</p>
+<!-- NAV -->
+<nav>
+    <a class="nav-logo" href="/">
+        <span class="dot"></span>
+        <span>irisen webapp</span>
+    </a>
+    <div class="nav-right">
+        <div class="status-badge" id="statusBadge">
+            <span class="indicator"></span>
+            <span id="statusLabel">확인 중...</span>
+        </div>
+        <span class="nick-text" id="navNick" style="display:none"></span>
+        <button class="btn btn-ghost" id="logoutBtn" style="display:none" onclick="doLogout()">로그아웃</button>
+        <a href="/signin"><button class="btn btn-primary" id="loginNavBtn">로그인</button></a>
+        <a href="/nid"><button class="btn btn-primary" id="nidNavBtn">가입</button></a>
+
+    </div>
+</nav>
+
+<!-- MAIN -->
+<main>
+    <!-- 비로그인 -->
+    <div class="guest-view" id="guestView">
+        <h2>Spring <br><span>로그인</span>테스트</h2>
+        <p>세션 기반 인증으로 안전하게 보호되는 페이지입니다.<br>로그인 후 서비스를 이용해주세요.</p>
+        <div class="cta">
+            <a href="/signin"><button class="btn btn-primary">로그인하기</button></a>
         </div>
     </div>
 
-    <div class="banner-right">
-        <input type="text" placeholder="게시판 검색..." class="banner-search">
-        <button class="search-btn">검색</button>
+    <!-- 로그인됨 -->
+    <div class="user-view" id="userView">
+        <p class="greeting">// welcome back</p>
+        <h2>로그인된 사용자 : <strong id="userNick"></strong>(<strong id="userId"></strong>)</h2>
+
+        <div class="info-card">
+            <div class="info-card-header">세션 정보 &nbsp;·&nbsp; session active</div>
+            <div class="info-rows">
+                <div class="info-row">
+                    <span class="info-key">uid</span>
+                    <span class="info-val" id="infoUid">—</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-key">nick</span>
+                    <span class="info-val" id="infoNick">—</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-key">nick_icon_type</span>
+                    <span class="info-val" id="infoIconType">—</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-key">member_division</span>
+                    <span class="info-val" id="infoDiv">—</span>
+                </div>
+            </div>
+        </div>
     </div>
-</div>
+</main>
 
-<div class="top-bar">
-    <div class="leftbox">
-        <a href="/">홈</a>
-        <a href="boards">보드</a>
-        <a href="social">소셜</a>
-        <a href="add-board">추가</a>
-    </div>
-    <div class="logbox">
-        <span id="welcome" class="welcome-text" style="display:none;"></span>
-        <button id="logoutBtn" class="auth-btn" style="display:none;">로그아웃</button>
-        <button id="profileBtn" class="btn-ao" style="display: none;">프로필</button>
-        <img id="alarm"/>
-    </div>
-</div>
-
-<div class="log-bar"></div>
-
-<h3>irisen main</h3>
-<ul id="mainPostList"></ul>
-
-<script src="index.js" defer></script>
-<script src="logboard.js" defer></script>
 <script>
-    document.addEventListener("DOMContentLoaded", () => {
-        const isMobile = /Mobi|Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    /* ── 로그인 상태 확인 ── */
+    (async function checkLogin() {
+      try {
+        const res  = await fetch('/api/check-login', { credentials: 'include' });
+        const data = await res.json();
+        renderState(data);
+      } catch {
+        renderState({ loggedIn: false });
+      }
+    })();
 
-        // 이미 /m 경로가 아니라면 모바일 기기는 /m으로 리디렉션
-        if (isMobile && !location.pathname.startsWith("/m")) {
-            location.href = "/m" + location.pathname + location.search + location.hash;
-        }
+    function renderState(data) {
+      const badge      = document.getElementById('statusBadge');
+      const statusLbl  = document.getElementById('statusLabel');
+      const guestView  = document.getElementById('guestView');
+      const userView   = document.getElementById('userView');
+      const loginBtn   = document.getElementById('loginNavBtn');
+      const logoutBtn  = document.getElementById('logoutBtn');
+      const nidBtn   = document.getElementById('nidNavBtn');
+      const navNick    = document.getElementById('navNick');
 
-        // 데스크톱일 경우 /m에 잘못 들어왔으면 원래 경로로 되돌리기
-        if (!isMobile && location.pathname.startsWith("/m")) {
-            location.href = location.pathname.replace(/^\/m/, "") + location.search + location.hash;
-        }
-    });
+      if (data.loggedIn) {
+        /* 로그인 상태 UI */
+        badge.classList.add('online');
+        statusLbl.textContent = 'online';
+
+        navNick.textContent = data.nick;
+        navNick.style.display = 'inline';
+        logoutBtn.style.display = 'inline';
+        loginBtn.style.display  = 'none';
+        nidBtn.style.display = 'none';
+
+        guestView.style.display = 'none';
+        userView.style.display  = 'block';
+
+        /* 세션 정보 채우기 */
+        document.getElementById('userNick').textContent   = data.nick    || '—';
+        document.getElementById('userId').textContent    = data.uid     || '—';
+        document.getElementById('infoUid').textContent    = data.uid     || '—';
+        document.getElementById('infoNick').textContent   = data.nick    || '—';
+        document.getElementById('infoIconType').textContent =
+          (data.nickIconType && data.nickIconType !== 'null') ? data.nickIconType : '(없음)';
+
+        const div = data.memberDivision ?? 0;
+        document.getElementById('infoDiv').innerHTML =
+          `<span class="badge-div badge-${div}">${div === 1 ? 'ADMIN' : 'USER'} (${div})</span>`;
+
+      } else {
+        /* 비로그인 상태 UI */
+        statusLbl.textContent = 'offline';
+        guestView.style.display = 'block';
+        userView.style.display  = 'none';
+        loginBtn.style.display  = 'inline';
+        nidBtn.style.display = 'inline';
+        logoutBtn.style.display = 'none';
+        navNick.style.display   = 'none';
+      }
+    }
+
+    /* ── 로그아웃 ── */
+    async function doLogout() {
+      await fetch('/logout', { method: 'POST', credentials: 'include' });
+      window.location.reload();
+    }
 </script>
-
 </body>
 </html>

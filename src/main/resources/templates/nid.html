@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>회원가입</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com"/>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+    <link rel="stylesheet" href="/css/global.css">
+    <style>
+        /* 로그인 페이지와 동일한 구성 (위의 style 태그 내용과 동일하게 유지하거나 global.css에 포함 권장) */
+        .logo-mark { width: 40px; height: 40px; border-radius: 10px; background: linear-gradient(135deg, var(--accent), var(--accent2)); margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: center; }
+        .logo-mark svg { width: 20px; height: 20px; fill: #fff; }
+        h1 { font-size: 1.35rem; font-weight: 500; letter-spacing: -.02em; }
+        .subtitle { margin-top: .4rem; font-size: .82rem; color: var(--sub); font-family: var(--mono); letter-spacing: .02em; }
+        .form { margin-top: 2rem; display: flex; flex-direction: column; gap: 1rem; }
+        .field { display: flex; flex-direction: column; gap: .45rem; }
+        label { font-size: .75rem; font-family: var(--mono); color: var(--sub); letter-spacing: .08em; text-transform: uppercase; }
+        .btn-action { margin-top: .5rem; padding: .85rem; border: none; border-radius: 8px; background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%); color: #fff; font-size: .92rem; font-weight: 500; cursor: pointer; transition: opacity .2s, transform .15s; position: relative; }
+        .spinner { display: none; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.3); border-top-color: #fff; border-radius: 50%; animation: spin .6s linear infinite; margin: 0 auto; }
+        .btn-action.loading .btn-label { display: none; }
+        .btn-action.loading .spinner { display: block; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .error-msg { display: none; font-size: .78rem; color: var(--err); font-family: var(--mono); padding: .65rem .9rem; background: rgba(248,113,113,.08); border: 1px solid rgba(248,113,113,.2); border-radius: 6px; }
+        .error-msg.show { display: block; animation: shake .35s ease both; }
+        @keyframes shake { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+        .footer-link { margin-top: 1.5rem; text-align: center; font-size: .85rem; color: var(--sub); }
+        .footer-link a { color: var(--accent2); text-decoration: none; font-weight: 500; margin-left: .5rem; }
+    </style>
+</head>
+<body>
+<div class="page">
+    <div class="card">
+        <div class="logo-mark">
+            <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        </div>
+        <h1>회원가입</h1>
+        <p class="subtitle">// create a new account</p>
+
+        <div class="form">
+            <div id="errorMsg" class="error-msg"></div>
+            <div class="field">
+                <label for="uid">아이디</label>
+                <input id="uid" type="text" placeholder="사용할 ID 입력"/>
+            </div>
+            <div class="field">
+                <label for="nick">닉네임</label>
+                <input id="nick" type="text" placeholder="닉네임 입력"/>
+            </div>
+            <div class="field">
+                <label for="pw">비밀번호</label>
+                <input id="pw" type="password" placeholder="••••••••"/>
+            </div>
+            <button class="btn-action" id="signupBtn" onclick="doSignup()">
+                <span class="btn-label">계정 생성</span>
+                <span class="spinner"></span>
+            </button>
+        </div>
+        <div class="footer-link">이미 계정이 있나요? <a href="/login">로그인</a></div>
+    </div>
+</div>
+
+<script src="/js/common.js"></script>
+<script>
+    async function doSignup() {
+      const btn = document.getElementById('signupBtn');
+      const uid = document.getElementById('uid');
+      const nick = document.getElementById('nick');
+      const pw = document.getElementById('pw');
+
+      if (!uid.value.trim()) { showError('errorMsg', '아이디를 입력해주세요.'); uid.focus(); return; }
+      if (!nick.value.trim()) { showError('errorMsg', '닉네임을 입력해주세요.'); nick.focus(); return; }
+      if (pw.value.length < 4) { showError('errorMsg', '비밀번호는 4자 이상이어야 합니다.'); pw.focus(); return; }
+
+      setBtnLoading(btn, true);
+
+      try {
+        const data = await apiFetch('/api/signup', {
+          method: 'POST',
+          body: JSON.stringify({
+            userID: uid.value.trim(),
+            username: nick.value.trim(),
+            password: pw.value
+          })
+        });
+
+        if (data.success) {
+          alert('가입 완료! 로그인 해주세요.');
+          window.location.href = '/login';
+        } else {
+          showError('errorMsg', data.message || '가입 실패');
+        }
+      } catch (e) {
+        showError('errorMsg', e.message);
+      } finally {
+        setBtnLoading(btn, false);
+      }
+    }
+</script>
+</body>
+</html>
