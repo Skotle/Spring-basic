@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8" />
+    <title>메인</title>
+    <link rel="icon" href="img/favicon.png" type="image/png">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <link href="styles/index.css" rel="stylesheet">
+    <link href="styles/top_bar.css" rel="stylesheet">
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2102648357013948"
+            crossorigin="anonymous"></script>
+</head>
+
+<body>
+<div class="top-right-auth">
+    <a href="/signin" id="login">로그인</a> |
+    <a href="/newsign" id="newsign">가입</a>
+</div>
+
+<!-- 상단 가로 배너 -->
+<div class="header-banner">
+    <div class="banner-left">
+        <img src="img/botjebbi.png" alt="로고" class="banner-logo">
+        <div class="banner-text">
+            <h2>host main</h2>
+            <p>irisen project</p>
+        </div>
+    </div>
+
+    <div class="banner-right">
+        <input type="text" placeholder="게시판 검색..." class="banner-search">
+        <button class="search-btn">검색</button>
+    </div>
+</div>
+
+<div class="top-bar">
+    <div class="leftbox">
+        <a href="/">홈</a>
+        <a href="boards">보드</a>
+        <a href="social">소셜</a>
+        <a href="add-board">추가</a>
+    </div>
+    <div class="logbox">
+        <span id="welcome" class="welcome-text" style="display:none;"></span>
+        <button id="logoutBtn" class="auth-btn" style="display:none;">로그아웃</button>
+        <button id="profileBtn" class="btn-ao" style="display: none;">프로필</button>
+        <img id="alarm"/>
+    </div>
+</div>
+
+<div class="log-bar"></div>
+
+<h3>irisen main</h3>
+<ul id="mainPostList"></ul>
+
+<script src="index.js" defer></script>
+<script src="logboard.js" defer></script>
+<script>
+    document.addEventListener("DOMContentLoaded", () => {
+        const isMobile = /Mobi|Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+        // 이미 /m 경로가 아니라면 모바일 기기는 /m으로 리디렉션
+        if (isMobile && !location.pathname.startsWith("/m")) {
+            location.href = "/m" + location.pathname + location.search + location.hash;
+        }
+
+        // 데스크톱일 경우 /m에 잘못 들어왔으면 원래 경로로 되돌리기
+        if (!isMobile && location.pathname.startsWith("/m")) {
+            location.href = location.pathname.replace(/^\/m/, "") + location.search + location.hash;
+        }
+    });
+</script>
+
+</body>
+</html>
