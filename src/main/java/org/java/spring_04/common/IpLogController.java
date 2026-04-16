@@ -1,4 +1,4 @@
-package org.java.Controller;
+package org.java.spring_04.common;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
