@@ -53,12 +53,25 @@ public class AuthController {
     }
     @PostMapping("/logout")
     public Map<String, String> logout(HttpServletRequest request) {
-
-        HttpSession session = request.getSession(false);
-        if (session != null) {
-            session.invalidate(); // 세션 즉시 파기
-        }
+        // 공통 메서드 호출
+        clearSession(request);
 
         return Map.of("message", "로그아웃 완료");
+    }
+
+    /**
+     * 세션 만료 전용 공통 메서드 (private)
+     * 비밀번호 변경, 회원 탈퇴 등 세션 말소가 필요한 모든 곳에서 호출 가능
+     */
+    private void clearSession(HttpServletRequest request) {
+        HttpSession session = request.getSession(false); // 기존 세션 확인 (없으면 null)
+        if (session != null) {
+            Object uid = session.getAttribute("uid");
+            Object nick = session.getAttribute("nick");
+
+            System.out.println(LocalDateTime.now() + " 세션 만료 처리: " + nick + "(" + uid + ")");
+
+            session.invalidate(); // 세션 즉시 파기
+        }
     }
 }

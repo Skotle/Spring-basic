@@ -29,4 +29,19 @@ public class PageController {
         logRequest("NEWID");
         return "nid";
     }
+    @GetMapping("/test")
+    public String test(){
+        logRequest("TEST PAGE");
+        return "test";
+    }
+    @GetMapping("/boards")
+    public String boards(){
+        logRequest("BOARDS");
+        return "boards";
+    }
+    @GetMapping("/board_main")
+    public String board_maim() {
+        logRequest("BOARD IN");
+        return "board_main";
+    }
 }

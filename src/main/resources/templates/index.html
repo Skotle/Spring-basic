@@ -173,6 +173,7 @@
     async function doLogout() {
       await fetch('/logout', { method: 'POST', credentials: 'include' });
       window.location.reload();
+      alert("로그아웃 되었습니다.");
     }
 </script>
 <script src="/js/address.js"></script>

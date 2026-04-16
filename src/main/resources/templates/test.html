@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>Post API Test Page</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; line-height: 1.6; }
+        .section { margin-bottom: 30px; padding: 15px; border: 1px solid #ccc; border-radius: 8px; }
+        button { padding: 8px 15px; cursor: pointer; background: #6366f1; color: white; border: none; border-radius: 4px; }
+        pre { background: #f4f4f4; padding: 10px; border-radius: 4px; overflow-x: auto; font-size: 13px; }
+        input, textarea { display: block; margin-bottom: 10px; width: 300px; padding: 5px; }
+    </style>
+</head>
+<body>
+
+<h1>Post API 테스트 페이지</h1>
+
+<div class="section">
+    <h3>1. 게시글 작성 (로그인 필요)</h3>
+    <input type="text" id="gid" placeholder="갤러리 ID (stockus, marine 등)" value="stockus">
+    <input type="text" id="title" placeholder="글 제목">
+    <textarea id="content" placeholder="글 내용"></textarea>
+    <button onclick="testWrite()">게시글 작성 요청</button>
+    <pre id="writeResult">결과가 여기에 표시됩니다.</pre>
+</div>
+
+<div class="section">
+    <h3>2. 게시글 목록 조회</h3>
+    <input type="text" id="targetGid" placeholder="조회할 gid" value="stockus">
+    <button onclick="testList()">목록 조회 요청</button>
+    <pre id="listResult">결과가 여기에 표시됩니다.</pre>
+</div>
+
+<div class="section">
+    <h3>3. 실시간 인기글 조회</h3>
+    <button onclick="testRecommend()">인기글 요청</button>
+    <pre id="recommendResult">결과가 여기에 표시됩니다.</pre>
+</div>
+
+<script src="/js/common.js"></script> <script>
+    // 결과 출력 유틸리티
+    function display(id, data) {
+        document.getElementById(id).textContent = JSON.stringify(data, null, 2);
+    }
+
+    // 1. 작성 테스트
+    async function testWrite() {
+        const payload = {
+            gid: document.getElementById('gid').value,
+            title: document.getElementById('title').value,
+            content: document.getElementById('content').value
+        };
+        try {
+            const data = await apiFetch('/api/posts/write', {
+                method: 'POST',
+                body: JSON.stringify(payload)
+            });
+            display('writeResult', data);
+            if(data.success) alert("작성 성공!");
+        } catch (e) {
+            display('writeResult', { error: e.message });
+        }
+    }
+
+    // 2. 목록 조회 테스트
+    async function testList() {
+        const gid = document.getElementById('targetGid').value;
+        try {
+            const data = await apiFetch(`/api/posts/list?gid=${gid}`);
+            display('listResult', data);
+        } catch (e) {
+            display('listResult', { error: e.message });
+        }
+    }
+
+    // 3. 인기글 조회 테스트
+    async function testRecommend() {
+        try {
+            const data = await apiFetch('/api/posts/recommend');
+            display('recommendResult', data);
+        } catch (e) {
+            display('recommendResult', { error: e.message });
+        }
+    }
+</script>
+<
+</body>
+</html>

@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>보드 목록 - irisen webapp</title>
+  <link rel="stylesheet" href="/css/global.css">
+  <link rel="stylesheet" href="/css/boardsheet.css">
+  <style>
+    .board-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.5rem; margin-top: 2rem; }
+    .board-card { background: var(--card-bg); padding: 1.5rem; border-radius: 12px; border: 1px solid var(--border); transition: all 0.2s; cursor: pointer; }
+    .board-card:hover { transform: translateY(-4px); border-color: var(--accent); box-shadow: 0 10px 20px rgba(0,0,0,0.05); }
+    .board-name { font-size: 1.1rem; font-weight: 500; color: var(--accent); margin-bottom: 0.5rem; font-family: var(--mono); }
+    .board-stats { font-size: 0.85rem; color: var(--sub); }
+  </style>
+</head>
+<body>
+<nav>
+  <a class="nav-logo" href="/"><span>irisen webapp</span></a>
+</nav>
+
+<div class="page">
+  <div class="container">
+    <header style="margin-bottom: 3rem; text-align: center;">
+      <h1>커뮤니티 보드</h1>
+      <p class="subtitle">// select a gallery to start</p>
+    </header>
+
+    <div id="boardList" class="board-grid">
+    </div>
+  </div>
+</div>
+
+<script src="/js/common.js"></script>
+<script src="/js/board.js"></script>
+<script>window.onload = loadBoardList;</script>
+</body>
+</html>

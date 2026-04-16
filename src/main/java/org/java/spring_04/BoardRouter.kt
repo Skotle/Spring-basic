@@ -10,7 +10,7 @@ class BoardRouter(
 
     @GetMapping("/api/board/rec")
     fun wow(): List<Map<String, Any?>> {
-        val sql = "SELECT * FROM gallery"
+        val sql = "SELECT * FROM post WHERE gall_id = 'stockus'"
         return jdbcTemplate.queryForList(sql)
     }
 }
