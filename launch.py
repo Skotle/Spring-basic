@@ -1,21 +1,20 @@
 import sqlite3
 
 def init_db():
-    # 1. 데이터베이스 연결 (파일이 없으면 새로 생성됨)
+    # 1. 데이터베이스 연결 (파일이 없으면 생성)
     conn = sqlite3.connect("mydb.db")
     cursor = conn.cursor()
 
-    # 2. 외래 키 제약 조건 활성화
+    # 2. 외래 키(Foreign Key) 제약 조건 활성화 (SQLite 기본값은 OFF임)
     cursor.execute("PRAGMA foreign_keys = ON;")
 
-    # 3. 테이블 생성 로직 시작
     try:
         # --- 1. gallery ---
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS gallery (
                 gall_id         TEXT    PRIMARY KEY NOT NULL,
                 gall_name       TEXT    NOT NULL,
-                gall_type       TEXT    NOT NULL DEFAULT 'M',
+                gall_type       TEXT    NOT NULL DEFAULT 'M', -- M: 메인, MI: 마이너
                 category        TEXT,
                 manager_uid     TEXT,
                 use_gall_nick   INTEGER NOT NULL DEFAULT 1,
@@ -26,8 +25,16 @@ def init_db():
             )
         ''')
 
-        # --- 2. user ---
-        # Java 코드와의 호환성을 위해 passwordHash, accessToken 등 필요한 컬럼 유지
+        # --- 2. gallery_counter (신규: 갤러리별 독립 번호 관리용) ---
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS gallery_counter (
+                gall_id         TEXT    PRIMARY KEY NOT NULL,
+                last_post_no    INTEGER NOT NULL DEFAULT 0,
+                FOREIGN KEY (gall_id) REFERENCES gallery(gall_id) ON DELETE CASCADE
+            )
+        ''')
+
+        # --- 3. user ---
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS user (
                 uid             TEXT    PRIMARY KEY NOT NULL,
@@ -39,15 +46,17 @@ def init_db():
                 member_division INTEGER NOT NULL DEFAULT 0,
                 accessToken     TEXT,
                 refreshToken    TEXT,
+                email TEXT UNIQUE,
                 created_at      DATETIME NOT NULL DEFAULT (datetime('now', 'localtime'))
             )
         ''')
 
-        # --- 3. post ---
+        # --- 4. post (개선됨: post_no 컬럼 및 제약 조건 추가) ---
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS post (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                id              INTEGER PRIMARY KEY, 
                 gall_id         TEXT    NOT NULL,
+                post_no         INTEGER NOT NULL,
                 title           TEXT    NOT NULL,
                 content         TEXT,
                 head_text       TEXT,
@@ -64,14 +73,16 @@ def init_db():
                 is_deleted      INTEGER NOT NULL DEFAULT 0,
                 write_device    TEXT,
                 writed_at       DATETIME NOT NULL DEFAULT (datetime('now', 'localtime')),
-                FOREIGN KEY (gall_id)    REFERENCES gallery(gall_id),
-                FOREIGN KEY (writer_uid) REFERENCES user(uid)
+                FOREIGN KEY (gall_id)    REFERENCES gallery(gall_id) ON DELETE CASCADE,
+                FOREIGN KEY (writer_uid) REFERENCES user(uid) ON DELETE SET NULL,
+                UNIQUE (gall_id, post_no) -- 갤러리 내 번호 중복 방지
             )
         ''')
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_post_gall ON post (gall_id, writed_at)")
+        # 최신글 목록 조회를 위한 고성능 인덱스
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_post_gall_list ON post (gall_id, post_no DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_post_writer ON post (writer_uid)")
 
-        # --- 4. post_attachment ---
+        # --- 5. post_attachment ---
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS post_attachment (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -81,12 +92,11 @@ def init_db():
                 download_url    TEXT    NOT NULL,
                 file_type       TEXT,
                 sort_order      INTEGER NOT NULL DEFAULT 0,
-                FOREIGN KEY (post_id) REFERENCES post(id)
+                FOREIGN KEY (post_id) REFERENCES post(id) ON DELETE CASCADE
             )
         ''')
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_attach_post ON post_attachment (post_id)")
 
-        # --- 5. comment ---
+        # --- 6. comment ---
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS comment (
                 id                    INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -104,16 +114,15 @@ def init_db():
                 recommend_count       INTEGER NOT NULL DEFAULT 0,
                 is_deleted            INTEGER NOT NULL DEFAULT 0,
                 writed_at             DATETIME NOT NULL DEFAULT (datetime('now', 'localtime')),
-                FOREIGN KEY (gall_id)    REFERENCES gallery(gall_id),
-                FOREIGN KEY (post_id)    REFERENCES post(id),
-                FOREIGN KEY (parent_id)  REFERENCES comment(id),
-                FOREIGN KEY (writer_uid) REFERENCES user(uid)
+                FOREIGN KEY (gall_id)    REFERENCES gallery(gall_id) ON DELETE CASCADE,
+                FOREIGN KEY (post_id)    REFERENCES post(id) ON DELETE CASCADE,
+                FOREIGN KEY (parent_id)  REFERENCES comment(id) ON DELETE CASCADE,
+                FOREIGN KEY (writer_uid) REFERENCES user(uid) ON DELETE SET NULL
             )
         ''')
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_comment_post ON comment (post_id, writed_at)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_comment_parent ON comment (parent_id)")
 
-        # --- 6. post_recommend ---
+        # --- 7. post_recommend ---
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS post_recommend (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -122,14 +131,14 @@ def init_db():
                 user_ip         TEXT,
                 recommend_type  TEXT    NOT NULL DEFAULT 'up',
                 created_at      DATETIME NOT NULL DEFAULT (datetime('now', 'localtime')),
-                FOREIGN KEY (post_id)  REFERENCES post(id),
-                FOREIGN KEY (user_uid) REFERENCES user(uid),
+                FOREIGN KEY (post_id)  REFERENCES post(id) ON DELETE CASCADE,
+                FOREIGN KEY (user_uid) REFERENCES user(uid) ON DELETE SET NULL,
                 UNIQUE (post_id, user_uid),
                 UNIQUE (post_id, user_ip)
             )
         ''')
 
-        # --- 7. report ---
+        # --- 8. report ---
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS report (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -140,11 +149,11 @@ def init_db():
                 reporter_ip     TEXT,
                 reason          TEXT,
                 created_at      DATETIME NOT NULL DEFAULT (datetime('now', 'localtime')),
-                FOREIGN KEY (gall_id) REFERENCES gallery(gall_id)
+                FOREIGN KEY (gall_id) REFERENCES gallery(gall_id) ON DELETE CASCADE
             )
         ''')
 
-        # --- 8. gallery_manager ---
+        # --- 9. gallery_manager ---
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS gallery_manager (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -152,13 +161,13 @@ def init_db():
                 user_uid        TEXT    NOT NULL,
                 manager_type    TEXT    NOT NULL DEFAULT 'manager',
                 assigned_at     DATETIME NOT NULL DEFAULT (datetime('now', 'localtime')),
-                FOREIGN KEY (gall_id)  REFERENCES gallery(gall_id),
-                FOREIGN KEY (user_uid) REFERENCES user(uid),
+                FOREIGN KEY (gall_id)  REFERENCES gallery(gall_id) ON DELETE CASCADE,
+                FOREIGN KEY (user_uid) REFERENCES user(uid) ON DELETE CASCADE,
                 UNIQUE (gall_id, user_uid)
             )
         ''')
 
-        # --- 9. user_autozzal ---
+        # --- 10. user_autozzal ---
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS user_autozzal (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -169,12 +178,12 @@ def init_db():
                 is_random       INTEGER NOT NULL DEFAULT 0,
                 is_use          INTEGER NOT NULL DEFAULT 1,
                 sort_order      INTEGER NOT NULL DEFAULT 0,
-                FOREIGN KEY (user_uid) REFERENCES user(uid),
-                FOREIGN KEY (gall_id)  REFERENCES gallery(gall_id)
+                FOREIGN KEY (user_uid) REFERENCES user(uid) ON DELETE CASCADE,
+                FOREIGN KEY (gall_id)  REFERENCES gallery(gall_id) ON DELETE CASCADE
             )
         ''')
 
-        # --- 10. user_headtail ---
+        # --- 11. user_headtail ---
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS user_headtail (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -188,13 +197,13 @@ def init_db():
                 comment_tail    TEXT,
                 view_use        INTEGER NOT NULL DEFAULT 1,
                 comment_use     INTEGER NOT NULL DEFAULT 1,
-                FOREIGN KEY (user_uid) REFERENCES user(uid),
-                FOREIGN KEY (gall_id)  REFERENCES gallery(gall_id),
+                FOREIGN KEY (user_uid) REFERENCES user(uid) ON DELETE CASCADE,
+                FOREIGN KEY (gall_id)  REFERENCES gallery(gall_id) ON DELETE CASCADE,
                 UNIQUE (user_uid, gall_id, scope)
             )
         ''')
 
-        # --- 11. user_block ---
+        # --- 12. user_block ---
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS user_block (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -203,11 +212,11 @@ def init_db():
                 target_ip       TEXT,
                 target_nick     TEXT,
                 created_at      DATETIME NOT NULL DEFAULT (datetime('now', 'localtime')),
-                FOREIGN KEY (user_uid) REFERENCES user(uid)
+                FOREIGN KEY (user_uid) REFERENCES user(uid) ON DELETE CASCADE
             )
         ''')
 
-        # --- 12. scrap ---
+        # --- 13. scrap ---
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS scrap (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -215,12 +224,12 @@ def init_db():
                 user_uid        TEXT,
                 session_key     TEXT,
                 created_at      DATETIME NOT NULL DEFAULT (datetime('now', 'localtime')),
-                FOREIGN KEY (post_id)  REFERENCES post(id),
-                FOREIGN KEY (user_uid) REFERENCES user(uid)
+                FOREIGN KEY (post_id)  REFERENCES post(id) ON DELETE CASCADE,
+                FOREIGN KEY (user_uid) REFERENCES user(uid) ON DELETE CASCADE
             )
         ''')
 
-        # --- 13. favorite_gallery ---
+        # --- 14. favorite_gallery ---
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS favorite_gallery (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -228,13 +237,13 @@ def init_db():
                 gall_id         TEXT    NOT NULL,
                 sort_order      INTEGER NOT NULL DEFAULT 0,
                 created_at      DATETIME NOT NULL DEFAULT (datetime('now', 'localtime')),
-                FOREIGN KEY (user_uid) REFERENCES user(uid),
-                FOREIGN KEY (gall_id)  REFERENCES gallery(gall_id),
+                FOREIGN KEY (user_uid) REFERENCES user(uid) ON DELETE CASCADE,
+                FOREIGN KEY (gall_id)  REFERENCES gallery(gall_id) ON DELETE CASCADE,
                 UNIQUE (user_uid, gall_id)
             )
         ''')
 
-        # --- 14. dccon ---
+        # --- 15. dccon ---
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS dccon (
                 con_no          TEXT    PRIMARY KEY NOT NULL,
@@ -245,7 +254,7 @@ def init_db():
             )
         ''')
 
-        # --- 15. user_dccon ---
+        # --- 16. user_dccon ---
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS user_dccon (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -253,14 +262,14 @@ def init_db():
                 con_no          TEXT    NOT NULL,
                 sort_order      INTEGER NOT NULL DEFAULT 0,
                 expire_at       DATETIME,
-                FOREIGN KEY (user_uid) REFERENCES user(uid),
-                FOREIGN KEY (con_no)   REFERENCES dccon(con_no),
+                FOREIGN KEY (user_uid) REFERENCES user(uid) ON DELETE CASCADE,
+                FOREIGN KEY (con_no)   REFERENCES dccon(con_no) ON DELETE CASCADE,
                 UNIQUE (user_uid, con_no)
             )
         ''')
 
         conn.commit()
-        print("전체 테이블 생성이 완료되었습니다.")
+        print("데이터베이스 스키마 구성이 완료되었습니다.")
 
     except sqlite3.Error as e:
         print(f"오류 발생: {e}")

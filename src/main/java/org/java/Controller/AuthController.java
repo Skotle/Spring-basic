@@ -1,4 +1,4 @@
-package org.java.spring_04;
+package org.java.Controller;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;

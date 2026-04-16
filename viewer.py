@@ -11,18 +11,18 @@ def init_db():
     try:
         # --- [추가] 테이블 생성 로직 ---
         # 테이블이 없을 경우에만 생성하도록 IF NOT EXISTS를 사용합니다.
-        cursor.execute('''
-            INSERT INTO gallery (gall_id, gall_name, gall_type)
-            VALUES ('sunggall', '성차별', 'side')
-        ''')
-        print("user 테이블 확인/생성 완료.")
+        # cursor.execute('''
+        #     INSERT INTO gallery (gall_id, gall_name, gall_type)
+        #     VALUES ('marine', '해병대', 'side')
+        # ''')
+        # print("user 테이블 확인/생성 완료.")
 
         # 테스트용 데이터 삽입 (선택 사항)
         # cursor.execute("INSERT OR IGNORE INTO user VALUES ('admin', '관리자', 'hash_value')")
 
         # --- 3. 데이터 조회 로직 ---
         cursor.execute('''
-            SELECT * FROM gallery
+            SELECT * FROM post
         ''')
         
         rows = cursor.fetchall()
