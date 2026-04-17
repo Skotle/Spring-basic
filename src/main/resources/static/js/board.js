@@ -5,9 +5,10 @@ async function loadBoardList() {
 
     try {
         const boards = await apiFetch('/api/board/list');
+        console.log(boards);
         listEl.innerHTML = boards.map(board => `
             <div class="board-card" onclick="location.href='/board/${board.gall_id}'">
-                <div class="board-name"># ${board.gall_name}</div>
+                <div class="board-name">${board.gall_name}</div>
                 <div class="board-stats">Total Posts: ${board.post_count}</div>
             </div>
         `).join('');

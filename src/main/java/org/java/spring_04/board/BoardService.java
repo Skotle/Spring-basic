@@ -18,7 +18,7 @@ public class BoardService {
      * 전체 보드(갤러리) 목록 조회
      */
     public List<Map<String, Object>> getBoardList() {
-        String sql = "SELECT gall_id,gall_name,post_count FROM gallery ORDER BY gall_id ASC";
+        String sql = "SELECT gall_id,gall_name,gall_type,post_count FROM gallery ORDER BY gall_id ASC";
         return jdbcTemplate.queryForList(sql);
     }
 

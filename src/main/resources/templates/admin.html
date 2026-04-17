@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>권한 관리 - Admin</title>
+    <link rel="stylesheet" href="/css/global.css">
+    <link rel="stylesheet" href="/css/boardsheet.css">
+    <style>
+        .admin-table { width: 100%; border-collapse: collapse; margin-top: 2rem; background: var(--card-bg); border-radius: 8px; overflow: hidden; }
+        .admin-table th, .admin-table td { padding: 1rem; text-align: left; border-bottom: 1px solid var(--border); }
+        .admin-table th { background: rgba(0,0,0,0.05); font-family: var(--mono); color: var(--accent); }
+        .badge { padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; background: var(--accent); color: white; }
+    </style>
+</head>
+<body>
+<nav>
+    <a class="nav-logo" href="/"><span>irisen admin</span></a>
+</nav>
+
+<div class="page">
+    <div class="container">
+        <header>
+            <h1>Role Management</h1>
+            <p class="subtitle">// Access restricted to memberDivision: 1</p>
+        </header>
+
+        <table class="admin-table">
+            <thead>
+            <tr>
+                <th>Role Name</th>
+                <th>Description</th>
+                <th>Active Users</th>
+            </tr>
+            </thead>
+            <tbody id="roleList">
+            </tbody>
+        </table>
+
+        <div id="errorBox" style="display:none; color: #ff4d4d; margin-top: 2rem; text-align: center;">
+            <h3>Access Denied</h3>
+            <p>이 페이지를 볼 수 있는 권한이 없습니다.</p>
+        </div>
+    </div>
+</div>
+
+<script src="/js/common.js"></script>
+<script src="/js/role.js"></script>
+</body>
+</html>

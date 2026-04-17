@@ -44,4 +44,9 @@ public class PageController {
         logRequest("BOARD IN");
         return "board_main";
     }
+    @GetMapping("/admin")
+    public String admin() {
+        logRequest("ADMIN PAGE");
+        return "admin";
+    }
 }

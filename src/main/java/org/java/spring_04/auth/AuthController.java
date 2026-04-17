@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
 import java.util.Map;
+import java.util.HashMap;
 
 @RestController
 public class AuthController {
@@ -23,10 +24,20 @@ public class AuthController {
         }
 
         HttpSession session = request.getSession(true);
+
+        // 1. 기존 개별 저장 (기존 기능 유지용)
         session.setAttribute("uid", user.getUid());
         session.setAttribute("nick", user.getNick());
-        // ... 세션 정보 저장
-        System.out.println(LocalDateTime.now()+" 로그인: "+user.getNick()+"("+user.getUid()+")");
+
+        // 2. 중요: BoardController에서 사용할 "user" 맵 객체 저장
+        Map<String, Object> userMap = new HashMap<>();
+        userMap.put("uid", user.getUid());
+        userMap.put("nick", user.getNick());
+        userMap.put("memberDivision", user.getMemberDivision()); // DB에서 가져온 admin 또는 user 값
+
+        session.setAttribute("user", userMap);
+
+        System.out.println(LocalDateTime.now() + " 로그인 성공: " + user.getNick() + " / 세션에 'user' 객체 생성됨");
         return Map.of("success", true, "nick", user.getNick());
     }
 
