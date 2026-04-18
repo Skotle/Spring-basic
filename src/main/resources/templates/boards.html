@@ -2,36 +2,40 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <title>보드 목록 - irisen26</title>
-  <link rel="stylesheet" href="/css/global.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>보드</title>
   <link rel="stylesheet" href="/css/boardsheet.css">
-  <style>
-    .board-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.5rem; margin-top: 2rem; }
-    .board-card { background: var(--card-bg); padding: 1.5rem; border-radius: 12px; border: 1px solid var(--border); transition: all 0.2s; cursor: pointer; }
-    .board-card:hover { transform: translateY(-4px); border-color: var(--accent); box-shadow: 0 10px 20px rgba(0,0,0,0.05); }
-    .board-name { font-size: 1.1rem; font-weight: 500; color: var(--accent); margin-bottom: 0.5rem; font-family: var(--mono); }
-    .board-stats { font-size: 0.85rem; color: var(--sub); }
-  </style>
 </head>
 <body>
 <nav>
-  <a class="nav-logo" href="/"><span>irisen26 web</span></a>
+  <a class="nav-logo" href="/">
+    <span class="dot"></span>
+    <span>irisen</span>
+  </a>
+  <div class="nav-right">
+    <a class="btn btn-ghost" href="/">홈</a>
+    <a class="btn btn-primary" href="/signin">로그인</a>
+  </div>
 </nav>
 
-<div class="page">
-  <div class="container">
-    <header style="margin-bottom: 3rem; text-align: center;">
-      <h1>/api/get/:list</h1>
-      <p class="subtitle">// select a gallery to start</p>
-    </header>
-
-    <div id="boardList" class="board-grid">
+<main class="page-shell section-shell">
+  <section class="panel">
+    <div class="eyebrow">BOARD</div>
+    <h1 class="title-md" style="margin-top: 14px;">보드 목록</h1>
+    <div class="search-row">
+      <input id="boardSearchInput" type="text" placeholder="보드 검색" oninput="filterBoards(this.value)">
     </div>
-  </div>
-</div>
+  </section>
+
+  <section id="boardList" class="board-grid">
+  </section>
+</main>
 
 <script src="/js/common.js"></script>
-<script src="/js/board.js"></script>
-<script>window.onload = loadBoardList;</script>
+<script src="/js/board-list.js"></script>
+<script src="/js/page-init.js"></script>
+<script>
+  initBoardsPage();
+</script>
 </body>
 </html>

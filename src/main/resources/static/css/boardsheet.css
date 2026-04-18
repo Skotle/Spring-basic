@@ -158,6 +158,116 @@
   display: none;
 }
 
+.write-shell {
+  width: min(980px, 100%);
+  margin: 0 auto;
+}
+
+.write-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);
+  gap: 20px;
+}
+
+.write-card,
+.preview-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+  padding: 20px;
+}
+
+.preview-surface {
+  min-height: 240px;
+  padding: 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(29, 78, 216, 0.08);
+  background: rgba(255, 255, 255, 0.78);
+  overflow: auto;
+}
+
+.preview-surface:empty::before {
+  content: '미리보기가 여기에 표시됩니다.';
+  color: var(--sub);
+}
+
+.write-toolbar {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.toolbar-group {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.toolbar-btn {
+  min-width: 42px;
+  padding: 10px 12px;
+}
+
+.editor-surface {
+  min-height: 360px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.96);
+  outline: none;
+  line-height: 1.8;
+}
+
+.editor-surface:focus {
+  border-color: rgba(29, 78, 216, 0.4);
+  box-shadow: 0 0 0 4px rgba(29, 78, 216, 0.08);
+}
+
+.editor-surface:empty::before {
+  content: attr(data-placeholder);
+  color: var(--sub);
+}
+
+.editor-surface h1,
+.editor-surface h2,
+.editor-surface h3,
+.preview-surface h1,
+.preview-surface h2,
+.preview-surface h3 {
+  margin: 0 0 12px;
+  line-height: 1.25;
+}
+
+.editor-surface p,
+.preview-surface p,
+.editor-surface ul,
+.preview-surface ul,
+.editor-surface ol,
+.preview-surface ol,
+.editor-surface blockquote,
+.preview-surface blockquote {
+  margin: 0 0 14px;
+}
+
+.editor-surface blockquote,
+.preview-surface blockquote {
+  padding-left: 14px;
+  border-left: 3px solid rgba(29, 78, 216, 0.25);
+  color: var(--sub);
+}
+
+.write-help {
+  color: var(--sub);
+  font-size: 0.88rem;
+}
+
+@media (max-width: 960px) {
+  .write-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 960px) {
   .boardContainer {
     grid-template-columns: 1fr;

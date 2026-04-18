@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>글쓰기</title>
+    <link rel="stylesheet" href="/css/boardsheet.css">
+</head>
+<body>
+<nav>
+    <a class="nav-logo" href="/boards">
+        <span class="dot"></span>
+        <span>irisen</span>
+    </a>
+    <div class="nav-right">
+        <span id="currentWriteGid" class="status-badge"></span>
+        <a class="btn btn-ghost" id="backToBoardLink" href="/boards">보드</a>
+    </div>
+</nav>
+
+<main class="page-shell">
+    <section class="write-shell">
+        <div class="write-layout">
+            <article class="write-card">
+                <div class="board-header">
+                    <span class="board-name">글쓰기</span>
+                    <span class="board-desc" id="writeAuthor"></span>
+                </div>
+
+                <div class="form" style="margin-top: 0;">
+                    <div id="writeError" class="error-msg"></div>
+                    <input id="writeGid" type="hidden">
+                    <textarea id="writeContent" hidden></textarea>
+
+                    <div class="field">
+                        <label for="writeTitle">제목</label>
+                        <input id="writeTitle" type="text" placeholder="제목">
+                    </div>
+
+                    <div class="field">
+                        <label>본문</label>
+                        <div class="write-toolbar">
+                            <div class="toolbar-group">
+                                <button class="btn btn-ghost toolbar-btn" type="button" onclick="applyEditorCommand('bold')"><strong>B</strong></button>
+                                <button class="btn btn-ghost toolbar-btn" type="button" onclick="applyEditorCommand('italic')"><em>I</em></button>
+                                <button class="btn btn-ghost toolbar-btn" type="button" onclick="applyEditorCommand('underline')"><u>U</u></button>
+                            </div>
+                            <div class="toolbar-group">
+                                <button class="btn btn-ghost" type="button" onclick="applyBlockTag('H2')">제목</button>
+                                <button class="btn btn-ghost" type="button" onclick="applyBlockTag('P')">본문</button>
+                                <button class="btn btn-ghost" type="button" onclick="applyBlockTag('BLOCKQUOTE')">인용</button>
+                            </div>
+                            <div class="toolbar-group">
+                                <button class="btn btn-ghost" type="button" onclick="applyEditorCommand('insertUnorderedList')">목록</button>
+                                <button class="btn btn-ghost" type="button" onclick="applyEditorCommand('insertOrderedList')">번호</button>
+                                <button class="btn btn-ghost" type="button" onclick="insertEditorLink()">링크</button>
+                            </div>
+                        </div>
+                        <div
+                            id="writeEditor"
+                            class="editor-surface"
+                            contenteditable="true"
+                            data-placeholder="여기에 글을 입력하세요."
+                            oninput="updateEditorPreview()"></div>
+                    </div>
+
+                    <div class="write-toolbar">
+                        <button class="btn btn-primary" id="writeBtn" type="button" onclick="submitHtmlPost()">
+                            <span class="btn-label">저장</span>
+                            <span class="spinner"></span>
+                        </button>
+                        <button class="btn btn-ghost" type="button" onclick="applyEditorCommand('removeFormat')">서식 지우기</button>
+                    </div>
+                </div>
+            </article>
+
+            <aside class="preview-card">
+                <div class="board-header">
+                    <span class="board-name">미리보기</span>
+                    <span class="board-desc">html 저장</span>
+                </div>
+                <p class="write-help">작성 내용은 HTML로 저장됩니다.</p>
+                <div id="htmlPreview" class="preview-surface" style="margin-top: 14px;"></div>
+            </aside>
+        </div>
+    </section>
+</main>
+
+<script src="/js/common.js"></script>
+<script src="/js/session.js"></script>
+<script src="/js/editor.js"></script>
+<script src="/js/page-init.js"></script>
+<script>
+    initPostWritePage();
+</script>
+</body>
+</html>

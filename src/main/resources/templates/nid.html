@@ -3,26 +3,25 @@
 <head>
     <meta charset="UTF-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>회원가입</title>
+    <title>가입</title>
     <link rel="stylesheet" href="/css/global.css">
 </head>
 <body>
 <nav>
     <a class="nav-logo" href="/">
         <span class="dot"></span>
-        <span>irisen webapp</span>
+        <span>irisen</span>
     </a>
     <div class="nav-right">
-        <a class="btn btn-ghost" href="/">홈으로</a>
+        <a class="btn btn-ghost" href="/">홈</a>
         <a class="btn btn-primary" href="/signin">로그인</a>
     </div>
 </nav>
 
 <div class="page">
     <div class="card">
-        <div class="eyebrow">CREATE ACCOUNT</div>
-        <h1 class="title-md" style="margin-top: 14px;">새 계정을 만들고 바로 보드에 들어가세요.</h1>
-        <p class="body-copy" style="margin-top: 12px;">기존 회원가입 API를 그대로 사용하고, 입력 흐름만 더 분명하게 다듬었습니다.</p>
+        <div class="eyebrow">SIGN UP</div>
+        <h1 class="title-md" style="margin-top: 14px;">가입</h1>
 
         <div class="form">
             <div id="errorMsg" class="error-msg"></div>
@@ -35,7 +34,7 @@
                 <input id="nick" type="text" placeholder="닉네임 입력"/>
             </div>
             <div class="field">
-                <label for="email">이메일 (선택)</label>
+                <label for="email">이메일</label>
                 <input id="email" type="email" placeholder="example@domain.com"/>
             </div>
             <div class="field">
@@ -43,7 +42,7 @@
                 <input id="pw" type="password" placeholder="4자 이상 입력"/>
             </div>
             <button class="btn btn-primary" id="signupBtn" type="button" onclick="doSignup()">
-                <span class="btn-label">계정 생성</span>
+                <span class="btn-label">가입</span>
                 <span class="spinner"></span>
             </button>
         </div>
@@ -51,47 +50,7 @@
 </div>
 
 <script src="/js/common.js"></script>
-<script>
-    async function doSignup() {
-      const btn = document.getElementById('signupBtn');
-      const uid = document.getElementById('uid');
-      const nick = document.getElementById('nick');
-      const email = document.getElementById('email');
-      const pw = document.getElementById('pw');
-
-      clearError('errorMsg');
-
-      if (!uid.value.trim()) { showError('errorMsg', '아이디를 입력해주세요.'); uid.focus(); return; }
-      if (!nick.value.trim()) { showError('errorMsg', '닉네임을 입력해주세요.'); nick.focus(); return; }
-      if (email.value.trim() && !email.value.includes('@')) { showError('errorMsg', '올바른 이메일 형식을 입력해주세요.'); email.focus(); return; }
-      if (pw.value.length < 4) { showError('errorMsg', '비밀번호는 4자 이상이어야 합니다.'); pw.focus(); return; }
-
-      setBtnLoading(btn, true);
-
-      try {
-        const data = await apiFetch('/api/signup', {
-          method: 'POST',
-          body: JSON.stringify({
-            userID: uid.value.trim(),
-            username: nick.value.trim(),
-            email: email.value.trim(),
-            password: pw.value
-          })
-        });
-
-        if (data.success) {
-          alert('가입 완료! 로그인 해주세요.');
-          window.location.href = '/signin';
-        } else {
-          showError('errorMsg', data.message || '가입 실패');
-        }
-      } catch (e) {
-        showError('errorMsg', e.message);
-      } finally {
-        setBtnLoading(btn, false);
-      }
-    }
-</script>
+<script src="/js/signup.js"></script>
 <script src="/js/address.js"></script>
 </body>
 </html>

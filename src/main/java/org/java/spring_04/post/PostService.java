@@ -1,6 +1,7 @@
 package org.java.spring_04.post;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,6 +38,16 @@ public class PostService {
     public Map<String, Object> getPostDetail(Long postId) {
         String sql = "SELECT * FROM post WHERE id = ?";
         return jdbcTemplate.queryForMap(sql, postId);
+    }
+
+    public Map<String, Object> getPostDetail(String gallId, Long postNo) {
+        String sql = "SELECT * FROM post WHERE gall_id = ? AND post_no = ?";
+
+        try {
+            return jdbcTemplate.queryForMap(sql, gallId, postNo);
+        } catch (EmptyResultDataAccessException e) {
+            return null;
+        }
     }
 
     /**

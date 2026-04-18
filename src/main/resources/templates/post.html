@@ -3,18 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>게시글 상세</title>
+    <title>게시글</title>
     <link rel="stylesheet" href="/css/boardsheet.css">
 </head>
 <body>
 <nav>
     <a class="nav-logo" href="/boards">
         <span class="dot"></span>
-        <span>irisen webapp</span>
+        <span>irisen</span>
     </a>
     <div class="nav-right">
         <span id="currentPostPath" class="status-badge"></span>
-        <button class="btn btn-ghost" id="backToBoardBtn" type="button">목록으로</button>
+        <button class="btn btn-ghost" id="backToBoardBtn" type="button">목록</button>
     </div>
 </nav>
 
@@ -23,35 +23,23 @@
         <article class="post-card">
             <div class="board-header">
                 <span class="board-name" id="postGalleryLabel">gallery</span>
-                <span class="board-desc" id="postMeta">불러오는 중...</span>
+                <span class="board-desc" id="postMeta">불러오는 중</span>
             </div>
-            <h1 id="postTitle">게시글을 불러오는 중입니다.</h1>
-            <div class="post-body" id="postBody">잠시만 기다려주세요.</div>
+            <h1 id="postTitle">게시글</h1>
+            <div class="post-body" id="postBody">불러오는 중입니다.</div>
             <div class="utility-row" style="margin-top: 18px;">
                 <button class="btn btn-ghost" type="button" onclick="history.back()">뒤로</button>
-                <button class="btn btn-primary" type="button" id="writePostBtn">이 보드로 돌아가기</button>
+                <button class="btn btn-primary" type="button" id="writePostBtn">보드로</button>
             </div>
         </article>
     </section>
 </main>
 
 <script src="/js/common.js"></script>
-<script src="/js/board.js"></script>
+<script src="/js/post-detail.js"></script>
+<script src="/js/page-init.js"></script>
 <script>
-    const pathParts = window.location.pathname.split('/').filter(Boolean);
-    const gid = pathParts[pathParts.length - 2];
-    const postNo = pathParts[pathParts.length - 1];
-
-    document.getElementById('currentPostPath').textContent = `${gid}/${postNo}`;
-    document.getElementById('postGalleryLabel').textContent = `${gid.toUpperCase()} Gallery`;
-    document.getElementById('backToBoardBtn').addEventListener('click', () => {
-        location.href = `/board/${gid}`;
-    });
-    document.getElementById('writePostBtn').addEventListener('click', () => {
-        location.href = `/board/${gid}`;
-    });
-
-    loadPostDetail(gid, postNo);
+    initPostPage();
 </script>
 </body>
 </html>

@@ -5,6 +5,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -17,6 +18,7 @@ public class BoardController {
 
     @GetMapping("/list")
     public List<Map<String, Object>> getBoardList() {
+        System.out.println("[" + LocalDateTime.now() + "] API /api/board/list");
         return boardService.getBoardList();
     }
 
@@ -24,6 +26,7 @@ public class BoardController {
     public List<Map<String, Object>> getPosts(
             @PathVariable("gid") String gid,
             @RequestParam(value = "page", defaultValue = "1") int page) {
+        System.out.println("[" + LocalDateTime.now() + "] API /api/board/posts/" + gid + "?page=" + page);
         return boardService.getPostsByGallery(gid, page);
     }
 
@@ -31,17 +34,20 @@ public class BoardController {
     public Map<String, Object> getPostDetail(
             @PathVariable("gid") String gid,
             @PathVariable("postNo") Long postNo) {
+        System.out.println("[" + LocalDateTime.now() + "] API /api/board/posts/" + gid + "/" + postNo);
         Map<String, Object> post = boardService.getPostDetail(gid, postNo);
 
         if (post == null) {
             return Map.of("success", false, "message", "게시글을 찾을 수 없습니다.");
         }
+        System.out.println(post);
 
         return Map.of("success", true, "post", post);
     }
 
     @PostMapping("/write")
     public Map<String, Object> writePost(@RequestBody Map<String, String> payload, HttpSession session) {
+        System.out.println("[" + LocalDateTime.now() + "] API /api/board/write gid=" + payload.get("gid"));
         String uid = (String) session.getAttribute("uid");
         String nick = (String) session.getAttribute("nick");
 

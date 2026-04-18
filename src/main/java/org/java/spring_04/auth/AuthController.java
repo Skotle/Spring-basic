@@ -16,6 +16,7 @@ public class AuthController {
 
     @PostMapping("/login")
     public Map<String, Object> login(@RequestBody Map<String, String> body, HttpServletRequest request) {
+        System.out.println("[" + LocalDateTime.now() + "] API /login userID=" + body.get("userID"));
         UserEntity user = authService.login(body.get("userID"), body.get("password"));
 
         if (user == null) {
@@ -34,6 +35,7 @@ public class AuthController {
 
     @PostMapping("/api/signup")
     public Map<String, Object> signup(@RequestBody Map<String, String> body) {
+        System.out.println("[" + LocalDateTime.now() + "] API /api/signup userID=" + body.get("userID"));
         try {
             authService.signup(body);
             return Map.of("success", true);
@@ -44,6 +46,7 @@ public class AuthController {
 
     @GetMapping("/api/check-login")
     public Map<String, Object> checkLogin(HttpServletRequest request) {
+        System.out.println("[" + LocalDateTime.now() + "] API /api/check-login");
         HttpSession session = request.getSession(false);
         if (session == null || session.getAttribute("uid") == null) {
             return Map.of("loggedIn", false);
@@ -65,6 +68,7 @@ public class AuthController {
 
     @PostMapping("/logout")
     public Map<String, String> logout(HttpServletRequest request) {
+        System.out.println("[" + LocalDateTime.now() + "] API /logout");
         clearSession(request);
         return Map.of("message", "로그아웃이 완료되었습니다.");
     }
