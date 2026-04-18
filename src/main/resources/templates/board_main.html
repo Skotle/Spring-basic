@@ -2,34 +2,72 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>게시판 - irisen webapp</title>
-    <link rel="stylesheet" href="/css/global.css">
-    <link rel="stylesheet" href="/css/index.css">
     <link rel="stylesheet" href="/css/boardsheet.css">
 </head>
 <body>
 <nav>
-    <a class="nav-logo" href="/boards"><span>← 뒤로가기</span></a>
+    <a class="nav-logo" href="/boards">
+        <span class="dot"></span>
+        <span>← 뒤로가기</span>
+    </a>
     <div class="nav-right">
-        <span id="currentGid" class="status-badge online" style="font-family: var(--mono);"></span>
+        <span id="currentGid" class="status-badge online"></span>
+        <span id="currentPageLabel" class="status-badge">1 page</span>
     </div>
 </nav>
 
-<main>
+<main class="page-shell">
     <div class="boardContainer">
-        <div class="boardBox" style="width: 100%; max-width: 800px; margin: 0 auto;">
+        <div class="boardBox" style="width: 100%;">
             <div class="board-header">
                 <span class="board-name" id="boardTitle">게시판 로딩 중...</span>
-                <button class="btn btn-primary" onclick="location.href='#write'">글쓰기</button>
+                <button class="btn btn-primary" onclick="document.getElementById('composerCard').scrollIntoView({behavior:'smooth'});">글쓰기</button>
             </div>
 
             <div class="board-preview" id="postContainer">
             </div>
 
-            <div class="pagination" style="margin-top: 1.5rem; text-align: center; display: flex; gap: 10px; justify-content: center;">
+            <div class="pagination">
                 <button class="btn btn-ghost" onclick="changePage(-1)">이전</button>
                 <button class="btn btn-ghost" onclick="changePage(1)">다음</button>
             </div>
+        </div>
+
+        <aside class="compose-card" id="composerCard" hidden>
+            <div class="board-header">
+                <span class="board-name">새 글 작성</span>
+                <span class="board-desc">게시판 기능 확장</span>
+            </div>
+            <p class="compose-meta" id="composerMeta">로그인 상태를 확인 중입니다.</p>
+            <div class="form" style="margin-top: 16px;">
+                <div id="writeError" class="error-msg"></div>
+                <div class="field">
+                    <label for="writeTitle">제목</label>
+                    <input id="writeTitle" type="text" placeholder="게시글 제목 입력">
+                </div>
+                <div class="field">
+                    <label for="writeContent">본문</label>
+                    <textarea id="writeContent" placeholder="게시글 내용을 입력하세요."></textarea>
+                </div>
+                <div class="compose-actions">
+                    <button class="btn btn-primary" id="writeBtn" type="button" onclick="submitPost()">
+                        <span class="btn-label">게시하기</span>
+                        <span class="spinner"></span>
+                    </button>
+                    <button class="btn btn-ghost" type="button" onclick="document.getElementById('writeTitle').value='';document.getElementById('writeContent').value='';clearError('writeError');">초기화</button>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <div class="panel" id="loginHint" style="margin-top: 20px;">
+        <div class="board-name">로그인 필요</div>
+        <p class="board-desc" style="margin-top: 8px;">읽기는 가능하지만, 글쓰기는 로그인 후 사용할 수 있습니다.</p>
+        <div class="utility-row" style="margin-top: 12px;">
+            <a class="btn btn-primary" href="/signin">로그인</a>
+            <a class="btn btn-ghost" href="/nid">가입</a>
         </div>
     </div>
 </main>
@@ -37,20 +75,9 @@
 <script src="/js/common.js"></script>
 <script src="/js/board.js"></script>
 <script>
-    const path = window.location.pathname.split('/');
-    const gid = path[path.length - 1]; // URL에서 gid 추출
-    let currentPage = 1;
-
-    document.getElementById('currentGid').textContent = gid;
-    document.getElementById('boardTitle').textContent = `${gid.toUpperCase()} Gallery`;
-
-    function changePage(step) {
-        if (currentPage + step < 1) return;
-        currentPage += step;
-        loadPosts(gid, currentPage);
-    }
-
-    window.onload = () => loadPosts(gid, currentPage);
+    const path = window.location.pathname.split('/').filter(Boolean);
+    const gid = path[path.length - 1];
+    initBoardPage(gid);
 </script>
 </body>
 </html>

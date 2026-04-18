@@ -4,37 +4,25 @@
     <meta charset="UTF-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>회원가입</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com"/>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
     <link rel="stylesheet" href="/css/global.css">
-    <style>
-        .logo-mark { width: 40px; height: 40px; border-radius: 10px; background: linear-gradient(135deg, var(--accent), var(--accent2)); margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: center; }
-        .logo-mark svg { width: 20px; height: 20px; fill: #fff; }
-        h1 { font-size: 1.35rem; font-weight: 500; letter-spacing: -.02em; }
-        .subtitle { margin-top: .4rem; font-size: .82rem; color: var(--sub); font-family: var(--mono); letter-spacing: .02em; }
-        .form { margin-top: 2rem; display: flex; flex-direction: column; gap: 1rem; }
-        .field { display: flex; flex-direction: column; gap: .45rem; }
-        label { font-size: .75rem; font-family: var(--mono); color: var(--sub); letter-spacing: .08em; text-transform: uppercase; }
-        .btn-action { margin-top: .5rem; padding: .85rem; border: none; border-radius: 8px; background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%); color: #fff; font-size: .92rem; font-weight: 500; cursor: pointer; transition: opacity .2s, transform .15s; position: relative; }
-        .spinner { display: none; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.3); border-top-color: #fff; border-radius: 50%; animation: spin .6s linear infinite; margin: 0 auto; }
-        .btn-action.loading .btn-label { display: none; }
-        .btn-action.loading .spinner { display: block; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .error-msg { display: none; font-size: .78rem; color: var(--err); font-family: var(--mono); padding: .65rem .9rem; background: rgba(248,113,113,.08); border: 1px solid rgba(248,113,113,.2); border-radius: 6px; }
-        .error-msg.show { display: block; animation: shake .35s ease both; }
-        @keyframes shake { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
-        .footer-link { margin-top: 1.5rem; text-align: center; font-size: .85rem; color: var(--sub); }
-        .footer-link a { color: var(--accent2); text-decoration: none; font-weight: 500; margin-left: .5rem; }
-    </style>
 </head>
 <body>
+<nav>
+    <a class="nav-logo" href="/">
+        <span class="dot"></span>
+        <span>irisen webapp</span>
+    </a>
+    <div class="nav-right">
+        <a class="btn btn-ghost" href="/">홈으로</a>
+        <a class="btn btn-primary" href="/signin">로그인</a>
+    </div>
+</nav>
+
 <div class="page">
     <div class="card">
-        <div class="logo-mark">
-            <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-        </div>
-        <h1>회원가입</h1>
-        <p class="subtitle">// create a new account</p>
+        <div class="eyebrow">CREATE ACCOUNT</div>
+        <h1 class="title-md" style="margin-top: 14px;">새 계정을 만들고 바로 보드에 들어가세요.</h1>
+        <p class="body-copy" style="margin-top: 12px;">기존 회원가입 API를 그대로 사용하고, 입력 흐름만 더 분명하게 다듬었습니다.</p>
 
         <div class="form">
             <div id="errorMsg" class="error-msg"></div>
@@ -46,22 +34,19 @@
                 <label for="nick">닉네임</label>
                 <input id="nick" type="text" placeholder="닉네임 입력"/>
             </div>
-
             <div class="field">
                 <label for="email">이메일 (선택)</label>
                 <input id="email" type="email" placeholder="example@domain.com"/>
             </div>
-
             <div class="field">
                 <label for="pw">비밀번호</label>
-                <input id="pw" type="password" placeholder="••••••••"/>
+                <input id="pw" type="password" placeholder="4자 이상 입력"/>
             </div>
-            <button class="btn-action" id="signupBtn" onclick="doSignup()">
+            <button class="btn btn-primary" id="signupBtn" type="button" onclick="doSignup()">
                 <span class="btn-label">계정 생성</span>
                 <span class="spinner"></span>
             </button>
         </div>
-        <div class="footer-link">이미 계정이 있나요? <a href="/signin">로그인</a></div>
     </div>
 </div>
 
@@ -71,19 +56,14 @@
       const btn = document.getElementById('signupBtn');
       const uid = document.getElementById('uid');
       const nick = document.getElementById('nick');
-      const email = document.getElementById('email'); // 추가
+      const email = document.getElementById('email');
       const pw = document.getElementById('pw');
+
+      clearError('errorMsg');
 
       if (!uid.value.trim()) { showError('errorMsg', '아이디를 입력해주세요.'); uid.focus(); return; }
       if (!nick.value.trim()) { showError('errorMsg', '닉네임을 입력해주세요.'); nick.focus(); return; }
-
-      // 이메일이 입력된 경우에만 간단한 형식 검사
-      if (email.value.trim() && !email.value.includes('@')) {
-          showError('errorMsg', '올바른 이메일 형식을 입력해주세요.');
-          email.focus();
-          return;
-      }
-
+      if (email.value.trim() && !email.value.includes('@')) { showError('errorMsg', '올바른 이메일 형식을 입력해주세요.'); email.focus(); return; }
       if (pw.value.length < 4) { showError('errorMsg', '비밀번호는 4자 이상이어야 합니다.'); pw.focus(); return; }
 
       setBtnLoading(btn, true);
@@ -94,7 +74,7 @@
           body: JSON.stringify({
             userID: uid.value.trim(),
             username: nick.value.trim(),
-            email: email.value.trim(), // 이메일 데이터 추가
+            email: email.value.trim(),
             password: pw.value
           })
         });

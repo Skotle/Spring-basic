@@ -4,14 +4,9 @@
     <meta charset="UTF-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>메인</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com"/>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
     <link rel="stylesheet" href="/css/index.css"/>
-    <link rel="stylesheet" href="/css/boardsheet.css"/>
 </head>
 <body>
-
-<!-- NAV -->
 <nav>
     <a class="nav-logo" href="/">
         <span class="dot"></span>
@@ -22,61 +17,132 @@
             <span class="indicator"></span>
             <span id="statusLabel">확인 중...</span>
         </div>
-        <span class="nick-text" id="navNick" style="display:none"></span>
+        <span class="status-badge nick-text" id="navNick" style="display:none"></span>
         <button class="btn btn-ghost" id="logoutBtn" style="display:none" onclick="doLogout()">로그아웃</button>
-        <a href="/signin"><button class="btn btn-primary" id="loginNavBtn">로그인</button></a>
-        <a href="/nid"><button class="btn btn-primary" id="nidNavBtn">가입</button></a>
-
+        <a class="btn btn-ghost" href="/signin" id="loginNavBtn">로그인</a>
+        <a class="btn btn-primary" href="/nid" id="nidNavBtn">가입</a>
     </div>
 </nav>
 
-<!-- MAIN -->
-<main>
-    <!-- 비로그인 -->
-    <div class="guest-view" id="guestView">
-        <h2>Spring <br><span>로그인</span>테스트</h2>
-        <p>세션 기반 인증으로 안전하게 보호되는 페이지입니다.<br>로그인 후 서비스를 이용해주세요.</p>
-        <div class="cta">
-            <a href="/signin"><button class="btn btn-primary">로그인하기</button></a>
-        </div>
-    </div>
-
-    <!-- 로그인됨 -->
-    <div class="user-view" id="userView">
-        <p class="greeting">// welcome back</p>
-        <h2>로그인된 사용자 : <strong id="userNick"></strong>(<strong id="userId"></strong>)</h2>
-
-        <div class="info-card">
-            <div class="info-card-header">세션 정보 &nbsp;·&nbsp; session active</div>
-            <div class="info-rows">
-                <div class="info-row">
-                    <span class="info-key">uid</span>
-                    <span class="info-val" id="infoUid">—</span>
+<main class="page-shell">
+    <section class="home-grid">
+        <article class="panel hero-panel">
+            <span class="eyebrow">SESSION BOARD</span>
+            <div class="hero-copy">
+                <h1>irisen25.com</h1>
+                <p class="body-copy">
+                    커뮤니티의 진보
+                </p>
+            </div>
+            <div class="hero-actions">
+                <a class="btn btn-primary" href="/boards">전체 보드 보기</a>
+                <a class="btn btn-ghost" href="/signin">로그인하기</a>
+            </div>
+            <div class="metric-row">
+                <div class="metric-card">
+                    <strong>LIVE</strong>
+                    <span>최근 게시글 모아보기</span>
                 </div>
-                <div class="info-row">
-                    <span class="info-key">nick</span>
-                    <span class="info-val" id="infoNick">—</span>
+                <div class="metric-card">
+                    <strong>AUTH</strong>
+                    <span>세션 상태 즉시 반영</span>
                 </div>
-                <div class="info-row">
-                    <span class="info-key">nick_icon_type</span>
-                    <span class="info-val" id="infoIconType">—</span>
-                </div>
-                <div class="info-row">
-                    <span class="info-key">member_division</span>
-                    <span class="info-val" id="infoDiv">—</span>
+                <div class="metric-card">
+                    <strong>BOARD</strong>
+                    <span>게시판으로 바로 이동</span>
                 </div>
             </div>
-        </div>
-    </div>
-    <div class="boardContainer">
+        </article>
 
+        <aside class="panel session-panel">
+            <div class="guest-view" id="guestView">
+                <h2>Spring <br><span>로그인</span> 테스트</h2>
+                <p>세션 기반 인증으로 안전하게 보호되는 페이지입니다.<br>로그인 후 서비스를 이용해주세요.</p>
+                <div class="cta">
+                    <a class="btn btn-primary" href="/signin">로그인하기</a>
+                    <a class="btn btn-ghost" href="/nid">가입하기</a>
+                </div>
+            </div>
+
+            <div class="user-view" id="userView" style="display:none;">
+                <p class="greeting">// welcome back</p>
+                <h2>로그인된 사용자 : <strong id="userNick"></strong>(<strong id="userId"></strong>)</h2>
+                <p class="session-note">현재 세션에 저장된 사용자 정보를 바로 확인할 수 있습니다.</p>
+
+                <div class="info-card">
+                    <div class="info-card-header">세션 정보 · session active</div>
+                    <div class="info-rows">
+                        <div class="info-row">
+                            <span class="info-key">uid</span>
+                            <span class="info-val" id="infoUid">—</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-key">nick</span>
+                            <span class="info-val" id="infoNick">—</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-key">nick_icon_type</span>
+                            <span class="info-val" id="infoIconType">—</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-key">member_division</span>
+                            <span class="info-val" id="infoDiv">—</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+    </section>
+
+    <section class="section-head">
+        <div>
+            <span class="eyebrow">LIVE FEED</span>
+            <h2 class="title-md" style="margin-top: 10px;">최근 올라온 게시글</h2>
+        </div>
+        <a class="btn btn-ghost" href="/boards">보드 목록</a>
+    </section>
+
+    <section class="feed-layout">
+        <article class="panel">
+            <div id="liveFeed" class="feed-list">
+                <div class="empty-state">게시글을 불러오는 중입니다.</div>
+            </div>
+        </article>
+
+        <aside class="panel">
+            <div class="quick-list">
+                <a class="quick-item" href="/boards">
+                    <div class="quick-title">전체 보드 보기</div>
+                    <div class="quick-meta">
+                        <span>갤러리 목록 탐색</span>
+                        <span>GO</span>
+                    </div>
+                </a>
+                <a class="quick-item" href="/signin">
+                    <div class="quick-title">로그인</div>
+                    <div class="quick-meta">
+                        <span>세션 활성화</span>
+                        <span>AUTH</span>
+                    </div>
+                </a>
+                <a class="quick-item" href="/nid">
+                    <div class="quick-title">회원가입</div>
+                    <div class="quick-meta">
+                        <span>새 계정 생성</span>
+                        <span>NEW</span>
+                    </div>
+                </a>
+            </div>
+        </aside>
+    </section>
+
+    <div class="boardContainer">
         <div class="boardBox" id="RecomBoard">
             <div class="board-header">
                 <span class="board-name">실시간</span>
                 <span class="board-desc">인기 글 모음</span>
             </div>
-
-            <div class="board-preview">
+            <div class="board-preview" id="RecomBoardPreview">
                 <div class="preview-item">게시글 제목 1</div>
                 <div class="preview-item">게시글 제목 2</div>
                 <div class="preview-item">게시글 제목 3</div>
@@ -85,97 +151,23 @@
 
         <div class="boardBox">
             <div class="board-header">
-                <span class="board-name">💬 자유 게시판</span>
-                <span class="board-desc">아무 글이나 자유롭게</span>
+                <span class="board-name">빠른 메뉴</span>
+                <span class="board-desc">자주 쓰는 경로</span>
             </div>
-
             <div class="board-preview">
-                <div class="preview-item">오늘 점심 뭐먹지</div>
-                <div class="preview-item">코딩 질문 있음</div>
+                <a class="preview-item" href="/boards">전체 보드 목록 열기</a>
+                <a class="preview-item" href="/signin">로그인 페이지 이동</a>
+                <a class="preview-item" href="/nid">회원가입 페이지 이동</a>
             </div>
         </div>
-
-        <div class="boardBox">
-            <div class="board-header">
-                <span class="board-name">📢 공지사항</span>
-                <span class="board-desc">운영 관련 공지</span>
-            </div>
-
-            <div class="board-preview">
-                <div class="preview-item">서버 점검 안내</div>
-            </div>
-        </div>
-
     </div>
 </main>
 
-<script>
-    /* ── 로그인 상태 확인 ── */
-    (async function checkLogin() {
-      try {
-        const res  = await fetch('/api/check-login', { credentials: 'include' });
-        const data = await res.json();
-        renderState(data);
-      } catch {
-        renderState({ loggedIn: false });
-      }
-    })();
-
-    function renderState(data) {
-      const badge      = document.getElementById('statusBadge');
-      const statusLbl  = document.getElementById('statusLabel');
-      const guestView  = document.getElementById('guestView');
-      const userView   = document.getElementById('userView');
-      const loginBtn   = document.getElementById('loginNavBtn');
-      const logoutBtn  = document.getElementById('logoutBtn');
-      const nidBtn   = document.getElementById('nidNavBtn');
-      const navNick    = document.getElementById('navNick');
-
-      if (data.loggedIn) {
-        /* 로그인 상태 UI */
-        badge.classList.add('online');
-        statusLbl.textContent = 'online';
-
-        navNick.textContent = data.nick;
-        navNick.style.display = 'inline';
-        logoutBtn.style.display = 'inline';
-        loginBtn.style.display  = 'none';
-        nidBtn.style.display = 'none';
-
-        guestView.style.display = 'none';
-        userView.style.display  = 'block';
-
-        /* 세션 정보 채우기 */
-        document.getElementById('userNick').textContent   = data.nick    || '—';
-        document.getElementById('userId').textContent    = data.uid     || '—';
-        document.getElementById('infoUid').textContent    = data.uid     || '—';
-        document.getElementById('infoNick').textContent   = data.nick    || '—';
-        document.getElementById('infoIconType').textContent =
-          (data.nickIconType && data.nickIconType !== 'null') ? data.nickIconType : '(없음)';
-
-        const div = data.memberDivision ?? 0;
-        document.getElementById('infoDiv').innerHTML =
-          `<span class="badge-div badge-${div}">${div === 1 ? 'ADMIN' : 'USER'} (${div})</span>`;
-
-      } else {
-        /* 비로그인 상태 UI */
-        statusLbl.textContent = 'offline';
-        guestView.style.display = 'block';
-        userView.style.display  = 'none';
-        loginBtn.style.display  = 'inline';
-        nidBtn.style.display = 'inline';
-        logoutBtn.style.display = 'none';
-        navNick.style.display   = 'none';
-      }
-    }
-
-    /* ── 로그아웃 ── */
-    async function doLogout() {
-      await fetch('/logout', { method: 'POST', credentials: 'include' });
-      window.location.reload();
-      alert("로그아웃 되었습니다.");
-    }
-</script>
+<script src="/js/common.js"></script>
+<script src="/js/board.js"></script>
 <script src="/js/address.js"></script>
+<script>
+    initHomePage();
+</script>
 </body>
 </html>

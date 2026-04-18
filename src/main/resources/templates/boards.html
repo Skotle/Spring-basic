@@ -2,36 +2,42 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>보드 목록 - irisen webapp</title>
-  <link rel="stylesheet" href="/css/global.css">
   <link rel="stylesheet" href="/css/boardsheet.css">
-  <style>
-    .board-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.5rem; margin-top: 2rem; }
-    .board-card { background: var(--card-bg); padding: 1.5rem; border-radius: 12px; border: 1px solid var(--border); transition: all 0.2s; cursor: pointer; }
-    .board-card:hover { transform: translateY(-4px); border-color: var(--accent); box-shadow: 0 10px 20px rgba(0,0,0,0.05); }
-    .board-name { font-size: 1.1rem; font-weight: 500; color: var(--accent); margin-bottom: 0.5rem; font-family: var(--mono); }
-    .board-stats { font-size: 0.85rem; color: var(--sub); }
-  </style>
 </head>
 <body>
 <nav>
-  <a class="nav-logo" href="/"><span>irisen webapp</span></a>
+  <a class="nav-logo" href="/">
+    <span class="dot"></span>
+    <span>irisen webapp</span>
+  </a>
+  <div class="nav-right">
+    <a class="btn btn-ghost" href="/">홈</a>
+    <a class="btn btn-primary" href="/signin">로그인</a>
+  </div>
 </nav>
 
-<div class="page">
-  <div class="container">
-    <header style="margin-bottom: 3rem; text-align: center;">
-      <h1>커뮤니티 보드</h1>
-      <p class="subtitle">// select a gallery to start</p>
-    </header>
+<main class="page-shell section-shell">
+  <section class="panel">
+    <div class="eyebrow">BOARD DIRECTORY</div>
+    <h1 class="title-md" style="margin-top: 14px;">커뮤니티 보드</h1>
+    <p class="body-copy" style="margin-top: 12px;">원래 보드 목록 기능은 유지하고, 검색과 빠른 진입용 UI를 추가했습니다.</p>
 
-    <div id="boardList" class="board-grid">
+    <div class="search-row">
+      <input id="boardSearchInput" type="text" placeholder="보드 ID 또는 이름 검색" oninput="filterBoards(this.value)">
+      <a class="btn btn-ghost" href="/boards">초기화</a>
     </div>
-  </div>
-</div>
+  </section>
+
+  <section id="boardList" class="board-grid">
+  </section>
+</main>
 
 <script src="/js/common.js"></script>
 <script src="/js/board.js"></script>
-<script>window.onload = loadBoardList;</script>
+<script>
+  loadBoardList();
+</script>
 </body>
 </html>

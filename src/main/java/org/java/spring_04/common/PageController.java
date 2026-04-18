@@ -1,6 +1,7 @@
 package org.java.spring_04.common;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 
 import java.time.LocalDateTime;
 
@@ -43,5 +44,17 @@ public class PageController {
     public String board_maim() {
         logRequest("BOARD IN");
         return "board_main";
+    }
+
+    @GetMapping("/board/{gid}")
+    public String boardDetail(@PathVariable String gid) {
+        logRequest("BOARD " + gid);
+        return "board_main";
+    }
+
+    @GetMapping("/board/{gid}/{postNo}")
+    public String postDetail(@PathVariable String gid, @PathVariable Long postNo) {
+        logRequest("POST " + gid + "/" + postNo);
+        return "post";
     }
 }

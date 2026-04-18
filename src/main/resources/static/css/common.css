@@ -1,15 +1,19 @@
-/* 글로벌 다크 테마 정의 */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=DM+Mono:wght@400;500&display=swap');
+
 :root {
-  --bg:       #e0e0e0;
-  --panel:    #9e9ed0;
-  --border:   #252530;
-  --accent:   #161616;
-  --accent2:  #4c4c4c;
-  --text:     rgb(50,50,50);
-  --sub:      #6b6b80;
-  --err:      #f87171;
-  --success:  #34d399;
-  --mono:     'DM Mono', monospace;
-  --sans:     'Noto Sans KR', sans-serif;
-  --bar: #458ee2;
+  --bg: #f3f5f9;
+  --panel: rgba(255, 255, 255, 0.92);
+  --panel-strong: #ffffff;
+  --border: rgba(28, 41, 61, 0.12);
+  --accent: #1d4ed8;
+  --accent2: #0f766e;
+  --accent-soft: rgba(29, 78, 216, 0.08);
+  --text: #172033;
+  --sub: #667085;
+  --err: #dc2626;
+  --success: #16a34a;
+  --mono: 'DM Mono', monospace;
+  --sans: 'Noto Sans KR', sans-serif;
+  --bar: rgba(255, 255, 255, 0.82);
+  --shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
 }

@@ -1,12 +1,8 @@
-/**
- * 공통 Fetch 래퍼 함수
- * credentials: 'include' 설정을 기본으로 하여 세션 쿠키를 자동 포함합니다.
- */
 async function apiFetch(url, options = {}) {
   const defaultOptions = {
     method: 'GET',
     headers: { 'Content-Type': 'application/json' },
-    credentials: 'include' // 세션 기반 인증 필수 설정
+    credentials: 'include'
   };
 
   const mergedOptions = { ...defaultOptions, ...options };
@@ -15,35 +11,43 @@ async function apiFetch(url, options = {}) {
     const response = await fetch(url, mergedOptions);
     return await response.json();
   } catch (err) {
-    console.error("API Error:", err);
-    throw new Error("서버와의 연결이 원활하지 않습니다.");
+    console.error('API Error:', err);
+    throw new Error('서버와 연결하지 못했습니다.');
   }
 }
 
-/**
- * 에러 메시지 표시 공통 함수
- */
 function showError(elementId, message) {
   const box = document.getElementById(elementId);
   if (!box) return;
   box.textContent = message;
   box.classList.add('show');
-
-  // 애니메이션 재트리거
-  box.style.animation = 'none';
-  box.offsetHeight;
-  box.style.animation = null;
 }
 
-/**
- * 버튼 로딩 상태 제어
- */
+function clearError(elementId) {
+  const box = document.getElementById(elementId);
+  if (!box) return;
+  box.textContent = '';
+  box.classList.remove('show');
+}
+
 function setBtnLoading(btnElement, isLoading) {
-  if (isLoading) {
-    btnElement.disabled = true;
-    btnElement.classList.add('loading');
-  } else {
-    btnElement.disabled = false;
-    btnElement.classList.remove('loading');
+  if (!btnElement) return;
+  btnElement.disabled = isLoading;
+  btnElement.classList.toggle('loading', isLoading);
+}
+
+function formatDateLabel(value) {
+  if (!value) return '시간 정보 없음';
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
   }
+
+  return new Intl.DateTimeFormat('ko-KR', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(date);
 }

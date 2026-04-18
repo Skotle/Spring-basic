@@ -19,14 +19,16 @@ public class AuthController {
         UserEntity user = authService.login(body.get("userID"), body.get("password"));
 
         if (user == null) {
-            return Map.of("success", false, "message", "인증 실패");
+            return Map.of("success", false, "message", "아이디 또는 비밀번호가 올바르지 않습니다.");
         }
 
         HttpSession session = request.getSession(true);
         session.setAttribute("uid", user.getUid());
         session.setAttribute("nick", user.getNick());
-        // ... 세션 정보 저장
-        System.out.println(LocalDateTime.now()+" 로그인: "+user.getNick()+"("+user.getUid()+")");
+        session.setAttribute("nickIconType", user.getNickIconType());
+        session.setAttribute("memberDivision", user.getMemberDivision());
+
+        System.out.println(LocalDateTime.now() + " 로그인 " + user.getNick() + "(" + user.getUid() + ")");
         return Map.of("success", true, "nick", user.getNick());
     }
 
@@ -36,42 +38,45 @@ public class AuthController {
             authService.signup(body);
             return Map.of("success", true);
         } catch (Exception e) {
-            return Map.of("success", false, "message", "가입 실패: " + e.getMessage());
+            return Map.of("success", false, "message", "회원가입에 실패했습니다: " + e.getMessage());
         }
     }
-    @GetMapping("/api/check-login") // 브라우저가 요청하는 경로와 일치
+
+    @GetMapping("/api/check-login")
     public Map<String, Object> checkLogin(HttpServletRequest request) {
         HttpSession session = request.getSession(false);
         if (session == null || session.getAttribute("uid") == null) {
             return Map.of("loggedIn", false);
         }
+
+        Object nick = session.getAttribute("nick");
+        Object uid = session.getAttribute("uid");
+        Object nickIconType = session.getAttribute("nickIconType");
+        Object memberDivision = session.getAttribute("memberDivision");
+
         return Map.of(
                 "loggedIn", true,
-                "nick", session.getAttribute("nick"),
-                "uid", session.getAttribute("uid")
+                "nick", nick == null ? "" : nick,
+                "uid", uid == null ? "" : uid,
+                "nickIconType", nickIconType == null ? "default" : nickIconType,
+                "memberDivision", memberDivision == null ? "user" : memberDivision
         );
     }
+
     @PostMapping("/logout")
     public Map<String, String> logout(HttpServletRequest request) {
-        // 공통 메서드 호출
         clearSession(request);
-
-        return Map.of("message", "로그아웃 완료");
+        return Map.of("message", "로그아웃이 완료되었습니다.");
     }
 
-    /**
-     * 세션 만료 전용 공통 메서드 (private)
-     * 비밀번호 변경, 회원 탈퇴 등 세션 말소가 필요한 모든 곳에서 호출 가능
-     */
     private void clearSession(HttpServletRequest request) {
-        HttpSession session = request.getSession(false); // 기존 세션 확인 (없으면 null)
+        HttpSession session = request.getSession(false);
         if (session != null) {
             Object uid = session.getAttribute("uid");
             Object nick = session.getAttribute("nick");
 
             System.out.println(LocalDateTime.now() + " 세션 만료 처리: " + nick + "(" + uid + ")");
-
-            session.invalidate(); // 세션 즉시 파기
+            session.invalidate();
         }
     }
 }
