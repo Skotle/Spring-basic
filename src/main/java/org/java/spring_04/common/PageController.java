@@ -24,10 +24,28 @@ public class PageController {
         return "index";
     }
 
+    @GetMapping("/m")
+    public String mobileIndex() {
+        logRequest("MOBILE INDEX");
+        return "mobile";
+    }
+
+    @GetMapping("/m/signin")
+    public String mobileLogin() {
+        logRequest("MOBILE LOGIN");
+        return "mobile";
+    }
+
     @GetMapping("/nid")
     public String nid() {
         logRequest("SIGNUP");
         return "index";
+    }
+
+    @GetMapping("/m/nid")
+    public String mobileSignup() {
+        logRequest("MOBILE SIGNUP");
+        return "mobile";
     }
 
     @GetMapping("/test")

@@ -1,0 +1,353 @@
+:root {
+  --bg: #f6f0e8;
+  --surface: rgba(255, 250, 245, 0.94);
+  --surface-strong: #fffaf4;
+  --line: rgba(69, 44, 23, 0.12);
+  --text: #2b1f16;
+  --muted: #7b6858;
+  --accent: #d15d34;
+  --accent-deep: #8f3419;
+  --accent-soft: #f2d1bc;
+  --ok: #1f7a55;
+  --danger: #b44033;
+  --shadow: 0 18px 36px rgba(96, 64, 39, 0.12);
+  --radius-xl: 24px;
+  --radius-lg: 18px;
+  --radius-md: 14px;
+  --sans: "Segoe UI", "Apple SD Gothic Neo", sans-serif;
+  --serif: Georgia, "Times New Roman", serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background:
+    radial-gradient(circle at top, rgba(209, 93, 52, 0.16), transparent 32%),
+    linear-gradient(180deg, #fff8f0 0%, var(--bg) 100%);
+  color: var(--text);
+  font-family: var(--sans);
+}
+
+body {
+  line-height: 1.5;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.m-shell {
+  min-height: 100vh;
+  padding: 16px 14px 28px;
+}
+
+.m-stack {
+  display: grid;
+  gap: 14px;
+}
+
+.m-topbar {
+  position: sticky;
+  top: 10px;
+  z-index: 20;
+  margin-bottom: 14px;
+}
+
+.m-topbar-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 249, 242, 0.9);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(12px);
+}
+
+.m-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.m-brand-mark {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-soft));
+  box-shadow: 0 0 0 5px rgba(209, 93, 52, 0.12);
+}
+
+.m-actions,
+.m-inline,
+.m-meta,
+.m-post-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.m-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.62);
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.m-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.m-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+}
+
+.m-btn-primary {
+  background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+  color: #fff8f4;
+}
+
+.m-btn-secondary {
+  background: rgba(255, 255, 255, 0.76);
+  border-color: var(--line);
+}
+
+.m-card,
+.m-panel,
+.m-feed-card,
+.m-board-card,
+.m-post-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.m-hero {
+  padding: 22px 18px;
+  background:
+    linear-gradient(155deg, rgba(255, 250, 243, 0.98), rgba(249, 230, 214, 0.92)),
+    var(--surface);
+}
+
+.m-eyebrow {
+  display: inline-flex;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(209, 93, 52, 0.1);
+  color: var(--accent-deep);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.m-title {
+  margin: 14px 0 8px;
+  font-family: var(--serif);
+  font-size: clamp(2.1rem, 9vw, 3.1rem);
+  line-height: 0.98;
+}
+
+.m-title span {
+  color: var(--accent);
+}
+
+.m-copy,
+.m-muted {
+  color: var(--muted);
+}
+
+.m-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.m-stat {
+  padding: 14px;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(209, 93, 52, 0.12);
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.m-stat strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 1.2rem;
+}
+
+.m-panel,
+.m-auth,
+.m-compose,
+.m-preview,
+.m-post-card {
+  padding: 18px 16px;
+}
+
+.m-section-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.m-section-title {
+  margin: 6px 0 0;
+  font-family: var(--serif);
+  font-size: 1.7rem;
+}
+
+.m-list {
+  display: grid;
+  gap: 10px;
+}
+
+.m-feed-card,
+.m-board-card,
+.m-post-row {
+  display: block;
+  padding: 16px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.64);
+}
+
+.m-feed-title,
+.m-board-title,
+.m-post-title {
+  margin: 7px 0;
+  font-size: 1.02rem;
+  font-weight: 700;
+}
+
+.m-search,
+.m-field input,
+.m-field textarea {
+  width: 100%;
+  padding: 13px 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.76);
+  color: var(--text);
+}
+
+.m-search:focus,
+.m-field input:focus,
+.m-field textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px rgba(209, 93, 52, 0.12);
+}
+
+.m-field {
+  display: grid;
+  gap: 8px;
+}
+
+.m-field label {
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.m-field textarea {
+  min-height: 220px;
+  resize: vertical;
+}
+
+.m-feedback-error,
+.m-feedback-success,
+.m-empty {
+  padding: 13px 14px;
+  border-radius: 16px;
+  font-size: 0.92rem;
+}
+
+.m-feedback-error {
+  background: rgba(180, 64, 51, 0.09);
+  border: 1px solid rgba(180, 64, 51, 0.2);
+  color: var(--danger);
+}
+
+.m-feedback-success {
+  background: rgba(31, 122, 85, 0.08);
+  border: 1px solid rgba(31, 122, 85, 0.18);
+  color: var(--ok);
+}
+
+.m-empty {
+  background: rgba(255, 255, 255, 0.48);
+  border: 1px dashed var(--line);
+  color: var(--muted);
+}
+
+.m-pagination {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+
+.m-post-heading {
+  margin: 12px 0;
+  font-family: var(--serif);
+  font-size: 1.9rem;
+  line-height: 1.08;
+}
+
+.m-post-body {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  line-height: 1.8;
+  word-break: break-word;
+}
+
+.m-preview-box {
+  min-height: 180px;
+  padding: 15px;
+  border-radius: 16px;
+  border: 1px dashed rgba(69, 44, 23, 0.22);
+  background: rgba(255, 255, 255, 0.46);
+}
+
+.m-mono {
+  font-family: Consolas, monospace;
+}

@@ -155,11 +155,11 @@
               h(
                 "h1",
                 { className: "hero-title" },
-                "하나의 앱에서",
+                "irisen",
                 h("br"),
-                h("span", null, "읽고 쓰고 이동하는"),
+                h("span", null, "26"),
                 h("br"),
-                "보드 화면"
+                "webapp"
               ),
               h(
                 "p",
