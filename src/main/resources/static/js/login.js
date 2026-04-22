@@ -26,7 +26,11 @@ async function doLogin() {
     });
 
     if (data.success) {
-      window.location.href = '/';
+      if (window.navigateTo) {
+        window.navigateTo('/');
+      } else {
+        window.location.href = '/';
+      }
       return;
     }
 

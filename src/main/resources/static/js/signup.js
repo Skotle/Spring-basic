@@ -45,12 +45,16 @@ async function doSignup() {
     });
 
     if (data.success) {
-      alert('가입 완료! 로그인 해주세요.');
-      window.location.href = '/signin';
+      alert('가입이 완료되었습니다. 로그인해주세요.');
+      if (window.navigateTo) {
+        window.navigateTo('/signin');
+      } else {
+        window.location.href = '/signin';
+      }
       return;
     }
 
-    showError('errorMsg', data.message || '가입 실패');
+    showError('errorMsg', data.message || '가입에 실패했습니다.');
   } catch (e) {
     showError('errorMsg', e.message);
   } finally {

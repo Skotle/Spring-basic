@@ -38,13 +38,21 @@ function initPostPage() {
 
   if (backToBoardBtn) {
     backToBoardBtn.addEventListener('click', () => {
-      location.href = `/board/${gid}`;
+      if (window.navigateTo) {
+        window.navigateTo(`/board/${gid}`);
+      } else {
+        location.href = `/board/${gid}`;
+      }
     });
   }
 
   if (writePostBtn) {
     writePostBtn.addEventListener('click', () => {
-      location.href = `/board/${gid}`;
+      if (window.navigateTo) {
+        window.navigateTo(`/board/${gid}`);
+      } else {
+        location.href = `/board/${gid}`;
+      }
     });
   }
 

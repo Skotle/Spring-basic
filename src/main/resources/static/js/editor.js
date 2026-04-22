@@ -82,7 +82,11 @@ async function submitHtmlPost() {
       return;
     }
 
-    location.href = `/board/${gid}`;
+    if (window.navigateTo) {
+      window.navigateTo(`/board/${gid}`);
+    } else {
+      location.href = `/board/${gid}`;
+    }
   } catch (error) {
     showError('writeError', error.message);
   } finally {

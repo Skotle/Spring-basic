@@ -48,10 +48,10 @@ function renderState(data) {
     const infoIconType = document.getElementById('infoIconType');
     const infoDiv = document.getElementById('infoDiv');
 
-    if (userNick) userNick.textContent = data.nick || '—';
-    if (userId) userId.textContent = data.uid || '—';
-    if (infoUid) infoUid.textContent = data.uid || '—';
-    if (infoNick) infoNick.textContent = data.nick || '—';
+    if (userNick) userNick.textContent = data.nick || '-';
+    if (userId) userId.textContent = data.uid || '-';
+    if (infoUid) infoUid.textContent = data.uid || '-';
+    if (infoNick) infoNick.textContent = data.nick || '-';
     if (infoIconType) infoIconType.textContent = data.nickIconType || '(없음)';
     if (infoDiv) {
       infoDiv.innerHTML = `<span class="badge-div badge-${isAdmin ? 1 : 0}">${isAdmin ? 'ADMIN' : 'USER'}</span>`;
@@ -68,5 +68,9 @@ function renderState(data) {
 
 async function doLogout() {
   await fetch('/logout', { method: 'POST', credentials: 'include' });
-  window.location.reload();
+  if (window.navigateTo) {
+    window.navigateTo('/');
+  } else {
+    window.location.reload();
+  }
 }
