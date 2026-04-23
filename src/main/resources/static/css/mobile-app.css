@@ -293,6 +293,74 @@ button {
   resize: vertical;
 }
 
+.m-editor-shell {
+  display: grid;
+  gap: 10px;
+}
+
+.m-editor-toolbar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.m-tool-btn {
+  min-height: 38px;
+  padding: 8px 11px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.84);
+  color: var(--text);
+}
+
+.m-html-editor {
+  min-height: 260px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.82);
+  line-height: 1.75;
+  word-break: break-word;
+}
+
+.m-html-editor:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px rgba(209, 93, 52, 0.12);
+}
+
+.m-html-editor:empty::before {
+  content: attr(data-placeholder);
+  color: rgba(123, 104, 88, 0.72);
+}
+
+.m-html-editor h2,
+.m-preview-box h2,
+.m-post-body h2 {
+  margin: 1em 0 0.5em;
+  font-family: var(--serif);
+  font-size: 1.35rem;
+}
+
+.m-html-editor blockquote,
+.m-preview-box blockquote,
+.m-post-body blockquote {
+  margin: 1em 0;
+  padding: 10px 12px;
+  border-left: 4px solid var(--accent-soft);
+  background: rgba(242, 209, 188, 0.18);
+  color: var(--muted);
+}
+
+.m-html-editor ul,
+.m-html-editor ol,
+.m-preview-box ul,
+.m-preview-box ol,
+.m-post-body ul,
+.m-post-body ol {
+  padding-left: 1.3rem;
+}
+
 .m-feedback-error,
 .m-feedback-success,
 .m-empty {

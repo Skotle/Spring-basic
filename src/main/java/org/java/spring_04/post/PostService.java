@@ -3,6 +3,7 @@ package org.java.spring_04.post;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.crypto.bcrypt.BCrypt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -15,26 +16,16 @@ public class PostService {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    /**
-     * 1. 특정 갤러리의 게시글 목록 조회
-     */
     public List<Map<String, Object>> getPostsByGallery(String gallId) {
         String sql = "SELECT * FROM post WHERE gall_id = ? ORDER BY id DESC LIMIT 20";
         return jdbcTemplate.queryForList(sql, gallId);
     }
 
-    /**
-     * 2. 실시간 인기 게시글 조회 (메인 페이지용)
-     */
     public List<Map<String, Object>> getTopRecommendedPosts() {
-        // 실제 운영 시에는 추천수(recommend)나 조회수 기준 필터링이 들어감
         String sql = "SELECT * FROM post ORDER BY id DESC LIMIT 5";
         return jdbcTemplate.queryForList(sql);
     }
 
-    /**
-     * 3. 게시글 상세 조회
-     */
     public Map<String, Object> getPostDetail(Long postId) {
         String sql = "SELECT * FROM post WHERE id = ?";
         return jdbcTemplate.queryForMap(sql, postId);
@@ -50,17 +41,26 @@ public class PostService {
         }
     }
 
-    /**
-     * 4. 게시글 작성 (트랜잭션 보장)
-     * gallery_counter 업데이트와 post 삽입이 동시에 이루어짐
-     */
-    @Transactional
-    public void insertPost(Map<String, String> payload, String uid, String nick) {
-        String gallId = payload.get("gid");
-        String title = payload.get("title");
-        String content = payload.get("content");
+    public List<Map<String, Object>> getComments(String gallId, Long postNo) {
+        String sql = """
+                SELECT id, writer_uid, name, ip, content, writed_at
+                FROM comment
+                WHERE gall_id = ?
+                  AND post_no = ?
+                  AND is_deleted = 0
+                ORDER BY id ASC
+                """;
+        return jdbcTemplate.queryForList(sql, gallId, postNo);
+    }
 
-        // 로직 1: 카운터 테이블의 last_post_no를 1 증가시키고 그 값을 LAST_INSERT_ID에 저장
+    @Transactional
+    public Map<String, Object> insertPost(Map<String, String> payload, String uid, String nick, String clientIp) {
+        String gallId = required(payload.get("gid"), "게시판 ID가 필요합니다.");
+        String title = required(payload.get("title"), "제목을 입력해주세요.");
+        String content = requiredHtml(payload.get("content"), "본문을 입력해주세요.");
+
+        WriterInfo writer = resolveWriter(payload, uid, nick, clientIp);
+
         String updateCounterSql =
                 "UPDATE gallery_counter " +
                         "SET last_post_no = LAST_INSERT_ID(last_post_no + 1) " +
@@ -68,16 +68,133 @@ public class PostService {
 
         int updatedRows = jdbcTemplate.update(updateCounterSql, gallId);
 
-        // 해당 갤러리 카운터 데이터가 없을 경우 예외 처리
         if (updatedRows == 0) {
-            throw new RuntimeException("해당 갤러리(gid: " + gallId + ")를 찾을 수 없습니다.");
+            throw new RuntimeException("해당 갤러리 gid를 찾을 수 없습니다: " + gallId);
         }
 
-        // 로직 2: LAST_INSERT_ID()를 사용하여 post_no에 삽입
         String insertPostSql =
-                "INSERT INTO post (gall_id, post_no, title, content, writer_uid, name) " +
-                        "VALUES (?, LAST_INSERT_ID(), ?, ?, ?, ?)";
+                "INSERT INTO post (gall_id, post_no, title, content, writer_uid, name, ip, password) " +
+                        "VALUES (?, LAST_INSERT_ID(), ?, ?, ?, ?, ?, ?)";
 
-        jdbcTemplate.update(insertPostSql, gallId, title, content, uid, nick);
+        jdbcTemplate.update(
+                insertPostSql,
+                gallId,
+                title,
+                content,
+                writer.uid(),
+                writer.name(),
+                writer.ip(),
+                writer.passwordHash()
+        );
+
+        Integer createdPostNo = jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Integer.class);
+        return Map.of("success", true, "postNo", createdPostNo == null ? 0 : createdPostNo);
+    }
+
+    @Transactional
+    public Map<String, Object> insertComment(Map<String, String> payload, String uid, String nick, String clientIp) {
+        String gallId = required(payload.get("gid"), "게시판 ID가 필요합니다.");
+        String content = required(payload.get("content"), "댓글 내용을 입력해주세요.");
+        Long postNo = parseLong(payload.get("postNo"), "게시글 번호가 필요합니다.");
+
+        if (findPostId(gallId, postNo) == null) {
+            throw new RuntimeException("댓글을 달 게시글을 찾을 수 없습니다.");
+        }
+
+        WriterInfo writer = resolveWriter(payload, uid, nick, clientIp);
+
+        String insertCommentSql =
+                "INSERT INTO comment (gall_id, post_no, writer_uid, name, ip, password, content) " +
+                        "VALUES (?, ?, ?, ?, ?, ?, ?)";
+
+        jdbcTemplate.update(
+                insertCommentSql,
+                gallId,
+                postNo,
+                writer.uid(),
+                writer.name(),
+                writer.ip(),
+                writer.passwordHash(),
+                content
+        );
+
+        jdbcTemplate.update(
+                "UPDATE post SET comment_count = comment_count + 1 WHERE gall_id = ? AND post_no = ?",
+                gallId,
+                postNo
+        );
+
+        return Map.of("success", true);
+    }
+
+    private Long findPostId(String gallId, Long postNo) {
+        try {
+            return jdbcTemplate.queryForObject(
+                    "SELECT id FROM post WHERE gall_id = ? AND post_no = ?",
+                    Long.class,
+                    gallId,
+                    postNo
+            );
+        } catch (EmptyResultDataAccessException e) {
+            return null;
+        }
+    }
+
+    private WriterInfo resolveWriter(Map<String, String> payload, String uid, String nick, String clientIp) {
+        if (uid != null && !uid.isBlank()) {
+            String resolvedNick = (nick == null || nick.isBlank()) ? uid : nick;
+            return new WriterInfo(uid, resolvedNick, normalizedIp(clientIp), null);
+        }
+
+        String guestName = required(payload.get("name"), "비회원은 이름을 입력해야 합니다.");
+        String guestPassword = required(payload.get("password"), "비회원은 비밀번호를 입력해야 합니다.");
+        return new WriterInfo(null, guestName, normalizedIp(clientIp), BCrypt.hashpw(guestPassword, BCrypt.gensalt()));
+    }
+
+    private String required(String value, String message) {
+        if (value == null || value.trim().isEmpty()) {
+            throw new RuntimeException(message);
+        }
+        return value.trim();
+    }
+
+    private String requiredHtml(String value, String message) {
+        if (value == null || value.isBlank()) {
+            throw new RuntimeException(message);
+        }
+
+        String normalized = value.trim();
+        String plainText = normalized
+                .replaceAll("(?i)<br\\s*/?>", " ")
+                .replaceAll("<[^>]+>", " ")
+                .replace("&nbsp;", " ")
+                .trim();
+
+        if (plainText.isEmpty()) {
+            throw new RuntimeException(message);
+        }
+
+        return normalized;
+    }
+
+    private String normalizedIp(String clientIp) {
+        if (clientIp == null || clientIp.isBlank()) {
+            return "unknown";
+        }
+        return clientIp.trim();
+    }
+
+    private Long parseLong(String value, String message) {
+        if (value == null || value.isBlank()) {
+            throw new RuntimeException(message);
+        }
+        try {
+            return Long.parseLong(value.trim());
+        } catch (NumberFormatException e) {
+            throw new RuntimeException(message);
+        }
+    }
+
+    private record WriterInfo(String uid, String name, String ip, String passwordHash) {
     }
 }

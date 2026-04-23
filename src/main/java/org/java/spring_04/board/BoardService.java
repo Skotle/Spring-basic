@@ -3,6 +3,7 @@ package org.java.spring_04.board;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.crypto.bcrypt.BCrypt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,10 +40,11 @@ public class BoardService {
     }
 
     @Transactional
-    public void insertPost(Map<String, String> payload, String uid, String nick) {
-        String gallId = payload.get("gid");
-        String title = payload.get("title");
-        String content = payload.get("content");
+    public void insertPost(Map<String, String> payload, String uid, String nick, String clientIp) {
+        String gallId = required(payload.get("gid"), "갤러리 ID가 필요합니다.");
+        String title = required(payload.get("title"), "제목을 입력해주세요.");
+        String content = requiredHtml(payload.get("content"), "본문을 입력해주세요.");
+        WriterInfo writer = resolveWriter(payload, uid, nick, clientIp);
 
         String updateCounterSql =
                 "UPDATE gallery_counter " +
@@ -65,10 +67,19 @@ public class BoardService {
         jdbcTemplate.update(updateGallerySql, gallId);
 
         String insertPostSql =
-                "INSERT INTO post (gall_id, post_no, title, content, writer_uid, name) " +
-                        "VALUES (?, LAST_INSERT_ID(), ?, ?, ?, ?)";
+                "INSERT INTO post (gall_id, post_no, title, content, writer_uid, name, ip, password) " +
+                        "VALUES (?, LAST_INSERT_ID(), ?, ?, ?, ?, ?, ?)";
 
-        jdbcTemplate.update(insertPostSql, gallId, title, content, uid, nick);
+        jdbcTemplate.update(
+                insertPostSql,
+                gallId,
+                title,
+                content,
+                writer.uid(),
+                writer.name(),
+                writer.ip(),
+                writer.passwordHash()
+        );
     }
 
     @Transactional
@@ -79,5 +90,52 @@ public class BoardService {
 
         int updatedRows = jdbcTemplate.update(sql);
         System.out.println("[Scheduler] " + updatedRows + "개의 갤러리 카운트를 동기화했습니다.");
+    }
+
+    private WriterInfo resolveWriter(Map<String, String> payload, String uid, String nick, String clientIp) {
+        if (uid != null && !uid.isBlank()) {
+            String resolvedNick = (nick == null || nick.isBlank()) ? uid : nick;
+            return new WriterInfo(uid, resolvedNick, normalizedIp(clientIp), null);
+        }
+
+        String guestName = required(payload.get("name"), "비회원은 이름을 입력해야 합니다.");
+        String guestPassword = required(payload.get("password"), "비회원은 비밀번호를 입력해야 합니다.");
+        return new WriterInfo(null, guestName, normalizedIp(clientIp), BCrypt.hashpw(guestPassword, BCrypt.gensalt()));
+    }
+
+    private String required(String value, String message) {
+        if (value == null || value.trim().isEmpty()) {
+            throw new RuntimeException(message);
+        }
+        return value.trim();
+    }
+
+    private String requiredHtml(String value, String message) {
+        if (value == null || value.isBlank()) {
+            throw new RuntimeException(message);
+        }
+
+        String normalized = value.trim();
+        String plainText = normalized
+                .replaceAll("(?i)<br\\s*/?>", " ")
+                .replaceAll("<[^>]+>", " ")
+                .replace("&nbsp;", " ")
+                .trim();
+
+        if (plainText.isEmpty()) {
+            throw new RuntimeException(message);
+        }
+
+        return normalized;
+    }
+
+    private String normalizedIp(String clientIp) {
+        if (clientIp == null || clientIp.isBlank()) {
+            return "unknown";
+        }
+        return clientIp.trim();
+    }
+
+    private record WriterInfo(String uid, String name, String ip, String passwordHash) {
     }
 }

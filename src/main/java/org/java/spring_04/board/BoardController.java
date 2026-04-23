@@ -1,5 +1,6 @@
 package org.java.spring_04.board;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -40,23 +41,20 @@ public class BoardController {
         if (post == null) {
             return Map.of("success", false, "message", "게시글을 찾을 수 없습니다.");
         }
-        System.out.println(post);
 
         return Map.of("success", true, "post", post);
     }
 
     @PostMapping("/write")
-    public Map<String, Object> writePost(@RequestBody Map<String, String> payload, HttpSession session) {
+    public Map<String, Object> writePost(@RequestBody Map<String, String> payload,
+                                         HttpServletRequest request,
+                                         HttpSession session) {
         System.out.println("[" + LocalDateTime.now() + "] API /api/board/write gid=" + payload.get("gid"));
         String uid = (String) session.getAttribute("uid");
         String nick = (String) session.getAttribute("nick");
 
-        if (uid == null) {
-            return Map.of("success", false, "message", "로그인이 필요합니다.");
-        }
-
         try {
-            boardService.insertPost(payload, uid, nick);
+            boardService.insertPost(payload, uid, nick, extractClientIp(request));
             return Map.of("success", true);
         } catch (Exception e) {
             return Map.of("success", false, "message", e.getMessage());
@@ -70,5 +68,18 @@ public class BoardController {
         } catch (Exception e) {
             System.err.println("[Scheduler Error] 동기화 중 오류 발생: " + e.getMessage());
         }
+    }
+    private String extractClientIp(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            return forwarded.split(",")[0].trim();
+        }
+
+        String realIp = request.getHeader("X-Real-IP");
+        if (realIp != null && !realIp.isBlank()) {
+            return realIp.trim();
+        }
+
+        return request.getRemoteAddr();
     }
 }

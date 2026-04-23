@@ -1,5 +1,6 @@
 package org.java.spring_04.post;
 
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -43,24 +44,52 @@ public class PostController {
             return Map.of("success", false, "message", "게시글을 찾을 수 없습니다.");
         }
 
-        return Map.of("success", true, "post", post);
+        return Map.of(
+                "success", true,
+                "post", post,
+                "comments", postService.getComments(gid, postNo)
+        );
     }
 
     @PostMapping("/write")
     public Map<String, Object> writePost(@RequestBody Map<String, String> payload,
+                                         HttpServletRequest request,
                                          @SessionAttribute(name = "uid", required = false) String uid,
                                          @SessionAttribute(name = "nick", required = false) String nick) {
         System.out.println("[" + LocalDateTime.now() + "] API /api/posts/write gid=" + payload.get("gid"));
 
-        if (uid == null) {
-            return Map.of("success", false, "message", "로그인이 필요합니다.");
-        }
-
         try {
-            postService.insertPost(payload, uid, nick);
-            return Map.of("success", true);
+            return postService.insertPost(payload, uid, nick, extractClientIp(request));
         } catch (Exception e) {
             return Map.of("success", false, "message", e.getMessage());
         }
+    }
+
+    @PostMapping("/comment")
+    public Map<String, Object> writeComment(@RequestBody Map<String, String> payload,
+                                            HttpServletRequest request,
+                                            @SessionAttribute(name = "uid", required = false) String uid,
+                                            @SessionAttribute(name = "nick", required = false) String nick) {
+        System.out.println("[" + LocalDateTime.now() + "] API /api/posts/comment gid=" + payload.get("gid"));
+
+        try {
+            return postService.insertComment(payload, uid, nick, extractClientIp(request));
+        } catch (Exception e) {
+            return Map.of("success", false, "message", e.getMessage());
+        }
+    }
+
+    private String extractClientIp(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            return forwarded.split(",")[0].trim();
+        }
+
+        String realIp = request.getHeader("X-Real-IP");
+        if (realIp != null && !realIp.isBlank()) {
+            return realIp.trim();
+        }
+
+        return request.getRemoteAddr();
     }
 }
