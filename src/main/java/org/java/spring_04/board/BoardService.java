@@ -25,12 +25,41 @@ public class BoardService {
         int size = 20;
         int offset = Math.max(page - 1, 0) * size;
 
-        String sql = "SELECT * FROM post WHERE gall_id = ? ORDER BY id DESC LIMIT ? OFFSET ?";
+        String sql = """
+                SELECT p.*, g.gall_name,
+                       (
+                           SELECT COUNT(*)
+                           FROM comment c
+                           WHERE c.gall_id = p.gall_id
+                             AND c.post_no = p.post_no
+                             AND c.is_deleted = 0
+                       ) AS comment_count
+                FROM post p
+                JOIN gallery g ON g.gall_id = p.gall_id
+                WHERE p.gall_id = ?
+                  AND p.is_deleted = 0
+                ORDER BY p.post_no DESC
+                LIMIT ? OFFSET ?
+                """;
         return jdbcTemplate.queryForList(sql, gallId, size, offset);
     }
 
     public Map<String, Object> getPostDetail(String gallId, Long postNo) {
-        String sql = "SELECT * FROM post WHERE gall_id = ? AND post_no = ?";
+        String sql = """
+                SELECT p.*, g.gall_name,
+                       (
+                           SELECT COUNT(*)
+                           FROM comment c
+                           WHERE c.gall_id = p.gall_id
+                             AND c.post_no = p.post_no
+                             AND c.is_deleted = 0
+                       ) AS comment_count
+                FROM post p
+                JOIN gallery g ON g.gall_id = p.gall_id
+                WHERE p.gall_id = ?
+                  AND p.post_no = ?
+                  AND p.is_deleted = 0
+                """;
 
         try {
             return jdbcTemplate.queryForMap(sql, gallId, postNo);
@@ -42,15 +71,15 @@ public class BoardService {
     @Transactional
     public void insertPost(Map<String, String> payload, String uid, String nick, String clientIp) {
         String gallId = required(payload.get("gid"), "갤러리 ID가 필요합니다.");
-        String title = required(payload.get("title"), "제목을 입력해주세요.");
-        String content = requiredHtml(payload.get("content"), "본문을 입력해주세요.");
+        String title = required(payload.get("title"), "제목을 입력해 주세요.");
+        String content = requiredHtml(payload.get("content"), "본문을 입력해 주세요.");
         WriterInfo writer = resolveWriter(payload, uid, nick, clientIp);
 
-        String updateCounterSql =
-                "UPDATE gallery_counter " +
-                        "SET last_post_no = LAST_INSERT_ID(last_post_no + 1), " +
-                        "    post_count = LAST_INSERT_ID() " +
-                        "WHERE gall_id = ?";
+        String updateCounterSql = """
+                UPDATE gallery_counter
+                SET last_post_no = last_post_no + 1
+                WHERE gall_id = ?
+                """;
 
         int rows = jdbcTemplate.update(updateCounterSql, gallId);
 
@@ -58,21 +87,37 @@ public class BoardService {
             throw new RuntimeException("해당 갤러리를 찾을 수 없습니다: " + gallId);
         }
 
-        String updateGallerySql =
-                "UPDATE gallery g " +
-                        "JOIN gallery_counter gc ON g.gall_id = gc.gall_id " +
-                        "SET g.post_count = gc.last_post_no " +
-                        "WHERE g.gall_id = ?";
+        Integer createdPostNo = jdbcTemplate.queryForObject(
+                "SELECT last_post_no FROM gallery_counter WHERE gall_id = ?",
+                Integer.class,
+                gallId
+        );
+        if (createdPostNo == null) {
+            throw new RuntimeException("게시글 번호를 생성하지 못했습니다.");
+        }
+
+        String updateGallerySql = """
+                UPDATE gallery
+                SET post_count = (
+                    SELECT COUNT(*)
+                    FROM post
+                    WHERE post.gall_id = gallery.gall_id
+                      AND post.is_deleted = 0
+                )
+                WHERE gall_id = ?
+                """;
 
         jdbcTemplate.update(updateGallerySql, gallId);
 
-        String insertPostSql =
-                "INSERT INTO post (gall_id, post_no, title, content, writer_uid, name, ip, password) " +
-                        "VALUES (?, LAST_INSERT_ID(), ?, ?, ?, ?, ?, ?)";
+        String insertPostSql = """
+                INSERT INTO post (gall_id, post_no, title, content, writer_uid, name, ip, password)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """;
 
         jdbcTemplate.update(
                 insertPostSql,
                 gallId,
+                createdPostNo,
                 title,
                 content,
                 writer.uid(),
@@ -84,9 +129,15 @@ public class BoardService {
 
     @Transactional
     public void syncGalleryPostCount() {
-        String sql = "UPDATE gallery g " +
-                "JOIN gallery_counter gc ON g.gall_id = gc.gall_id " +
-                "SET g.post_count = gc.last_post_no";
+        String sql = """
+                UPDATE gallery
+                SET post_count = (
+                    SELECT COUNT(*)
+                    FROM post
+                    WHERE post.gall_id = gallery.gall_id
+                      AND post.is_deleted = 0
+                )
+                """;
 
         int updatedRows = jdbcTemplate.update(sql);
         System.out.println("[Scheduler] " + updatedRows + "개의 갤러리 카운트를 동기화했습니다.");
@@ -98,8 +149,8 @@ public class BoardService {
             return new WriterInfo(uid, resolvedNick, normalizedIp(clientIp), null);
         }
 
-        String guestName = required(payload.get("name"), "비회원은 이름을 입력해야 합니다.");
-        String guestPassword = required(payload.get("password"), "비회원은 비밀번호를 입력해야 합니다.");
+        String guestName = required(firstNonBlank(payload.get("name"), payload.get("guestName")), "비회원은 이름을 입력해야 합니다.");
+        String guestPassword = required(firstNonBlank(payload.get("password"), payload.get("guestPassword")), "비회원은 비밀번호를 입력해야 합니다.");
         return new WriterInfo(null, guestName, normalizedIp(clientIp), BCrypt.hashpw(guestPassword, BCrypt.gensalt()));
     }
 
@@ -133,7 +184,22 @@ public class BoardService {
         if (clientIp == null || clientIp.isBlank()) {
             return "unknown";
         }
-        return clientIp.trim();
+
+        String normalized = clientIp.trim();
+        if (normalized.startsWith("::ffff:")) {
+            normalized = normalized.substring(7);
+        }
+        if ("::1".equals(normalized) || "0:0:0:0:0:0:0:1".equals(normalized)) {
+            return "127.0.0.1";
+        }
+        return normalized;
+    }
+
+    private String firstNonBlank(String first, String second) {
+        if (first != null && !first.isBlank()) {
+            return first;
+        }
+        return second;
     }
 
     private record WriterInfo(String uid, String name, String ip, String passwordHash) {

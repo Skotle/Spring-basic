@@ -82,6 +82,11 @@ def init_db():
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_post_gall_list ON post (gall_id, post_no DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_post_writer ON post (writer_uid)")
 
+        # 기존 DB에 comment_count 컬럼이 없으면 추가
+        post_columns = [row[1] for row in cursor.execute("PRAGMA table_info(post)").fetchall()]
+        if "comment_count" not in post_columns:
+            cursor.execute("ALTER TABLE post ADD COLUMN comment_count INTEGER NOT NULL DEFAULT 0")
+
         # --- 5. post_attachment ---
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS post_attachment (

@@ -79,6 +79,28 @@ public class PostController {
         }
     }
 
+    @PostMapping("/delete")
+    public Map<String, Object> deletePost(@RequestBody Map<String, String> payload,
+                                          @SessionAttribute(name = "uid", required = false) String uid) {
+        System.out.println("[" + LocalDateTime.now() + "] API /api/posts/delete gid=" + payload.get("gid") + ", postNo=" + payload.get("postNo"));
+        try {
+            return postService.deletePost(payload, uid);
+        } catch (Exception e) {
+            return Map.of("success", false, "message", e.getMessage());
+        }
+    }
+
+    @PostMapping("/comment/delete")
+    public Map<String, Object> deleteComment(@RequestBody Map<String, String> payload,
+                                             @SessionAttribute(name = "uid", required = false) String uid) {
+        System.out.println("[" + LocalDateTime.now() + "] API /api/posts/comment/delete commentId=" + payload.get("commentId"));
+        try {
+            return postService.deleteComment(payload, uid);
+        } catch (Exception e) {
+            return Map.of("success", false, "message", e.getMessage());
+        }
+    }
+
     private String extractClientIp(HttpServletRequest request) {
         String forwarded = request.getHeader("X-Forwarded-For");
         if (forwarded != null && !forwarded.isBlank()) {
