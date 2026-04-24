@@ -2,4 +2,4 @@
 *.cmd text eol=crlf
 *.html linguist-documentation
 *.python linguist-documentation
-*.js linguist-documentation
+*.javascript linguist-documentation
