@@ -1,4 +1,6 @@
 /mvnw text eol=lf
 *.cmd text eol=crlf
 *.html linguist-documentation
-*.python linguist-documentation
+*.css linguist-documentation
+*.js linguist-documentation
+*.py linguist-documentation
