@@ -36,6 +36,12 @@ public class PageController {
         return "mobile";
     }
 
+    @GetMapping("/alarms")
+    public String alarms() {
+        logRequest("ALARMS");
+        return "index";
+    }
+
     @GetMapping("/nid")
     public String nid() {
         logRequest("SIGNUP");
@@ -52,5 +58,11 @@ public class PageController {
     public String test() {
         logRequest("TEST");
         return "test";
+    }
+
+    @GetMapping("/admin")
+    public String admin() {
+        logRequest("ADMIN");
+        return "admin";
     }
 }

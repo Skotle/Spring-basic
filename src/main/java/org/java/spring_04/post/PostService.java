@@ -1,5 +1,6 @@
 package org.java.spring_04.post;
 
+import org.java.spring_04.board.BoardService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -15,6 +16,9 @@ public class PostService {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private BoardService boardService;
 
     public List<Map<String, Object>> getPostsByGallery(String gallId) {
         String sql = """
@@ -196,7 +200,7 @@ public class PostService {
     }
 
     @Transactional
-    public Map<String, Object> deletePost(Map<String, String> payload, String uid) {
+    public Map<String, Object> deletePost(Map<String, String> payload, String uid, String memberDivision) {
         String gallId = required(payload.get("gid"), "갤러리 ID가 필요합니다.");
         Long postNo = parseLong(payload.get("postNo"), "게시글 번호가 필요합니다.");
         String password = nullableTrim(payload.get("password"));
@@ -206,7 +210,7 @@ public class PostService {
             return Map.of("success", false, "message", "게시글을 찾을 수 없습니다.");
         }
 
-        if (!canDelete(post.get("writer_uid"), post.get("password"), uid, password)) {
+        if (!canDelete(post.get("writer_uid"), post.get("password"), uid, password, gallId, memberDivision)) {
             return Map.of("success", false, "message", "삭제 권한이 없습니다.");
         }
 
@@ -225,7 +229,7 @@ public class PostService {
     }
 
     @Transactional
-    public Map<String, Object> deleteComment(Map<String, String> payload, String uid) {
+    public Map<String, Object> deleteComment(Map<String, String> payload, String uid, String memberDivision) {
         Long commentId = parseLong(payload.get("commentId"), "댓글 ID가 필요합니다.");
         String password = nullableTrim(payload.get("password"));
 
@@ -234,11 +238,11 @@ public class PostService {
             return Map.of("success", false, "message", "댓글을 찾을 수 없습니다.");
         }
 
-        if (!canDelete(comment.get("writer_uid"), comment.get("password"), uid, password)) {
+        String gallId = String.valueOf(comment.get("gall_id"));
+
+        if (!canDelete(comment.get("writer_uid"), comment.get("password"), uid, password, gallId, memberDivision)) {
             return Map.of("success", false, "message", "삭제 권한이 없습니다.");
         }
-
-        String gallId = String.valueOf(comment.get("gall_id"));
         Long postNo = toLong(comment.get("post_no"));
 
         int updated = jdbcTemplate.update(
@@ -305,7 +309,11 @@ public class PostService {
         }
     }
 
-    private boolean canDelete(Object writerUid, Object passwordHash, String sessionUid, String rawPassword) {
+    private boolean canDelete(Object writerUid, Object passwordHash, String sessionUid, String rawPassword, String gallId, String memberDivision) {
+        if (boardService.canManageBoard(gallId, sessionUid, memberDivision)) {
+            return true;
+        }
+
         String writerUidText = writerUid == null ? "" : String.valueOf(writerUid).trim();
         if (!writerUidText.isBlank()) {
             return sessionUid != null && !sessionUid.isBlank() && writerUidText.equals(sessionUid.trim());

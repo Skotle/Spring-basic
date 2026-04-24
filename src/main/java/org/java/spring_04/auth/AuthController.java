@@ -29,24 +29,55 @@ public class AuthController {
         session.setAttribute("nickIconType", user.getNickIconType());
         session.setAttribute("memberDivision", user.getMemberDivision());
 
-        System.out.println(LocalDateTime.now() + " 로그인 " + user.getNick() + "(" + user.getUid() + ")");
         return Map.of("success", true, "nick", user.getNick());
+    }
+
+    @PostMapping("/api/signup/request")
+    public Map<String, Object> requestSignup(@RequestBody Map<String, String> body) {
+        System.out.println("[" + LocalDateTime.now() + "] API /api/signup/request userID=" + body.get("userID"));
+        try {
+            authService.requestSignupVerification(body);
+            return Map.of("success", true, "message", "인증 메일을 발송했습니다.");
+        } catch (Exception e) {
+            return Map.of("success", false, "message", "이메일 인증 요청에 실패했습니다: " + e.getMessage());
+        }
+    }
+
+    @PostMapping("/api/signup/verify")
+    public Map<String, Object> verifySignup(@RequestBody Map<String, String> body) {
+        System.out.println("[" + LocalDateTime.now() + "] API /api/signup/verify userID=" + body.get("userID"));
+        try {
+            authService.confirmSignup(body);
+            return Map.of("success", true, "message", "회원가입이 완료되었습니다.");
+        } catch (Exception e) {
+            return Map.of("success", false, "message", "이메일 인증 확인에 실패했습니다: " + e.getMessage());
+        }
     }
 
     @PostMapping("/api/signup")
     public Map<String, Object> signup(@RequestBody Map<String, String> body) {
-        System.out.println("[" + LocalDateTime.now() + "] API /api/signup userID=" + body.get("userID"));
+        return requestSignup(body);
+    }
+
+    @GetMapping("/api/signup/validate")
+    public Map<String, Object> validateSignupField(@RequestParam("field") String field,
+                                                   @RequestParam("value") String value) {
         try {
-            authService.signup(body);
-            return Map.of("success", true);
+            return Map.of("success", true, "data", authService.validateSignupField(field, value));
         } catch (Exception e) {
-            return Map.of("success", false, "message", "회원가입에 실패했습니다: " + e.getMessage());
+            return Map.of(
+                    "success", true,
+                    "data", Map.of(
+                            "field", field,
+                            "valid", false,
+                            "message", e.getMessage()
+                    )
+            );
         }
     }
 
     @GetMapping("/api/check-login")
     public Map<String, Object> checkLogin(HttpServletRequest request) {
-        System.out.println("[" + LocalDateTime.now() + "] API /api/check-login");
         HttpSession session = request.getSession(false);
         if (session == null || session.getAttribute("uid") == null) {
             return Map.of("loggedIn", false);
@@ -68,7 +99,6 @@ public class AuthController {
 
     @PostMapping("/logout")
     public Map<String, String> logout(HttpServletRequest request) {
-        System.out.println("[" + LocalDateTime.now() + "] API /logout");
         clearSession(request);
         return Map.of("message", "로그아웃이 완료되었습니다.");
     }
@@ -76,10 +106,6 @@ public class AuthController {
     private void clearSession(HttpServletRequest request) {
         HttpSession session = request.getSession(false);
         if (session != null) {
-            Object uid = session.getAttribute("uid");
-            Object nick = session.getAttribute("nick");
-
-            System.out.println(LocalDateTime.now() + " 세션 만료 처리: " + nick + "(" + uid + ")");
             session.invalidate();
         }
     }

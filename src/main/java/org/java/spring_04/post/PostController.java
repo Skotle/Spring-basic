@@ -81,10 +81,11 @@ public class PostController {
 
     @PostMapping("/delete")
     public Map<String, Object> deletePost(@RequestBody Map<String, String> payload,
-                                          @SessionAttribute(name = "uid", required = false) String uid) {
+                                          @SessionAttribute(name = "uid", required = false) String uid,
+                                          @SessionAttribute(name = "memberDivision", required = false) String memberDivision) {
         System.out.println("[" + LocalDateTime.now() + "] API /api/posts/delete gid=" + payload.get("gid") + ", postNo=" + payload.get("postNo"));
         try {
-            return postService.deletePost(payload, uid);
+            return postService.deletePost(payload, uid, memberDivision);
         } catch (Exception e) {
             return Map.of("success", false, "message", e.getMessage());
         }
@@ -92,10 +93,11 @@ public class PostController {
 
     @PostMapping("/comment/delete")
     public Map<String, Object> deleteComment(@RequestBody Map<String, String> payload,
-                                             @SessionAttribute(name = "uid", required = false) String uid) {
+                                             @SessionAttribute(name = "uid", required = false) String uid,
+                                             @SessionAttribute(name = "memberDivision", required = false) String memberDivision) {
         System.out.println("[" + LocalDateTime.now() + "] API /api/posts/comment/delete commentId=" + payload.get("commentId"));
         try {
-            return postService.deleteComment(payload, uid);
+            return postService.deleteComment(payload, uid, memberDivision);
         } catch (Exception e) {
             return Map.of("success", false, "message", e.getMessage());
         }

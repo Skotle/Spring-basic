@@ -45,6 +45,61 @@ public class BoardController {
         return Map.of("success", true, "post", post);
     }
 
+    @GetMapping("/manage/{gid}")
+    public Map<String, Object> getBoardManageInfo(@PathVariable("gid") String gid,
+                                                  @SessionAttribute(name = "uid", required = false) String uid,
+                                                  @SessionAttribute(name = "memberDivision", required = false) String memberDivision) {
+        System.out.println("[" + LocalDateTime.now() + "] API /api/board/manage/" + gid);
+        try {
+            return Map.of("success", true, "data", boardService.getBoardManageInfo(gid, uid, memberDivision));
+        } catch (Exception e) {
+            return Map.of("success", false, "message", e.getMessage());
+        }
+    }
+
+    @PostMapping("/manage/{gid}/manager")
+    public Map<String, Object> assignManager(@PathVariable("gid") String gid,
+                                             @RequestBody(required = false) Map<String, String> payload,
+                                             @SessionAttribute(name = "uid", required = false) String uid,
+                                             @SessionAttribute(name = "memberDivision", required = false) String memberDivision) {
+        System.out.println("[" + LocalDateTime.now() + "] API /api/board/manage/" + gid + "/manager");
+        try {
+            String targetUid = payload == null ? null : payload.get("targetUid");
+            boardService.assignManager(gid, targetUid, uid, memberDivision);
+            return Map.of("success", true);
+        } catch (Exception e) {
+            return Map.of("success", false, "message", e.getMessage());
+        }
+    }
+
+    @PostMapping("/manage/{gid}/submanager")
+    public Map<String, Object> appointSubmanager(@PathVariable("gid") String gid,
+                                                 @RequestBody Map<String, String> payload,
+                                                 @SessionAttribute(name = "uid", required = false) String uid,
+                                                 @SessionAttribute(name = "memberDivision", required = false) String memberDivision) {
+        System.out.println("[" + LocalDateTime.now() + "] API /api/board/manage/" + gid + "/submanager");
+        try {
+            boardService.appointSubmanager(gid, payload.get("targetUid"), uid, memberDivision);
+            return Map.of("success", true);
+        } catch (Exception e) {
+            return Map.of("success", false, "message", e.getMessage());
+        }
+    }
+
+    @DeleteMapping("/manage/{gid}/submanager/{targetUid}")
+    public Map<String, Object> revokeSubmanager(@PathVariable("gid") String gid,
+                                                @PathVariable("targetUid") String targetUid,
+                                                @SessionAttribute(name = "uid", required = false) String uid,
+                                                @SessionAttribute(name = "memberDivision", required = false) String memberDivision) {
+        System.out.println("[" + LocalDateTime.now() + "] API /api/board/manage/" + gid + "/submanager/" + targetUid);
+        try {
+            boardService.revokeSubmanager(gid, targetUid, uid, memberDivision);
+            return Map.of("success", true);
+        } catch (Exception e) {
+            return Map.of("success", false, "message", e.getMessage());
+        }
+    }
+
     @PostMapping("/write")
     public Map<String, Object> writePost(@RequestBody Map<String, String> payload,
                                          HttpServletRequest request,
