@@ -42,6 +42,18 @@ public class PageController {
         return "index";
     }
 
+    @GetMapping("/profile")
+    public String profile() {
+        logRequest("PROFILE");
+        return "index";
+    }
+
+    @GetMapping("/profile/{uid}")
+    public String publicProfile() {
+        logRequest("PROFILE USER");
+        return "index";
+    }
+
     @GetMapping("/nid")
     public String nid() {
         logRequest("SIGNUP");

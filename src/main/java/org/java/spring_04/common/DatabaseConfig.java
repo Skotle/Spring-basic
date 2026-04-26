@@ -18,7 +18,7 @@ public class DatabaseConfig {
 
         // [중요] GCP 콘솔 '개요' 탭에 있는 '공용 IP 주소'를 입력하세요.
         // 뒤에 /mydb를 붙여 이미지에 생성하신 mydb 스키마를 사용하도록 합니다.
-        dataSource.setUrl("jdbc:mysql://34.81.225.190:3306/mydb?serverTimezone=Asia/Seoul&characterEncoding=UTF-8");
+        dataSource.setUrl("jdbc:mysql://34.81.209.172:3306/mydb?serverTimezone=Asia/Seoul&characterEncoding=UTF-8");
 
         // SQL 사용자 메뉴에서 설정한 계정 (보통 root)과 비밀번호
         dataSource.setUsername("Skotle");

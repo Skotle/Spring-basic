@@ -57,6 +57,29 @@ public class BoardController {
         }
     }
 
+    @GetMapping("/manage/{gid}/settings")
+    public Map<String, Object> getBoardSettings(@PathVariable("gid") String gid) {
+        System.out.println("[" + LocalDateTime.now() + "] API /api/board/manage/" + gid + "/settings");
+        try {
+            return Map.of("success", true, "data", boardService.getBoardSettings(gid));
+        } catch (Exception e) {
+            return Map.of("success", false, "message", e.getMessage());
+        }
+    }
+
+    @PostMapping("/manage/{gid}/settings")
+    public Map<String, Object> saveBoardSettings(@PathVariable("gid") String gid,
+                                                 @RequestBody Map<String, String> payload,
+                                                 @SessionAttribute(name = "uid", required = false) String uid,
+                                                 @SessionAttribute(name = "memberDivision", required = false) String memberDivision) {
+        System.out.println("[" + LocalDateTime.now() + "] API /api/board/manage/" + gid + "/settings");
+        try {
+            return Map.of("success", true, "data", boardService.saveBoardSettings(gid, payload, uid, memberDivision));
+        } catch (Exception e) {
+            return Map.of("success", false, "message", e.getMessage());
+        }
+    }
+
     @PostMapping("/manage/{gid}/manager")
     public Map<String, Object> assignManager(@PathVariable("gid") String gid,
                                              @RequestBody(required = false) Map<String, String> payload,

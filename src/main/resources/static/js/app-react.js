@@ -1,11 +1,14 @@
-(() => {
+﻿(() => {
   const h = React.createElement;
   const { useEffect, useRef, useState } = React;
 
   const api = async (url, options = {}) => {
+    const headers = options.body instanceof FormData
+      ? { ...(options.headers || {}) }
+      : { "Content-Type": "application/json", ...(options.headers || {}) };
     const response = await fetch(url, {
       method: "GET",
-      headers: { "Content-Type": "application/json" },
+      headers,
       credentials: "include",
       ...options
     });
@@ -33,10 +36,18 @@
     }).format(date);
   };
 
+  const getCurrentPageFromLocation = () => {
+    const params = new URLSearchParams(window.location.search);
+    const raw = Number(params.get("page") || "1");
+    return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 1;
+  };
+
+  const MAX_IMAGE_UPLOAD_BYTES = 50 * 1024 * 1024;
+
   const authorLabel = (item) => {
-    if (!item) return "익명";
+    if (!item) return "?듬챸";
     if (item.writer_uid) return item.name || item.writer_uid;
-    return item.name || "익명";
+    return item.name || "?듬챸";
   };
 
   function matchRoute(pathname) {
@@ -44,11 +55,16 @@
     if (pathname === "/signin") return { name: "login", params: {} };
     if (pathname === "/nid") return { name: "signup", params: {} };
     if (pathname === "/alarms") return { name: "alarms", params: {} };
+    if (pathname === "/profile") return { name: "profile", params: {} };
+    let match = pathname.match(/^\/profile\/([^/]+)$/);
+    if (match) return { name: "profile", params: { uid: decodeURIComponent(match[1]) } };
     if (pathname === "/boards" || pathname === "/board_main") return { name: "boards", params: {} };
-    let match = pathname.match(/^\/board\/([^/]+)\/write$/);
+    match = pathname.match(/^\/board\/([^/]+)\/write$/);
     if (match) return { name: "write", params: { gid: decodeURIComponent(match[1]) } };
-    match = pathname.match(/^\/board\/([^/]+)\/([^/]+)$/);
-    if (match) return { name: "post", params: { gid: decodeURIComponent(match[1]), postNo: decodeURIComponent(match[2]) } };
+    match = pathname.match(/^\/board\/([^/]+)\/manage$/);
+    if (match) return { name: "boardManage", params: { gid: decodeURIComponent(match[1]) } };
+    match = pathname.match(/^\/board\/([^/]+)\/settings$/);
+    if (match) return { name: "boardManage", params: { gid: decodeURIComponent(match[1]) } };
     match = pathname.match(/^\/board\/([^/]+)$/);
     if (match) return { name: "board", params: { gid: decodeURIComponent(match[1]) } };
     return { name: "notFound", params: {} };
@@ -60,12 +76,12 @@
     window.dispatchEvent(new Event("app:navigate"));
   }
 
-  function Link({ href, className, children }) {
+  function Link({ href, className, children, reload = false }) {
     return h("a", {
       href,
       className,
       onClick(event) {
-        if (!href.startsWith("/")) return;
+        if (reload || !href.startsWith("/")) return;
         event.preventDefault();
         navigate(href);
       }
@@ -87,12 +103,13 @@
           ),
           h("div", { className: "nav-actions" },
             h(Link, { href: "/", className: "btn btn-ghost" }, "홈"),
-            h(Link, { href: "/boards", className: "btn btn-ghost" }, "보드"),
+            h(Link, { href: "/boards", className: "btn btn-ghost" }, "蹂대뱶"),
             session?.loggedIn
               ? [
+                  h(Link, { href: "/profile", className: "btn btn-ghost", key: "profile" }, "프로필"),
                   h(Link, { href: "/alarms", className: "btn btn-ghost", key: "alarms" }, alarmCount > 0 ? `알림 ${alarmCount}` : "알림"),
                   h("span", { className: "chip", key: "nick" }, session.nick || session.uid),
-                  h("button", { type: "button", className: "btn btn-secondary", key: "logout", onClick: onLogout }, "로그아웃")
+                  h("button", { type: "button", className: "btn btn-secondary", key: "logout", onClick: onLogout }, "濡쒓렇?꾩썐")
                 ]
               : [
                   h(Link, { href: "/signin", className: "btn btn-ghost", key: "login" }, "로그인"),
@@ -114,10 +131,180 @@
     );
   }
 
+  function BoardSettingsPanel({ settings, feedback, onSave }) {
+    const [boardNotice, setBoardNotice] = useState(settings?.board_notice || "");
+    const [welcomeMessage, setWelcomeMessage] = useState(settings?.welcome_message || "");
+    const [themeColor, setThemeColor] = useState(settings?.theme_color || "#ff8fab");
+    const [conceptRecommendThreshold, setConceptRecommendThreshold] = useState(String(settings?.concept_recommend_threshold || 10));
+    const [allowGuestPost, setAllowGuestPost] = useState(settings?.allow_guest_post !== false);
+    const [allowGuestComment, setAllowGuestComment] = useState(settings?.allow_guest_comment !== false);
+
+    useEffect(() => {
+      setBoardNotice(settings?.board_notice || "");
+      setWelcomeMessage(settings?.welcome_message || "");
+      setThemeColor(settings?.theme_color || "#ff8fab");
+      setConceptRecommendThreshold(String(settings?.concept_recommend_threshold || 10));
+      setAllowGuestPost(settings?.allow_guest_post !== false);
+      setAllowGuestComment(settings?.allow_guest_comment !== false);
+    }, [settings]);
+
+    return h("article", { className: "card board-settings-card" },
+      h(SectionHead, { eyebrow: "Manager", title: "Board settings" }),
+      h("div", { className: "stack" },
+        h("div", { className: "field" },
+          h("label", { htmlFor: "board-setting-notice" }, "Notice"),
+          h("textarea", {
+            id: "board-setting-notice",
+            rows: 3,
+            value: boardNotice,
+            onChange: (event) => setBoardNotice(event.target.value)
+          })
+        ),
+        h("div", { className: "field" },
+          h("label", { htmlFor: "board-setting-welcome" }, "Welcome message"),
+          h("textarea", {
+            id: "board-setting-welcome",
+            rows: 4,
+            value: welcomeMessage,
+            onChange: (event) => setWelcomeMessage(event.target.value)
+          })
+        ),
+        h("div", { className: "field" },
+          h("label", { htmlFor: "board-setting-color" }, "Theme color"),
+          h("input", {
+            id: "board-setting-color",
+            type: "color",
+            value: themeColor,
+            onChange: (event) => setThemeColor(event.target.value || "#ff8fab")
+          })
+        ),
+        h("div", { className: "field" },
+          h("label", { htmlFor: "board-setting-concept-threshold" }, "Concept recommend threshold"),
+          h("input", {
+            id: "board-setting-concept-threshold",
+            type: "number",
+            min: 1,
+            step: 1,
+            value: conceptRecommendThreshold,
+            onChange: (event) => setConceptRecommendThreshold(event.target.value)
+          })
+        ),
+        h("label", { className: "check-row" },
+          h("input", {
+            type: "checkbox",
+            checked: allowGuestPost,
+            onChange: (event) => setAllowGuestPost(event.target.checked)
+          }),
+          h("span", null, "Allow guest posts")
+        ),
+        h("label", { className: "check-row" },
+          h("input", {
+            type: "checkbox",
+            checked: allowGuestComment,
+            onChange: (event) => setAllowGuestComment(event.target.checked)
+          }),
+          h("span", null, "Allow guest comments")
+        ),
+        h(Feedback, { feedback }),
+        h("div", { className: "inline-actions" },
+          h("button", {
+            type: "button",
+            className: "btn btn-primary",
+            onClick() {
+              onSave({
+                boardNotice,
+                welcomeMessage,
+                themeColor,
+                conceptRecommendThreshold,
+                allowGuestPost,
+                allowGuestComment
+              });
+            }
+          }, "Save settings")
+        )
+      )
+    );
+  }
+
+  function BoardManageView({ session, gid, board, manageData, feedback, onSaveSettings, onLogout, alarmCount }) {
+    const permissions = manageData?.permissions || {};
+    const settings = manageData?.settings || { gall_id: gid, theme_color: "#ff8fab", concept_recommend_threshold: 10, allow_guest_post: true, allow_guest_comment: true };
+    const manager = manageData?.manager || null;
+    const accentStyle = settings?.theme_color ? { borderTop: `4px solid ${settings.theme_color}` } : null;
+
+    return h(React.Fragment, null,
+      h(Topbar, { session, onLogout, alarmCount }),
+      h("main", { className: "shell" },
+        h("div", { className: "frame" },
+          h("section", { className: "section-stack" },
+            h(SectionHead, {
+              eyebrow: "Manage",
+              title: `${board?.gall_name || gid} board management`,
+              action: h(Link, { href: `/board/${encodeURIComponent(gid)}`, className: "btn btn-secondary" }, "Back to board")
+            }),
+            permissions.canManage
+              ? h(React.Fragment, null,
+                  h(BoardSettingsPanel, {
+                    settings,
+                    feedback,
+                    onSave: onSaveSettings
+                  }),
+                  h("article", { className: "card board-manage-info-card", style: accentStyle },
+                    h("span", { className: "eyebrow" }, "Overview"),
+                    h("div", { className: "stack compact-stack" },
+                      h("div", null,
+                        h("strong", null, "Board ID"),
+                        h("div", { className: "muted" }, gid)
+                      ),
+                      h("div", null,
+                        h("strong", null, "Manager"),
+                        h("div", { className: "muted" }, manager?.nick || manager?.uid || board?.manager_nick || board?.manager_uid || "-")
+                      ),
+                      h("div", null,
+                        h("strong", null, "Guest posts"),
+                        h("div", { className: "muted" }, settings?.allow_guest_post !== false ? "Allowed" : "Blocked")
+                      ),
+                      h("div", null,
+                        h("strong", null, "Guest comments"),
+                        h("div", { className: "muted" }, settings?.allow_guest_comment !== false ? "Allowed" : "Blocked")
+                      ),
+                      h("div", null,
+                        h("strong", null, "Concept threshold"),
+                        h("div", { className: "muted" }, `${settings?.concept_recommend_threshold || 10} recommends`)
+                      )
+                    )
+                  )
+                )
+              : h("article", { className: "card board-settings-card" },
+                  h("div", { className: "error-box" }, "You do not have permission to manage this board.")
+                )
+          )
+        )
+      )
+    );
+  }
+  function PopupDeleteControl({ session, buttonLabel, passwordLabel = "鍮꾨?踰덊샇", onDelete }) {
+    return h("div", { className: "inline-actions delete-control" },
+      h("button", {
+        type: "button",
+        className: "btn btn-secondary btn-danger",
+        onClick() {
+          if (!session?.loggedIn) {
+            const password = window.prompt(passwordLabel);
+            if (password === null) return;
+            onDelete(password, () => {});
+            return;
+          }
+          onDelete("", () => {});
+        }
+      }, buttonLabel)
+    );
+  }
+
   function GuestFields({ name, password, setName, setPassword, prefix }) {
     return h("div", { className: "stack" },
       h("div", { className: "field" },
-        h("label", { htmlFor: `${prefix}-guest-name` }, "비회원 이름"),
+        h("label", { htmlFor: `${prefix}-guest-name` }, "鍮꾪쉶???대쫫"),
         h("input", {
           id: `${prefix}-guest-name`,
           type: "text",
@@ -126,7 +313,7 @@
         })
       ),
       h("div", { className: "field" },
-        h("label", { htmlFor: `${prefix}-guest-password` }, "비밀번호"),
+        h("label", { htmlFor: `${prefix}-guest-password` }, "鍮꾨?踰덊샇"),
         h("input", {
           id: `${prefix}-guest-password`,
           type: "password",
@@ -137,14 +324,14 @@
     );
   }
 
-  function EditorToolbar() {
+  function EditorToolbar({ onImageSelect, imageUploading }) {
     const tools = [
-      { label: "굵게", command: "bold" },
+      { label: "援듦쾶", command: "bold" },
       { label: "기울임", command: "italic" },
-      { label: "밑줄", command: "underline" },
-      { label: "제목", command: "formatBlock", value: "h2" },
-      { label: "본문", command: "formatBlock", value: "p" },
-      { label: "인용", command: "formatBlock", value: "blockquote" }
+      { label: "諛묒쨪", command: "underline" },
+      { label: "?쒕ぉ", command: "formatBlock", value: "h2" },
+      { label: "蹂몃Ц", command: "formatBlock", value: "p" },
+      { label: "?몄슜", command: "formatBlock", value: "blockquote" }
     ];
     return h("div", { className: "editor-toolbar" },
       tools.map((tool) =>
@@ -156,19 +343,85 @@
             document.execCommand(tool.command, false, tool.value || null);
           }
         }, tool.label)
-      )
+      ),
+      h("button", {
+        type: "button",
+        className: "tool-btn",
+        disabled: imageUploading,
+        onClick() {
+          onImageSelect?.();
+        }
+      }, imageUploading ? "Uploading..." : "Image")
     );
   }
 
   function HtmlEditor({ id, value, onChange, placeholder }) {
     const editorRef = useRef(null);
+    const fileInputRef = useRef(null);
+    const [uploadFeedback, setUploadFeedback] = useState(null);
+    const [imageUploading, setImageUploading] = useState(false);
     useEffect(() => {
       if (editorRef.current && editorRef.current.innerHTML !== value) {
         editorRef.current.innerHTML = value || "";
       }
     }, [value]);
+
+    function insertImage(url) {
+      if (!editorRef.current) return;
+      editorRef.current.focus();
+      document.execCommand("insertHTML", false, `<p><img src="${url}" alt="" /></p>`);
+      onChange(editorRef.current.innerHTML);
+    }
+
+    async function handleFileChange(event) {
+      const file = event.target.files?.[0];
+      if (!file) return;
+
+      setUploadFeedback(null);
+      if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
+        setUploadFeedback({ type: "error", message: "Images up to 50MB can be uploaded." });
+        if (event.target) event.target.value = "";
+        return;
+      }
+      setImageUploading(true);
+
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+
+        const result = await api("/api/upload/image", {
+          method: "POST",
+          body: formData
+        });
+
+        if (!result?.success || !result?.url) {
+          throw new Error(result?.message || "Image upload failed.");
+        }
+
+        insertImage(result.url);
+        setUploadFeedback({ type: "success", message: "Image uploaded." });
+      } catch (error) {
+        setUploadFeedback({ type: "error", message: error.message || "Image upload failed." });
+      } finally {
+        setImageUploading(false);
+        if (event.target) event.target.value = "";
+      }
+    }
+
     return h("div", { className: "editor-shell" },
-      h(EditorToolbar),
+      h(EditorToolbar, {
+        imageUploading,
+        onImageSelect() {
+          fileInputRef.current?.click();
+        }
+      }),
+      h("input", {
+        ref: fileInputRef,
+        type: "file",
+        accept: "image/*",
+        hidden: true,
+        onChange: handleFileChange
+      }),
       h("div", {
         id,
         ref: editorRef,
@@ -179,30 +432,52 @@
         onInput(event) {
           onChange(event.currentTarget.innerHTML);
         }
-      })
+      }),
+      h(Feedback, { feedback: uploadFeedback })
     );
   }
 
-  function HomeView({ session, boards, feed, onLogout, alarmCount }) {
-    return h(React.Fragment, null,
+function HomeView({ session, boards, feed, onLogout, alarmCount }) {
+    return h(
+      React.Fragment,
+      null,
       h(Topbar, { session, onLogout, alarmCount }),
-      h("main", { className: "shell" },
-        h("div", { className: "frame" },
-          h("section", { className: "hero card" },
+      h(
+        "main",
+        { className: "shell" },
+        h(
+          "div",
+          { className: "frame" },
+          h(
+            "section",
+            { className: "hero card" },
             h("span", { className: "eyebrow" }, "Home"),
             h("h1", { className: "section-title" }, "irisen25.com"),
             h("p", { className: "hero-copy" }, "sunggall archive"),
-            h("div", { className: "inline-actions" },
+            h(
+              "div",
+              { className: "inline-actions" },
               h(Link, { href: "/boards", className: "btn btn-primary" }, "보드 보기"),
               h(Link, { href: "/signin", className: "btn btn-ghost" }, "로그인")
             )
           ),
-          h("section", { className: "section-stack" },
+          h(
+            "section",
+            { className: "section-stack" },
             h(SectionHead, { eyebrow: "Feed", title: "추천 글" }),
             feed.length
-              ? h("div", { className: "stack" },
+              ? h(
+                  "div",
+                  { className: "stack" },
                   feed.map((post) =>
-                    h(Link, { href: `/board/${encodeURIComponent(post.gall_id)}/${post.post_no}`, className: "card quick-card", key: `${post.gall_id}-${post.post_no}` },
+                    h(
+                      Link,
+                      {
+                        href: `/board/${encodeURIComponent(post.gall_id)}/${post.post_no}`,
+                        className: "card quick-card",
+                        key: `${post.gall_id}-${post.post_no}`,
+                        reload: true
+                      },
                       h("div", { className: "board-title" }, post.title || "제목 없음"),
                       h("div", { className: "muted" }, `${post.gall_name || post.gall_id} · ${authorLabel(post)}`)
                     )
@@ -216,26 +491,50 @@
     );
   }
 
-  function BoardsView({ session, boards, query, onQueryChange, onLogout, alarmCount }) {
+function BoardsView({ session, boards, query, onQueryChange, onLogout, alarmCount }) {
     const filtered = boards.filter((board) => {
       const q = query.trim().toLowerCase();
       if (!q) return true;
       return String(board.gall_id || "").toLowerCase().includes(q) || String(board.gall_name || "").toLowerCase().includes(q);
     });
-    return h(React.Fragment, null,
+
+    return h(
+      React.Fragment,
+      null,
       h(Topbar, { session, onLogout, alarmCount }),
-      h("main", { className: "shell" },
-        h("div", { className: "frame" },
-          h("section", { className: "section-stack" },
+      h(
+        "main",
+        { className: "shell" },
+        h(
+          "div",
+          { className: "frame" },
+          h(
+            "section",
+            { className: "section-stack" },
             h(SectionHead, { eyebrow: "Boards", title: "보드 목록" }),
-            h("div", { className: "field" },
+            h(
+              "div",
+              { className: "field" },
               h("label", { htmlFor: "board-search" }, "검색"),
-              h("input", { id: "board-search", type: "text", value: query, onChange: (event) => onQueryChange(event.target.value) })
+              h("input", {
+                id: "board-search",
+                type: "text",
+                value: query,
+                onChange: (event) => onQueryChange(event.target.value)
+              })
             ),
             filtered.length
-              ? h("div", { className: "stack" },
+              ? h(
+                  "div",
+                  { className: "stack" },
                   filtered.map((board) =>
-                    h(Link, { href: `/board/${encodeURIComponent(board.gall_id)}`, className: "card quick-card", key: board.gall_id },
+                    h(
+                      Link,
+                      {
+                        href: `/board/${encodeURIComponent(board.gall_id)}`,
+                        className: "card quick-card",
+                        key: board.gall_id
+                      },
                       h("div", { className: "board-title" }, board.gall_name || board.gall_id),
                       h("div", { className: "muted" }, `${board.gall_id} · ${board.post_count ?? 0} posts`)
                     )
@@ -248,31 +547,167 @@
     );
   }
 
-  function BoardView({ session, gid, board, posts, page, onPrevPage, onNextPage, onLogout, alarmCount }) {
+  function BoardView({ session, gid, board, posts, page, manageData, settingsFeedback, onSaveSettings, onPrevPage, onNextPage, onLogout, alarmCount }) {
+    const settings = manageData?.settings || null;
+    const permissions = manageData?.permissions || {};
+    const manager = manageData?.manager || null;
+    const boardInfo = manageData?.board || board || {};
+    const submanagers = Array.isArray(manageData?.submanagers) ? manageData.submanagers : [];
+    const boardThemeStyle = settings?.theme_color ? { "--board-accent": settings.theme_color } : null;
+    const conceptThreshold = Number(settings?.concept_recommend_threshold || 10);
+    const roleLabel = permissions.isManager
+      ? "매니저"
+      : permissions.isSubmanager
+        ? "부매니저"
+        : session?.loggedIn
+          ? "일반 이용자"
+          : "비회원";
+    const policyItems = [
+      `내 권한 ${roleLabel}`,
+      `글쓰기 ${settings?.allow_guest_post !== false ? "허용" : "로그인 필요"}`,
+      `댓글 ${settings?.allow_guest_comment !== false ? "허용" : "로그인 필요"}`,
+      permissions.canManage ? "보드 관리 가능" : "보드 관리 불가"
+    ];
+    const staffItems = [
+      manager ? `매니저 ${manager.nick || manager.uid}` : "매니저 미지정",
+      ...submanagers.slice(0, 4).map((user) => `부매니저 ${user.nick || user.uid}`)
+    ];
     return h(React.Fragment, null,
       h(Topbar, { session, onLogout, alarmCount }),
       h("main", { className: "shell" },
         h("div", { className: "frame" },
-          h("section", { className: "section-stack" },
-            h(SectionHead, {
-              eyebrow: "Board",
-              title: board?.gall_name || gid,
-              action: h(Link, { href: `/board/${encodeURIComponent(gid)}/write`, className: "btn btn-primary" }, "글쓰기")
-            }),
-            posts.length
-              ? h("div", { className: "stack" },
-                  posts.map((post) =>
-                    h(Link, { href: `/board/${encodeURIComponent(gid)}/${post.post_no}`, className: "card quick-card", key: `${gid}-${post.post_no}` },
-                      h("div", { className: "board-title" }, post.title || "제목 없음"),
-                      h("div", { className: "muted" }, `#${post.post_no} · ${authorLabel(post)} · ${formatDate(post.writed_at || post.created_at)}`)
-                    )
+          h("section", { className: "dc-board-shell", style: boardThemeStyle },
+            h("div", { className: "dc-board-head" },
+              h("div", { className: "dc-board-title-row" },
+                h("h1", { className: "dc-board-title" }, boardInfo?.gall_name || gid),
+                h("span", { className: "dc-board-id" }, gid)
+              ),
+              h("div", { className: "dc-board-head-links" },
+                permissions.canManage ? h(Link, { href: `/board/${encodeURIComponent(gid)}/manage`, className: "dc-head-link" }, "?ㅼ젙") : null,
+                h(Link, { href: `/board/${encodeURIComponent(gid)}/write`, className: "dc-head-link dc-head-link-strong" }, "湲?곌린")
+              )
+            ),
+            h("div", { className: "dc-board-summary" },
+              h("div", { className: "dc-board-summary-main" },
+                h("div", { className: "dc-board-badge" }, String(boardInfo?.gall_type || "board").toUpperCase()),
+                h("div", { className: "dc-board-summary-copy" },
+                  h("div", { className: "dc-board-summary-lines" },
+                    settings?.welcome_message ? h("p", null, settings.welcome_message) : h("p", null, `${boardInfo?.gall_name || gid} 게시판입니다.`),
+                    settings?.board_notice ? h("p", { className: "dc-board-notice-line" }, settings.board_notice) : null
+                  ),
+                  h("div", { className: "dc-board-staff" },
+                    h("strong", null, "운영진"),
+                    h("div", { className: "dc-board-staff-list" }, staffItems.length ? staffItems.join(" · ") : "운영진 정보 없음")
                   )
                 )
-              : h("div", { className: "empty-box" }, "게시글이 없습니다."),
-            h("div", { className: "inline-actions" },
-              h("button", { type: "button", className: "btn btn-ghost", onClick: onPrevPage }, "이전"),
+              ),
+              h("aside", { className: "dc-board-policy" },
+                h("strong", { className: "dc-side-heading" }, "보드 권한"),
+                h("ul", { className: "dc-policy-list" },
+                  policyItems.map((item) => h("li", { key: item }, item))
+                )
+              )
+            ),
+            h("div", { className: "dc-board-tabs" },
+              h("button", { type: "button", className: "dc-tab is-active" }, "?꾩껜湲"),
+              h("button", { type: "button", className: "dc-tab" }, "?쇰컲湲"),
+              h("button", { type: "button", className: "dc-tab" }, "怨듭?"),
+              h("div", { className: "dc-board-actions" },
+                h("span", { className: "dc-page-chip" }, `${page} ?섏씠吏`),
+                h(Link, { href: `/board/${encodeURIComponent(gid)}/write`, className: "btn btn-primary btn-compact" }, "湲?곌린")
+              )
+            ),
+            h("div", { className: "dc-post-table-wrap" },
+              h("div", { className: "dc-post-table-head" },
+                h("span", null, "번호"),
+                h("span", null, "말머리"),
+                h("span", null, "제목"),
+                h("span", null, "글쓴이"),
+                h("span", null, "작성일"),
+                h("span", null, "조회"),
+                h("span", null, "추천")
+              ),
+              posts.length
+                ? posts.map((post) =>
+                    h(Link, { href: `/board/${encodeURIComponent(gid)}/${post.post_no}?page=${page}`, className: "dc-post-row", key: `${gid}-${post.post_no}`, reload: true },
+                      h("span", { className: "dc-post-no" }, post.post_no ?? "-"),
+                      h("span", { className: "dc-post-kind" }, post.notice ? "공지" : Number(post.recommend_count || 0) >= conceptThreshold ? "개념글" : "일반"),
+                      h("span", { className: "dc-post-subject" },
+                        h("strong", null, post.title || "제목 없음"),
+                        Number(post.comment_count || 0) > 0 ? h("em", null, `[${post.comment_count}]`) : null
+                      ),
+                      h("span", { className: "dc-post-author" }, authorLabel(post)),
+                      h("span", { className: "dc-post-date" }, formatDate(post.writed_at || post.created_at)),
+                      h("span", { className: "dc-post-view" }, post.view_count ?? 0),
+                      h("span", { className: "dc-post-rec" }, post.recommend_count ?? 0)
+                    )
+                  )
+                : h("div", { className: "empty-box dc-post-empty" }, "게시글이 없습니다.")
+            ),
+            h("div", { className: "dc-pagination" },
+              h("button", { type: "button", className: "btn btn-secondary btn-compact", onClick: onPrevPage }, "?댁쟾"),
               h("span", { className: "chip" }, `page ${page}`),
-              h("button", { type: "button", className: "btn btn-ghost", onClick: onNextPage }, "다음")
+              h("button", { type: "button", className: "btn btn-secondary btn-compact", onClick: onNextPage }, "?ㅼ쓬")
+            ),
+            settingsFeedback ? h("div", { className: "board-settings-feedback" }, h(Feedback, { feedback: settingsFeedback })) : null
+          )
+        )
+      )
+    );
+    return h(React.Fragment, null,
+      h(Topbar, { session, onLogout, alarmCount }),
+      h("main", { className: "shell" },
+        h("div", { className: "frame" },
+          h("div", { className: "board-layout" },
+            h("section", { className: "section-stack" },
+              h(SectionHead, {
+                eyebrow: "Board",
+                title: board?.gall_name || gid,
+                action: h(Link, { href: `/board/${encodeURIComponent(gid)}/write`, className: "btn btn-primary" }, "湲?곌린")
+              }),
+              settings?.welcome_message
+                ? h("article", { className: "card board-setting-preview", style: accentStyle },
+                    h("div", { className: "muted" }, "Welcome"),
+                    h("div", null, settings.welcome_message)
+                  )
+                : null,
+              settings?.board_notice
+                ? h("article", { className: "card board-setting-preview", style: accentStyle },
+                    h("div", { className: "muted" }, "Notice"),
+                    h("div", null, settings.board_notice)
+                  )
+                : null,
+              permissions.canManage
+                ? h(Link, { href: `/board/${encodeURIComponent(gid)}/manage`, className: "card quick-card board-setting-link" },
+                    h("div", { className: "board-title" }, "Board manage"),
+                    h("div", { className: "muted" }, "Open the management page for notice, welcome message, theme color, and guest permissions")
+                  )
+                : null,
+              posts.length
+                ? h("div", { className: "stack" },
+                    posts.map((post) =>
+                      h(Link, { href: `/board/${encodeURIComponent(gid)}/${post.post_no}?page=${page}`, className: "card quick-card", key: `${gid}-${post.post_no}`, reload: true },
+                        h("div", { className: "board-title" }, post.title || "?쒕ぉ ?놁쓬"),
+                        h("div", { className: "muted" }, `#${post.post_no} 쨌 ${authorLabel(post)} 쨌 議고쉶??${post.view_count} 쨌${formatDate(post.writed_at || post.created_at)}`)
+                      )
+                    )
+                  )
+                : h("div", { className: "empty-box" }, "寃뚯떆湲???놁뒿?덈떎."),
+              h("div", { className: "inline-actions" },
+                h("button", { type: "button", className: "btn btn-ghost", onClick: onPrevPage }, "?댁쟾"),
+                h("span", { className: "chip" }, `page ${page}`),
+                h("button", { type: "button", className: "btn btn-ghost", onClick: onNextPage }, "?ㅼ쓬")
+              )
+            ),
+            h("aside", { className: "board-sideboard" },
+              h("article", { className: "card board-cover-card", style: accentStyle },
+                h("img", { className: "board-cover-image", src: coverImageUrl, alt: `${board?.gall_name || gid} cover` }),
+                h("div", { className: "board-cover-body" },
+                  h("span", { className: "eyebrow" }, "Sideboard"),
+                  h("h3", { className: "board-title", style: { margin: 0 } }, board?.gall_name || gid),
+                  h("div", { className: "muted" }, `매니저 ${manager?.nick || manager?.uid || board?.manager_nick || board?.manager_uid || "미지정"}`)
+                )
+              )
             )
           )
         )
@@ -280,40 +715,133 @@
     );
   }
 
-  function PostView({ session, gid, post, comments, feedback, onSubmitComment, onLogout, alarmCount }) {
+  function PostVotePanel({ post, voteState, voteFeedback, onVote }) {
+    const canVote = voteState?.canVote !== false;
+    const todayVote = voteState?.voteType === "up" ? "Recommended today" : voteState?.voteType === "down" ? "Downvoted today" : "No vote yet";
+    return h("div", { className: "post-vote-panel" },
+      h("div", { className: "post-vote-summary" },
+        h("span", { className: "chip" }, `Recommend ${post?.recommend_count ?? 0}`),
+        h("span", { className: "chip" }, `Downvote ${post?.unrecommend_count ?? 0}`)
+      ),
+      h("div", { className: "post-vote-actions" },
+        h("button", {
+          type: "button",
+          className: "btn btn-primary btn-compact",
+          disabled: !canVote,
+          onClick() {
+            onVote({ gid: post.gall_id, postNo: post.post_no, voteType: "up" });
+          }
+        }, "Recommend"),
+        h("button", {
+          type: "button",
+          className: "btn btn-secondary btn-compact",
+          disabled: !canVote,
+          onClick() {
+            onVote({ gid: post.gall_id, postNo: post.post_no, voteType: "down" });
+          }
+        }, "Downvote")
+      ),
+      h("div", { className: "muted" }, canVote ? "One vote per post per day for each agent." : todayVote),
+      h(Feedback, { feedback: voteFeedback })
+    );
+  }
+
+  function PostView({ session, gid, post, comments, feedback, deleteFeedback, voteFeedback, voteState, onSubmitComment, onDeletePost, onDeleteComment, onVote, onLogout, alarmCount }) {
     const [content, setContent] = useState("");
     const [guestName, setGuestName] = useState("");
     const [guestPassword, setGuestPassword] = useState("");
+    const isAdmin = session?.memberDivision === "1" || session?.memberDivision === 1 || session?.memberDivision === "admin";
+
+    function isOwnedBySession(item) {
+      if (!session?.loggedIn || !session?.uid) return false;
+      if (!item?.writer_uid) return false;
+      return String(item.writer_uid).trim() === String(session.uid).trim();
+    }
+
+    function canRenderDelete(item) {
+      if (!item) return false;
+      if (!session?.loggedIn) return !item.writer_uid;
+      return isOwnedBySession(item) || isAdmin;
+    }
+
     if (!post) {
       return h(React.Fragment, null,
         h(Topbar, { session, onLogout, alarmCount }),
-        h("main", { className: "shell" }, h("div", { className: "frame" }, h("div", { className: "error-box" }, "게시글을 찾을 수 없습니다.")))
+        h("main", { className: "shell" }, h("div", { className: "frame" }, h("div", { className: "error-box" }, "Post not found.")))
       );
     }
+
     return h(React.Fragment, null,
       h(Topbar, { session, onLogout, alarmCount }),
       h("main", { className: "shell" },
         h("div", { className: "frame" },
           h("article", { className: "card post-card" },
-            h("div", { className: "muted" }, `${post.gall_name || gid} · ${authorLabel(post)} · ${formatDate(post.writed_at || post.created_at)}`),
-            h("h1", { className: "post-heading" }, post.title || "제목 없음"),
-            h("div", { className: "preview", dangerouslySetInnerHTML: { __html: post.content || "" } })
+            h("div", { className: "post-card-main" },
+              h("div", { className: "post-meta-bar" },
+                h("span", { className: "post-board-name" }, post.gall_name || gid)
+              ),
+              h("div", { className: "post-title-block" },
+                h("h1", { className: "post-heading" }, post.title || "Untitled"),
+                h("div", { className: "post-info-row" },
+                  h("span", null, authorLabel(post)),
+                  h("span", { className: "post-info-sep" }, "|"),
+                  h("span", null, formatDate(post.writed_at || post.created_at)),
+                  h("span", { className: "post-info-sep" }, "|"),
+                  h("span", null, `議고쉶 ${post.view_count ?? 0}`),
+                  h("span", { className: "post-info-sep" }, "|"),
+                  h("span", null, `異붿쿇 ${post.recommend_count ?? 0}`)
+                )
+              ),
+              h("section", { className: "post-content-panel" },
+                h("div", { className: "post-content-label" }, "Content"),
+                h("div", { className: "preview post-content-fill", dangerouslySetInnerHTML: { __html: post.content || "" } })
+              )
+            ),
+            h("div", { className: "post-card-footer" },
+              h(PostVotePanel, { post, voteState, voteFeedback, onVote }),
+              canRenderDelete(post)
+                ? h(PopupDeleteControl, {
+                    session,
+                    buttonLabel: "Delete post",
+                    onDelete(password, reset) {
+                      onDeletePost({
+                        gid,
+                        postNo: post.post_no,
+                        password
+                      }, reset);
+                    }
+                  })
+                : null,
+              h(Feedback, { feedback: deleteFeedback })
+            )
           ),
           h("section", { className: "section-stack" },
-            h(SectionHead, { eyebrow: "Comments", title: "댓글" }),
+            h(SectionHead, { eyebrow: "Comments", title: "Comments" }),
             comments.length
               ? h("div", { className: "stack" },
                   comments.map((comment) =>
                     h("article", { className: "card", key: comment.id || comment.comment_id || `${comment.created_at}-${comment.name}` },
-                      h("div", { className: "muted" }, `${authorLabel(comment)} · ${formatDate(comment.writed_at || comment.created_at)}`),
-                      h("div", { className: "preview", dangerouslySetInnerHTML: { __html: comment.content || "" } })
+                      h("div", { className: "muted" }, `${authorLabel(comment)} - ${formatDate(comment.writed_at || comment.created_at)}`),
+                      h("div", { className: "preview", dangerouslySetInnerHTML: { __html: comment.content || "" } }),
+                      canRenderDelete(comment)
+                        ? h(PopupDeleteControl, {
+                            session,
+                            buttonLabel: "Delete comment",
+                            onDelete(password, reset) {
+                              onDeleteComment({
+                                commentId: comment.id || comment.comment_id,
+                                password
+                              }, reset);
+                            }
+                          })
+                        : null
                     )
                   )
                 )
-              : h("div", { className: "empty-box" }, "댓글이 없습니다."),
+              : h("div", { className: "empty-box" }, "No comments yet."),
             h("article", { className: "card" },
               h("div", { className: "field" },
-                h("label", { htmlFor: "comment-content" }, "댓글 내용"),
+                h("label", { htmlFor: "comment-content" }, "Comment"),
                 h("textarea", { id: "comment-content", rows: 5, value: content, onChange: (event) => setContent(event.target.value) })
               ),
               session?.loggedIn ? null : h(GuestFields, { name: guestName, password: guestPassword, setName: setGuestName, setPassword: setGuestPassword, prefix: "comment" }),
@@ -335,7 +863,7 @@
                       setGuestPassword("");
                     });
                   }
-                }, "댓글 등록")
+                }, "Post comment")
               )
             )
           )
@@ -355,14 +883,14 @@
         h("div", { className: "frame" },
           h("section", { className: "write-grid" },
             h("article", { className: "card" },
-              h(SectionHead, { eyebrow: "Write", title: `${gid} 글쓰기` }),
+              h(SectionHead, { eyebrow: "Write", title: `${gid} 湲?곌린` }),
               h("div", { className: "field" },
-                h("label", { htmlFor: "write-title" }, "제목"),
+                h("label", { htmlFor: "write-title" }, "?쒕ぉ"),
                 h("input", { id: "write-title", type: "text", value: title, onChange: (event) => setTitle(event.target.value) })
               ),
               h("div", { className: "field" },
-                h("label", { htmlFor: "write-content" }, "본문"),
-                h(HtmlEditor, { id: "write-content", value: content, onChange: setContent, placeholder: "글 내용을 입력해 주세요." })
+                h("label", { htmlFor: "write-content" }, "蹂몃Ц"),
+                h(HtmlEditor, { id: "write-content", value: content, onChange: setContent, placeholder: "湲 ?댁슜???낅젰??二쇱꽭??" })
               ),
               session?.loggedIn ? null : h(GuestFields, { name: guestName, password: guestPassword, setName: setGuestName, setPassword: setGuestPassword, prefix: "write" }),
               h(Feedback, { feedback }),
@@ -384,14 +912,14 @@
                       setGuestPassword("");
                     });
                   }
-                }, "작성 완료"),
-                h(Link, { href: `/board/${encodeURIComponent(gid)}`, className: "btn btn-ghost" }, "취소")
+                }, "?묒꽦 ?꾨즺"),
+                h(Link, { href: `/board/${encodeURIComponent(gid)}`, className: "btn btn-ghost" }, "痍⑥냼")
               )
             ),
             h("aside", { className: "preview-card card" },
               h("span", { className: "eyebrow" }, "Preview"),
-              h("h3", { className: "section-title", style: { fontSize: "1.8rem" } }, "미리보기"),
-              h("div", { className: "preview", dangerouslySetInnerHTML: { __html: content || "<p>아직 작성한 내용이 없습니다.</p>" } })
+              h("h3", { className: "section-title", style: { fontSize: "1.8rem" } }, "誘몃━蹂닿린"),
+              h("div", { className: "preview", dangerouslySetInnerHTML: { __html: content || "<p>?꾩쭅 ?묒꽦???댁슜???놁뒿?덈떎.</p>" } })
             )
           )
         )
@@ -500,7 +1028,7 @@
                         h("input", { id: "auth-login-id", type: "text", value: uid, onChange: (event) => setUid(event.target.value) })
                       ),
                       h("div", { className: "field" },
-                        h("label", { htmlFor: "auth-login-pw" }, "비밀번호"),
+                        h("label", { htmlFor: "auth-login-pw" }, "鍮꾨?踰덊샇"),
                         h("input", { id: "auth-login-pw", type: "password", value: password, onChange: (event) => setPassword(event.target.value) })
                       )
                     )
@@ -565,9 +1093,9 @@
       h("main", { className: "shell" },
         h("div", { className: "frame" },
           h("section", { className: "section-stack" },
-            h(SectionHead, { eyebrow: "Inbox", title: "알림" }),
+            h(SectionHead, { eyebrow: "Inbox", title: "?뚮┝" }),
             !session?.loggedIn
-              ? h("article", { className: "card auth-card" }, h("p", { className: "muted" }, "로그인 후 알림을 확인할 수 있습니다."))
+              ? h("article", { className: "card auth-card" }, h("p", { className: "muted" }, "濡쒓렇?????뚮┝???뺤씤?????덉뒿?덈떎."))
               : h("div", { className: "stack" },
                   h(Feedback, { feedback }),
                   alarms.length
@@ -576,21 +1104,182 @@
                           h("div", { className: "section-head" },
                             h("div", null,
                               h("span", { className: "eyebrow" }, alarm.alarm_type || "alarm"),
-                              h("h2", { className: "section-title", style: { fontSize: "1.4rem" } }, alarm.title || "알림")
+                              h("h2", { className: "section-title", style: { fontSize: "1.4rem" } }, alarm.title || "?뚮┝")
                             ),
                             h("span", { className: "chip" }, formatDate(alarm.created_at))
                           ),
                           h("p", { className: "muted" }, alarm.content || ""),
                           alarm.actionable
                             ? h("div", { className: "inline-actions" },
-                                h("button", { type: "button", className: "btn btn-primary", onClick: () => onAcceptAlarm(alarm.alarm_id) }, "수락"),
-                                h("button", { type: "button", className: "btn btn-ghost", onClick: () => onRejectAlarm(alarm.alarm_id) }, "거절")
+                                h("button", { type: "button", className: "btn btn-primary", onClick: () => onAcceptAlarm(alarm.alarm_id) }, "?섎씫"),
+                                h("button", { type: "button", className: "btn btn-ghost", onClick: () => onRejectAlarm(alarm.alarm_id) }, "嫄곗젅")
                               )
                             : null
                         )
                       )
-                    : h("div", { className: "empty-box" }, "도착한 알림이 없습니다.")
+                    : h("div", { className: "empty-box" }, "?꾩갑???뚮┝???놁뒿?덈떎.")
                 )
+          )
+        )
+      )
+    );
+  }
+
+  function ProfileView({ session, profileData, feedback, onSaveProfile, onLogout, alarmCount }) {
+    const [statusMessage, setStatusMessage] = useState(profileData?.statusMessage || "");
+    const [bio, setBio] = useState(profileData?.bio || "");
+    const [accentColor, setAccentColor] = useState(profileData?.accentColor || "#ff8fab");
+    const [showPosts, setShowPosts] = useState(profileData?.showPosts !== false);
+    const [showComments, setShowComments] = useState(profileData?.showComments !== false);
+
+    useEffect(() => {
+      setStatusMessage(profileData?.statusMessage || "");
+      setBio(profileData?.bio || "");
+      setAccentColor(profileData?.accentColor || "#ff8fab");
+      setShowPosts(profileData?.showPosts !== false);
+      setShowComments(profileData?.showComments !== false);
+    }, [profileData]);
+
+    if (!profileData) {
+      return h(React.Fragment, null,
+        h(Topbar, { session, onLogout, alarmCount }),
+        h("main", { className: "shell" },
+          h("div", { className: "frame" },
+            h("section", { className: "section-stack" },
+              h("div", { className: "error-box" }, "?꾨줈?꾩쓣 遺덈윭?ㅼ? 紐삵뻽?듬땲??")
+            )
+          )
+        )
+      );
+    }
+
+    const stats = profileData.stats || {};
+    const accentStyle = profileData.accentColor ? { borderTop: `4px solid ${profileData.accentColor}` } : null;
+
+    return h(React.Fragment, null,
+      h(Topbar, { session, onLogout, alarmCount }),
+      h("main", { className: "shell" },
+        h("div", { className: "frame" },
+          h("section", { className: "section-stack" },
+            h("article", { className: "card profile-hero-card", style: accentStyle },
+              h("div", { className: "profile-hero-head" },
+                h("div", { className: "stack", style: { gap: "8px" } },
+                  h("span", { className: "eyebrow" }, profileData.ownerView ? "My Profile" : "Profile"),
+                  h("h1", { className: "section-title", style: { margin: 0 } }, profileData.nick || profileData.uid),
+                  h("div", { className: "muted" }, `@${profileData.uid}`),
+                  profileData.statusMessage ? h("div", { className: "profile-status-text" }, profileData.statusMessage) : null
+                ),
+                h("div", { className: "profile-stat-grid" },
+                  h("div", { className: "profile-stat-card" }, h("strong", null, stats.postCount ?? 0), h("span", null, "湲")),
+                  h("div", { className: "profile-stat-card" }, h("strong", null, stats.commentCount ?? 0), h("span", null, "?볤?")),
+                  h("div", { className: "profile-stat-card" }, h("strong", null, stats.managedBoardCount ?? 0), h("span", null, "愿由?蹂대뱶")),
+                  h("div", { className: "profile-stat-card" }, h("strong", null, stats.submanagerBoardCount ?? 0), h("span", null, "遺愿由?蹂대뱶"))
+                )
+              ),
+              profileData.bio ? h("div", { className: "profile-bio-box" }, profileData.bio) : null,
+              h("div", { className: "inline-actions" },
+                h("span", { className: "chip" }, `沅뚰븳 ${profileData.memberDivision || "user"}`),
+                profileData.email ? h("span", { className: "chip" }, profileData.email) : null
+              )
+            ),
+            profileData.canEdit
+              ? h("article", { className: "card profile-settings-card" },
+                  h(SectionHead, { eyebrow: "Customize", title: "?꾨줈???ㅼ젙" }),
+                  h("div", { className: "stack" },
+                    h("div", { className: "field" },
+                      h("label", { htmlFor: "profile-status-message" }, "?곹깭 硫붿떆吏"),
+                      h("input", {
+                        id: "profile-status-message",
+                        type: "text",
+                        maxLength: 160,
+                        value: statusMessage,
+                        onChange: (event) => setStatusMessage(event.target.value)
+                      })
+                    ),
+                    h("div", { className: "field" },
+                      h("label", { htmlFor: "profile-bio" }, "?뚭컻"),
+                      h("textarea", {
+                        id: "profile-bio",
+                        rows: 5,
+                        value: bio,
+                        onChange: (event) => setBio(event.target.value)
+                      })
+                    ),
+                    h("div", { className: "field profile-color-field" },
+                      h("label", { htmlFor: "profile-color" }, "?ъ씤???됱긽"),
+                      h("input", {
+                        id: "profile-color",
+                        type: "color",
+                        value: accentColor,
+                        onChange: (event) => setAccentColor(event.target.value || "#ff8fab")
+                      })
+                    ),
+                    h("label", { className: "check-row" },
+                      h("input", {
+                        type: "checkbox",
+                        checked: showPosts,
+                        onChange: (event) => setShowPosts(event.target.checked)
+                      }),
+                      h("span", null, "?묒꽦 湲 怨듦컻")
+                    ),
+                    h("label", { className: "check-row" },
+                      h("input", {
+                        type: "checkbox",
+                        checked: showComments,
+                        onChange: (event) => setShowComments(event.target.checked)
+                      }),
+                      h("span", null, "?묒꽦 ?볤? 怨듦컻")
+                    ),
+                    h(Feedback, { feedback }),
+                    h("div", { className: "inline-actions" },
+                      h("button", {
+                        type: "button",
+                        className: "btn btn-primary",
+                        onClick() {
+                          onSaveProfile({
+                            statusMessage,
+                            bio,
+                            accentColor,
+                            showPosts,
+                            showComments
+                          });
+                        }
+                      }, "프로필 저장")
+                    )
+                  )
+                )
+              : null,
+            h("article", { className: "card profile-list-card" },
+              h(SectionHead, { eyebrow: "Posts", title: "작성 글" }),
+              profileData.postsHidden
+                ? h("div", { className: "empty-box" }, "이 사용자는 작성 글을 비공개로 설정했습니다.")
+                : profileData.posts?.length
+                  ? h("div", { className: "compact-stack" },
+                      profileData.posts.map((post) =>
+                        h(Link, { href: `/board/${encodeURIComponent(post.gall_id)}/${post.post_no}`, reload: true, className: "mini-link-card", key: `${post.gall_id}-${post.post_no}` },
+                          h("div", { className: "board-title", style: { fontSize: "1rem" } }, post.title || "?쒕ぉ ?놁쓬"),
+                          h("div", { className: "muted" }, `${post.gall_name || post.gall_id} 쨌 ${formatDate(post.writed_at)} 쨌 議고쉶 ${post.view_count ?? 0} 쨌 ?볤? ${post.comment_count ?? 0}`)
+                        )
+                      )
+                    )
+                  : h("div", { className: "empty-box" }, "?묒꽦??湲???놁뒿?덈떎.")
+            ),
+            h("article", { className: "card profile-list-card" },
+              h(SectionHead, { eyebrow: "Comments", title: "?묒꽦 ?볤?" }),
+              profileData.commentsHidden
+                ? h("div", { className: "empty-box" }, "???ъ슜?먮뒗 ?묒꽦 ?볤???鍮꾧났媛쒕줈 ?ㅼ젙?덉뒿?덈떎.")
+                : profileData.comments?.length
+                  ? h("div", { className: "compact-stack" },
+                      profileData.comments.map((comment) =>
+                        h(Link, { href: `/board/${encodeURIComponent(comment.gall_id)}/${comment.post_no}`, reload: true, className: "mini-link-card", key: `${comment.id}` },
+                          h("div", { className: "board-title", style: { fontSize: "1rem" } }, comment.post_title || "?먮Ц 蹂닿린"),
+                          h("div", { className: "muted" }, `${comment.gall_name || comment.gall_id} 쨌 ${formatDate(comment.writed_at)}`),
+                          h("div", { className: "muted profile-comment-preview" }, comment.content || "")
+                        )
+                      )
+                    )
+                  : h("div", { className: "empty-box" }, "?묒꽦???볤????놁뒿?덈떎.")
+            )
           )
         )
       )
@@ -621,19 +1310,29 @@
     const [feed, setFeed] = useState([]);
     const [alarms, setAlarms] = useState([]);
     const [query, setQuery] = useState("");
-    const [page, setPage] = useState(1);
+    const [page, setPage] = useState(getCurrentPageFromLocation());
     const [boardPosts, setBoardPosts] = useState([]);
-    const [postData, setPostData] = useState({ post: null, comments: [] });
+    const [boardManageData, setBoardManageData] = useState(null);
+    const [profileData, setProfileData] = useState(null);
+    const [postData, setPostData] = useState({ post: null, comments: [], voteState: { canVote: true, voteType: "" } });
     const [authFeedback, setAuthFeedback] = useState(null);
     const [writeFeedback, setWriteFeedback] = useState(null);
     const [commentFeedback, setCommentFeedback] = useState(null);
+    const [deleteFeedback, setDeleteFeedback] = useState(null);
+    const [voteFeedback, setVoteFeedback] = useState(null);
     const [alarmFeedback, setAlarmFeedback] = useState(null);
+    const [settingsFeedback, setSettingsFeedback] = useState(null);
+    const [profileFeedback, setProfileFeedback] = useState(null);
 
     const currentBoard = boards.find((board) => board.gall_id === route.params.gid) || null;
+    const targetProfileUid = route.params.uid || session.uid || "";
     const alarmCount = alarms.filter((alarm) => alarm?.actionable).length;
 
     useEffect(() => {
-      const syncRoute = () => setRoute(matchRoute(window.location.pathname));
+      const syncRoute = () => {
+        setRoute(matchRoute(window.location.pathname));
+        setPage(getCurrentPageFromLocation());
+      };
       window.addEventListener("popstate", syncRoute);
       window.addEventListener("app:navigate", syncRoute);
       return () => {
@@ -666,10 +1365,33 @@
       return api(`/api/board/posts/${encodeURIComponent(gid)}?page=${nextPage}`).then((data) => setBoardPosts(Array.isArray(data) ? data : [])).catch(() => setBoardPosts([]));
     }
 
+    function refreshBoardManage(gid) {
+      return api(`/api/board/manage/${encodeURIComponent(gid)}`)
+        .then((result) => setBoardManageData(result?.success ? result.data : null))
+        .catch(() => setBoardManageData(null));
+    }
+
+    function refreshProfile(uid) {
+      if (!uid) {
+        setProfileData(null);
+        return Promise.resolve();
+      }
+      const endpoint = route.params.uid
+        ? `/api/profile/${encodeURIComponent(uid)}`
+        : "/api/profile/me";
+      return api(endpoint)
+        .then((result) => setProfileData(result?.success ? result.data : null))
+        .catch(() => setProfileData(null));
+    }
+
     function refreshPostDetail(gid, postNo) {
       return api(`/api/posts/get/${encodeURIComponent(gid)}/${encodeURIComponent(postNo)}`)
-        .then((result) => setPostData({ post: result?.success ? result.post : null, comments: result?.success && Array.isArray(result.comments) ? result.comments : [] }))
-        .catch(() => setPostData({ post: null, comments: [] }));
+        .then((result) => setPostData({
+          post: result?.success ? result.post : null,
+          comments: result?.success && Array.isArray(result.comments) ? result.comments : [],
+          voteState: result?.success && result.voteState ? result.voteState : { canVote: true, voteType: "" }
+        }))
+        .catch(() => setPostData({ post: null, comments: [], voteState: { canVote: true, voteType: "" } }));
     }
 
     useEffect(() => {
@@ -684,10 +1406,18 @@
     }, [session?.loggedIn]);
 
     useEffect(() => {
+      if (route.name === "board") {
+        setPage(getCurrentPageFromLocation());
+      }
+    }, [route.name, route.params.gid]);
+
+    useEffect(() => {
       if (route.name === "board") refreshBoardPosts(route.params.gid, page);
-      if (route.name === "post") refreshPostDetail(route.params.gid, route.params.postNo);
+      if (route.name === "board") refreshBoardManage(route.params.gid);
+      if (route.name === "boardManage") refreshBoardManage(route.params.gid);
+      if (route.name === "profile") refreshProfile(targetProfileUid);
       if (route.name === "alarms") refreshAlarms();
-    }, [route, page]);
+    }, [route, page, targetProfileUid]);
 
     function handleLogout() {
       fetch("/logout", { method: "POST", credentials: "include" }).finally(() => {
@@ -699,7 +1429,7 @@
     function submitAuth(payload) {
       if (payload.mode === "login") {
         if (!payload.uid?.trim() || !payload.password) {
-          setAuthFeedback({ type: "error", message: "아이디와 비밀번호를 입력해 주세요." });
+          setAuthFeedback({ type: "error", message: "?꾩씠?붿? 鍮꾨?踰덊샇瑜??낅젰??二쇱꽭??" });
           return;
         }
         api("/login", {
@@ -707,16 +1437,16 @@
           body: JSON.stringify({ userID: payload.uid.trim(), password: payload.password })
         }).then((result) => {
           if (!result.success) {
-            setAuthFeedback({ type: "error", message: result.message || "로그인에 실패했습니다." });
+            setAuthFeedback({ type: "error", message: result.message || "濡쒓렇?몄뿉 ?ㅽ뙣?덉뒿?덈떎." });
             return;
           }
           refreshSession().then(() => navigate("/", true));
-        }).catch((error) => setAuthFeedback({ type: "error", message: error.message || "로그인 요청 중 오류가 발생했습니다." }));
+        }).catch((error) => setAuthFeedback({ type: "error", message: error.message || "濡쒓렇???붿껌 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎." }));
         return;
       }
 
       if (!payload.uid?.trim() || !payload.nick?.trim() || !payload.email?.trim() || (payload.password || "").length < 8) {
-        setAuthFeedback({ type: "error", message: "가입 정보를 다시 확인해 주세요." });
+        setAuthFeedback({ type: "error", message: "媛???뺣낫瑜??ㅼ떆 ?뺤씤??二쇱꽭??" });
         return;
       }
 
@@ -731,17 +1461,17 @@
           })
         }).then((result) => {
           if (!result.success) {
-            setAuthFeedback({ type: "error", message: result.message || "인증 메일 발송에 실패했습니다." });
+            setAuthFeedback({ type: "error", message: result.message || "?몄쬆 硫붿씪 諛쒖넚???ㅽ뙣?덉뒿?덈떎." });
             return;
           }
           payload.setVerificationSent?.(true);
-          setAuthFeedback({ type: "success", message: result.message || "인증 메일을 보냈습니다." });
-        }).catch((error) => setAuthFeedback({ type: "error", message: error.message || "인증 메일 발송 중 오류가 발생했습니다." }));
+          setAuthFeedback({ type: "success", message: result.message || "?몄쬆 硫붿씪??蹂대깉?듬땲??" });
+        }).catch((error) => setAuthFeedback({ type: "error", message: error.message || "?몄쬆 硫붿씪 諛쒖넚 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎." }));
         return;
       }
 
       if (!payload.code?.trim()) {
-        setAuthFeedback({ type: "error", message: "인증 코드를 입력해 주세요." });
+        setAuthFeedback({ type: "error", message: "?몄쬆 肄붾뱶瑜??낅젰??二쇱꽭??" });
         return;
       }
 
@@ -754,75 +1484,183 @@
         })
       }).then((result) => {
         if (!result.success) {
-          setAuthFeedback({ type: "error", message: result.message || "이메일 인증 확인에 실패했습니다." });
+          setAuthFeedback({ type: "error", message: result.message || "?대찓???몄쬆 ?뺤씤???ㅽ뙣?덉뒿?덈떎." });
           return;
         }
-        setAuthFeedback({ type: "success", message: result.message || "회원가입이 완료되었습니다." });
+        setAuthFeedback({ type: "success", message: result.message || "?뚯썝媛?낆씠 ?꾨즺?섏뿀?듬땲??" });
         setTimeout(() => navigate("/signin"), 500);
-      }).catch((error) => setAuthFeedback({ type: "error", message: error.message || "이메일 인증 확인 중 오류가 발생했습니다." }));
+      }).catch((error) => setAuthFeedback({ type: "error", message: error.message || "?대찓???몄쬆 ?뺤씤 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎." }));
     }
 
     function submitPost(payload, reset) {
       api("/api/posts/write", { method: "POST", body: JSON.stringify(payload) })
         .then((result) => {
           if (!result.success) {
-            setWriteFeedback({ type: "error", message: result.message || "글 작성에 실패했습니다." });
+            setWriteFeedback({ type: "error", message: result.message || "湲 ?묒꽦???ㅽ뙣?덉뒿?덈떎." });
             return;
           }
           reset?.();
-          setWriteFeedback({ type: "success", message: "글을 등록했습니다." });
+          setWriteFeedback({ type: "success", message: "湲???깅줉?덉뒿?덈떎." });
           refreshBoards();
           refreshFeed();
           navigate(`/board/${encodeURIComponent(payload.gid)}`, true);
         })
-        .catch((error) => setWriteFeedback({ type: "error", message: error.message || "글 작성 중 오류가 발생했습니다." }));
+        .catch((error) => setWriteFeedback({ type: "error", message: error.message || "湲 ?묒꽦 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎." }));
     }
 
     function submitComment(payload, reset) {
       api("/api/posts/comment", { method: "POST", body: JSON.stringify(payload) })
         .then((result) => {
           if (!result.success) {
-            setCommentFeedback({ type: "error", message: result.message || "댓글 등록에 실패했습니다." });
+            setCommentFeedback({ type: "error", message: result.message || "?볤? ?깅줉???ㅽ뙣?덉뒿?덈떎." });
             return;
           }
           reset?.();
-          setCommentFeedback({ type: "success", message: "댓글을 등록했습니다." });
+          setCommentFeedback({ type: "success", message: "?볤????깅줉?덉뒿?덈떎." });
           refreshPostDetail(payload.gid, payload.postNo);
         })
-        .catch((error) => setCommentFeedback({ type: "error", message: error.message || "댓글 등록 중 오류가 발생했습니다." }));
+        .catch((error) => setCommentFeedback({ type: "error", message: error.message || "?볤? ?깅줉 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎." }));
+    }
+
+    function submitDeletePost(payload, reset) {
+      api("/api/posts/delete", { method: "POST", body: JSON.stringify(payload) })
+        .then((result) => {
+          if (!result?.success) {
+            setDeleteFeedback({ type: "error", message: result?.message || "??젣???ㅽ뙣?덉뒿?덈떎." });
+            return;
+          }
+          reset?.();
+          setDeleteFeedback({ type: "success", message: "寃뚯떆湲????젣?섏뿀?듬땲??" });
+          navigate(`/board/${encodeURIComponent(payload.gid)}`, true);
+        })
+        .catch((error) => setDeleteFeedback({ type: "error", message: error.message || "??젣???ㅽ뙣?덉뒿?덈떎." }));
+    }
+
+    function submitDeleteComment(payload, reset) {
+      api("/api/posts/comment/delete", { method: "POST", body: JSON.stringify(payload) })
+        .then((result) => {
+          if (!result?.success) {
+            setDeleteFeedback({ type: "error", message: result?.message || "?볤? ??젣???ㅽ뙣?덉뒿?덈떎." });
+            return;
+          }
+          reset?.();
+          setDeleteFeedback({ type: "success", message: "?볤?????젣?섏뿀?듬땲??" });
+          refreshPostDetail(route.params.gid, route.params.postNo);
+        })
+        .catch((error) => setDeleteFeedback({ type: "error", message: error.message || "?볤? ??젣???ㅽ뙣?덉뒿?덈떎." }));
+    }
+
+    function submitVote(payload) {
+      api("/api/posts/vote", { method: "POST", body: JSON.stringify(payload) })
+        .then((result) => {
+          if (!result?.success) {
+            if (result?.post || result?.voteState) {
+              setPostData((current) => ({
+                ...current,
+                post: current.post ? { ...current.post, ...(result.post || {}) } : current.post,
+                voteState: result.voteState || current.voteState
+              }));
+            }
+            setVoteFeedback({ type: "error", message: result?.message || "Vote failed." });
+            return;
+          }
+          setPostData((current) => ({
+            ...current,
+            post: current.post ? { ...current.post, ...(result.post || {}) } : current.post,
+            voteState: result.voteState || current.voteState
+          }));
+          refreshFeed();
+          setVoteFeedback({ type: "success", message: result?.message || "Vote recorded." });
+        })
+        .catch((error) => setVoteFeedback({ type: "error", message: error.message || "Vote failed." }));
+    }
+
+    function submitBoardSettings(payload) {
+      api(`/api/board/manage/${encodeURIComponent(route.params.gid)}/settings`, {
+        method: "POST",
+        body: JSON.stringify({
+          boardNotice: payload.boardNotice,
+          welcomeMessage: payload.welcomeMessage,
+          themeColor: payload.themeColor,
+          conceptRecommendThreshold: payload.conceptRecommendThreshold,
+          allowGuestPost: payload.allowGuestPost,
+          allowGuestComment: payload.allowGuestComment
+        })
+      }).then((result) => {
+        if (!result?.success) {
+          setSettingsFeedback({ type: "error", message: result?.message || "Settings save failed." });
+          return;
+        }
+        setBoardManageData((current) => current ? { ...current, settings: result.data } : { settings: result.data, permissions: {} });
+        setSettingsFeedback({ type: "success", message: "Settings saved." });
+      }).catch((error) => setSettingsFeedback({ type: "error", message: error.message || "Settings save failed." }));
+    }
+
+    function submitProfileSettings(payload) {
+      api("/api/profile/me/settings", {
+        method: "POST",
+        body: JSON.stringify({
+          statusMessage: payload.statusMessage,
+          bio: payload.bio,
+          accentColor: payload.accentColor,
+          showPosts: payload.showPosts,
+          showComments: payload.showComments
+        })
+      }).then((result) => {
+        if (!result?.success) {
+          setProfileFeedback({ type: "error", message: result?.message || "?꾨줈????μ뿉 ?ㅽ뙣?덉뒿?덈떎." });
+          return;
+        }
+        setProfileData(result.data || null);
+        setProfileFeedback({ type: "success", message: "?꾨줈?꾩쓣 ??ν뻽?듬땲??" });
+      }).catch((error) => setProfileFeedback({ type: "error", message: error.message || "?꾨줈????μ뿉 ?ㅽ뙣?덉뒿?덈떎." }));
     }
 
     function acceptAlarm(alarmId) {
       api(`/api/alarms/${encodeURIComponent(alarmId)}/accept`, { method: "POST" })
         .then((result) => {
           if (!result.success) {
-            setAlarmFeedback({ type: "error", message: result.message || "알림 수락에 실패했습니다." });
+            setAlarmFeedback({ type: "error", message: result.message || "?뚮┝ ?섎씫???ㅽ뙣?덉뒿?덈떎." });
             return;
           }
-          setAlarmFeedback({ type: "success", message: "알림을 수락했습니다." });
+          setAlarmFeedback({ type: "success", message: "?뚮┝???섎씫?덉뒿?덈떎." });
           refreshAlarms();
           refreshBoards();
         })
-        .catch((error) => setAlarmFeedback({ type: "error", message: error.message || "알림 수락 중 오류가 발생했습니다." }));
+        .catch((error) => setAlarmFeedback({ type: "error", message: error.message || "?뚮┝ ?섎씫 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎." }));
     }
 
     function rejectAlarm(alarmId) {
       api(`/api/alarms/${encodeURIComponent(alarmId)}/reject`, { method: "POST" })
         .then((result) => {
           if (!result.success) {
-            setAlarmFeedback({ type: "error", message: result.message || "알림 거절에 실패했습니다." });
+            setAlarmFeedback({ type: "error", message: result.message || "?뚮┝ 嫄곗젅???ㅽ뙣?덉뒿?덈떎." });
             return;
           }
-          setAlarmFeedback({ type: "success", message: "알림을 거절했습니다." });
+          setAlarmFeedback({ type: "success", message: "?뚮┝??嫄곗젅?덉뒿?덈떎." });
           refreshAlarms();
         })
-        .catch((error) => setAlarmFeedback({ type: "error", message: error.message || "알림 거절 중 오류가 발생했습니다." }));
+        .catch((error) => setAlarmFeedback({ type: "error", message: error.message || "?뚮┝ 嫄곗젅 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎." }));
     }
 
     if (route.name === "home") return h(HomeView, { session, boards, feed, onLogout: handleLogout, alarmCount });
     if (route.name === "boards") return h(BoardsView, { session, boards, query, onQueryChange: setQuery, onLogout: handleLogout, alarmCount });
-    if (route.name === "board") return h(BoardView, { session, gid: route.params.gid, board: currentBoard, posts: boardPosts, page, onPrevPage: () => setPage((v) => Math.max(1, v - 1)), onNextPage: () => setPage((v) => v + 1), onLogout: handleLogout, alarmCount });
-    if (route.name === "post") return h(PostView, { session, gid: route.params.gid, post: postData.post, comments: postData.comments, feedback: commentFeedback, onSubmitComment: submitComment, onLogout: handleLogout, alarmCount });
+    if (route.name === "board") return h(BoardView, {
+      session,
+      gid: route.params.gid,
+      board: currentBoard,
+      posts: boardPosts,
+      page,
+      manageData: boardManageData,
+      settingsFeedback,
+      onSaveSettings: submitBoardSettings,
+      onPrevPage: () => navigate(`/board/${encodeURIComponent(route.params.gid)}?page=${Math.max(1, page - 1)}`),
+      onNextPage: () => navigate(`/board/${encodeURIComponent(route.params.gid)}?page=${page + 1}`),
+      onLogout: handleLogout,
+      alarmCount
+    });
+    if (route.name === "boardManage") return h(BoardManageView, { session, gid: route.params.gid, board: currentBoard, manageData: boardManageData, feedback: settingsFeedback, onSaveSettings: submitBoardSettings, onLogout: handleLogout, alarmCount });
+    if (route.name === "profile") return h(ProfileView, { session, profileData, feedback: profileFeedback, onSaveProfile: submitProfileSettings, onLogout: handleLogout, alarmCount });
     if (route.name === "write") return h(WriteView, { session, gid: route.params.gid, feedback: writeFeedback, onSubmitPost: submitPost, onLogout: handleLogout, alarmCount });
     if (route.name === "login") return h(AuthView, { mode: "login", feedback: authFeedback, onSubmitAuth: submitAuth, session, onLogout: handleLogout, alarmCount });
     if (route.name === "signup") return h(AuthView, { mode: "signup", feedback: authFeedback, onSubmitAuth: submitAuth, session, onLogout: handleLogout, alarmCount });

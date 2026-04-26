@@ -34,6 +34,22 @@ def init_db():
             )
         ''')
 
+        # --- 2-1. gallery_setting ---
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS gallery_setting (
+                gall_id               TEXT    PRIMARY KEY NOT NULL,
+                board_notice          TEXT,
+                welcome_message       TEXT,
+                theme_color           TEXT    NOT NULL DEFAULT '#ff8fab',
+                allow_guest_post      INTEGER NOT NULL DEFAULT 1,
+                allow_guest_comment   INTEGER NOT NULL DEFAULT 1,
+                updated_by            TEXT,
+                updated_at            DATETIME NOT NULL DEFAULT (datetime('now', 'localtime')),
+                FOREIGN KEY (gall_id)    REFERENCES gallery(gall_id) ON DELETE CASCADE,
+                FOREIGN KEY (updated_by) REFERENCES user(uid) ON DELETE SET NULL
+            )
+        ''')
+
         # --- 3. user ---
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS user (
@@ -68,6 +84,7 @@ def init_db():
                 content_type    TEXT    NOT NULL DEFAULT 'txt',
                 view_count      INTEGER NOT NULL DEFAULT 0,
                 recommend_count INTEGER NOT NULL DEFAULT 0,
+                unrecommend_count INTEGER NOT NULL DEFAULT 0,
                 comment_count   INTEGER NOT NULL DEFAULT 0,
                 is_adult        INTEGER NOT NULL DEFAULT 0,
                 is_deleted      INTEGER NOT NULL DEFAULT 0,
@@ -86,6 +103,8 @@ def init_db():
         post_columns = [row[1] for row in cursor.execute("PRAGMA table_info(post)").fetchall()]
         if "comment_count" not in post_columns:
             cursor.execute("ALTER TABLE post ADD COLUMN comment_count INTEGER NOT NULL DEFAULT 0")
+        if "unrecommend_count" not in post_columns:
+            cursor.execute("ALTER TABLE post ADD COLUMN unrecommend_count INTEGER NOT NULL DEFAULT 0")
 
         # --- 5. post_attachment ---
         cursor.execute('''
@@ -127,21 +146,21 @@ def init_db():
         ''')
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_comment_post ON comment (post_id, writed_at)")
 
-        # --- 7. post_recommend ---
+        # --- 7. post_vote ---
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS post_recommend (
+            CREATE TABLE IF NOT EXISTS post_vote (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                post_id         INTEGER NOT NULL,
-                user_uid        TEXT,
-                user_ip         TEXT,
-                recommend_type  TEXT    NOT NULL DEFAULT 'up',
+                gall_id         TEXT    NOT NULL,
+                post_no         INTEGER NOT NULL,
+                actor_key       TEXT    NOT NULL,
+                vote_type       TEXT    NOT NULL DEFAULT 'up',
+                vote_date       TEXT    NOT NULL,
                 created_at      DATETIME NOT NULL DEFAULT (datetime('now', 'localtime')),
-                FOREIGN KEY (post_id)  REFERENCES post(id) ON DELETE CASCADE,
-                FOREIGN KEY (user_uid) REFERENCES user(uid) ON DELETE SET NULL,
-                UNIQUE (post_id, user_uid),
-                UNIQUE (post_id, user_ip)
+                FOREIGN KEY (gall_id, post_no) REFERENCES post(gall_id, post_no) ON DELETE CASCADE,
+                UNIQUE (gall_id, post_no, actor_key, vote_date)
             )
         ''')
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_post_vote_post_date ON post_vote (gall_id, post_no, vote_date)")
 
         # --- 8. report ---
         cursor.execute('''

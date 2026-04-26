@@ -1,45 +1,253 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>게시글</title>
-    <link rel="stylesheet" href="/css/boardsheet.css">
+    <title th:text="${post != null ? post.title : 'Post'}">Post</title>
+    <link rel="stylesheet" href="/css/app.css">
 </head>
 <body>
-<nav>
-    <a class="nav-logo" href="/boards">
-        <span class="dot"></span>
-        <span>irisen</span>
-    </a>
-    <div class="nav-right">
-        <span id="currentPostPath" class="status-badge"></span>
-        <button class="btn btn-ghost" id="backToBoardBtn" type="button">목록</button>
+<header class="topbar">
+    <div class="frame">
+        <div class="topbar-inner">
+            <a class="brand" href="/">
+                <span class="brand-mark"></span>
+                <span>irisen web</span>
+            </a>
+            <div class="nav-actions">
+                <a class="btn btn-ghost" th:href="@{/board/{gid}(gid=${gid})}">보드</a>
+                <a class="btn btn-primary" th:href="@{/board/{gid}/write(gid=${gid})}">글쓰기</a>
+            </div>
+        </div>
     </div>
-</nav>
+</header>
 
-<main class="page-shell">
-    <section class="post-shell">
-        <article class="post-card">
-            <div class="board-header">
-                <span class="board-name" id="postGalleryLabel">gallery</span>
-                <span class="board-desc" id="postMeta">불러오는 중</span>
-            </div>
-            <h1 id="postTitle">게시글</h1>
-            <div class="post-body" id="postBody">불러오는 중입니다.</div>
-            <div class="utility-row" style="margin-top: 18px;">
-                <button class="btn btn-ghost" type="button" onclick="history.back()">뒤로</button>
-                <button class="btn btn-primary" type="button" id="writePostBtn">보드로</button>
-            </div>
-        </article>
-    </section>
+<main class="shell">
+    <div class="frame">
+        <div th:if="${flashMessage != null}"
+             th:class="${flashType == 'error' ? 'error-box' : 'success-box'}"
+             style="margin-bottom: 16px;">
+            <span th:text="${flashMessage}">message</span>
+        </div>
+
+        <div th:if="${post == null}" class="error-box" th:text="${errorMessage}">Post not found.</div>
+
+        <div th:if="${post != null}" class="post-detail">
+            <article class="card post-card">
+                <div class="post-card-main">
+                    <div class="post-meta-bar">
+                        <span class="post-board-name" th:text="${post.gall_name}">gallery</span>
+                    </div>
+
+                    <div class="post-title-block">
+                        <h1 class="post-heading" th:text="${post.title}">Post title</h1>
+                        <div class="post-info-row">
+                            <span th:text="${post.name}">author</span>
+                            <span class="post-info-sep">|</span>
+                            <span th:text="${post.writed_at}">date</span>
+                            <span class="post-info-sep">|</span>
+                            <span th:text="${'조회 ' + post.view_count}">조회 0</span>
+                            <span class="post-info-sep">|</span>
+                            <span th:text="${'추천 ' + post.recommend_count}">추천 0</span>
+                        </div>
+                    </div>
+
+                    <section class="post-content-panel">
+                        <div class="post-content-label">Content</div>
+                        <div class="preview post-content-fill" th:utext="${post.content}">content</div>
+                    </section>
+                </div>
+
+                <div class="post-card-footer">
+                    <div class="post-vote-panel">
+                        <div class="post-vote-summary">
+                            <span class="chip" th:text="${'추천 ' + post.recommend_count}">추천 0</span>
+                            <span class="chip" th:text="${'비추천 ' + post.unrecommend_count}">비추천 0</span>
+                        </div>
+                        <div class="post-vote-actions">
+                            <form th:action="@{/board/{gid}/{postNo}/vote(gid=${gid},postNo=${post.post_no})}" method="post">
+                                <input type="hidden" name="voteType" value="up">
+                                <input type="hidden" name="page" th:value="${currentPage}">
+                                <button class="btn btn-primary btn-compact" type="submit"
+                                        th:disabled="${voteState != null and voteState.canVote == false}">추천</button>
+                            </form>
+                            <form th:action="@{/board/{gid}/{postNo}/vote(gid=${gid},postNo=${post.post_no})}" method="post">
+                                <input type="hidden" name="voteType" value="down">
+                                <input type="hidden" name="page" th:value="${currentPage}">
+                                <button class="btn btn-secondary btn-compact" type="submit"
+                                        th:disabled="${voteState != null and voteState.canVote == false}">비추천</button>
+                            </form>
+                        </div>
+                        <div class="muted"
+                             th:text="${voteState != null and voteState.canVote == false ? '오늘은 이미 참여했습니다.' : '추천과 비추천은 에이전트별로 하루 1회만 가능합니다.'}">
+                            vote help
+                        </div>
+                    </div>
+
+                    <form class="inline-actions delete-control"
+                          th:if="${postCanDelete}"
+                          th:action="@{/board/{gid}/{postNo}/delete(gid=${gid},postNo=${post.post_no})}"
+                          method="post"
+                          onsubmit="return confirm('게시글을 삭제할까요?');">
+                        <input type="hidden" name="page" th:value="${currentPage}">
+                        <input class="delete-password-input" th:if="${!loggedIn}" type="password" name="password" placeholder="비밀번호">
+                        <button class="btn btn-secondary btn-danger" type="submit">글 삭제</button>
+                    </form>
+                </div>
+            </article>
+
+            <section class="section-stack comment-section">
+                <div class="section-head">
+                    <div>
+                        <span class="eyebrow">Comments</span>
+                        <h2 class="section-title">댓글</h2>
+                    </div>
+                </div>
+
+                <article class="card comment-form-card compact-comment-form">
+                    <form th:action="@{/board/{gid}/{postNo}/comment(gid=${gid},postNo=${post.post_no})}" method="post" class="stack compact-stack">
+                        <input type="hidden" name="page" th:value="${currentPage}">
+                        <input type="hidden" name="parentId" value="">
+                        <div class="comment-identity-row" th:if="${!loggedIn}">
+                            <div class="field">
+                                <label for="guest-name">이름</label>
+                                <input id="guest-name" type="text" name="name" placeholder="이름">
+                            </div>
+                            <div class="field">
+                                <label for="guest-password">비밀번호</label>
+                                <input id="guest-password" type="password" name="password" placeholder="비밀번호">
+                            </div>
+                        </div>
+                        <div class="field">
+                            <label for="comment-content">댓글 내용</label>
+                            <textarea id="comment-content" name="content" rows="4" placeholder="댓글을 입력하세요"></textarea>
+                        </div>
+                        <div class="inline-actions comment-submit-row">
+                            <button class="btn btn-primary btn-compact" type="submit">댓글 등록</button>
+                        </div>
+                    </form>
+                </article>
+
+                <div th:if="${#lists.isEmpty(comments)}" class="empty-box">댓글이 없습니다.</div>
+
+                <div th:if="${not #lists.isEmpty(comments)}" class="stack">
+                    <article th:each="comment : ${comments}"
+                             class="card comment-card"
+                             th:classappend="' depth-' + ${comment.reply_depth}">
+                        <div class="comment-card-head">
+                            <div class="muted" th:text="${comment.name + ' · ' + comment.writed_at}">comment meta</div>
+                            <div class="comment-card-tools">
+                                <button th:if="${comment.reply_depth < 2}"
+                                        class="comment-action-button reply-toggle-button"
+                                        type="button"
+                                        th:attr="data-target='reply-form-' + ${comment.id}">답글</button>
+                                <form th:if="${comment.canDelete}"
+                                      th:action="@{/board/{gid}/{postNo}/comment/{commentId}/delete(gid=${gid},postNo=${post.post_no},commentId=${comment.id})}"
+                                      method="post"
+                                      class="comment-delete-form"
+                                      th:attr="data-require-password=${!loggedIn}">
+                                    <input type="hidden" name="page" th:value="${currentPage}">
+                                    <button class="comment-delete-button" type="submit">삭제</button>
+                                </form>
+                            </div>
+                        </div>
+                        <div class="preview comment-preview" th:utext="${comment.content}">comment</div>
+                        <form th:if="${comment.reply_depth < 2}"
+                              th:id="'reply-form-' + ${comment.id}"
+                              th:action="@{/board/{gid}/{postNo}/comment(gid=${gid},postNo=${post.post_no})}"
+                              method="post"
+                              class="comment-reply-form">
+                            <input type="hidden" name="page" th:value="${currentPage}">
+                            <input type="hidden" name="parentId" th:value="${comment.id}">
+                            <div class="comment-identity-row" th:if="${!loggedIn}">
+                                <div class="field">
+                                    <label th:for="'reply-name-' + ${comment.id}">이름</label>
+                                    <input th:id="'reply-name-' + ${comment.id}" type="text" name="name" placeholder="이름">
+                                </div>
+                                <div class="field">
+                                    <label th:for="'reply-password-' + ${comment.id}">비밀번호</label>
+                                    <input th:id="'reply-password-' + ${comment.id}" type="password" name="password" placeholder="비밀번호">
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label th:for="'reply-content-' + ${comment.id}">답글 내용</label>
+                                <textarea th:id="'reply-content-' + ${comment.id}" name="content" rows="3" placeholder="답글을 입력하세요"></textarea>
+                            </div>
+                            <div class="inline-actions comment-submit-row">
+                                <button class="btn btn-secondary btn-compact" type="submit">답글 등록</button>
+                            </div>
+                        </form>
+                    </article>
+                </div>
+            </section>
+
+            <section class="section-stack">
+                <div class="section-head">
+                    <div>
+                        <span class="eyebrow">Board Page</span>
+                        <h2 class="section-title" th:text="${'Page ' + currentPage}">Page 1</h2>
+                    </div>
+                    <a class="btn btn-ghost" th:href="@{/board/{gid}(gid=${gid})}">보드로</a>
+                </div>
+
+                <div th:if="${#lists.isEmpty(pagePosts)}" class="empty-box">이 페이지의 게시글이 없습니다.</div>
+
+                <div th:if="${not #lists.isEmpty(pagePosts)}" class="stack">
+                    <a th:each="pagePost : ${pagePosts}"
+                       class="card quick-card"
+                       th:href="@{/board/{gid}/{itemPostNo}(gid=${gid},itemPostNo=${pagePost.post_no},page=${currentPage})}">
+                        <div class="board-title" th:text="${pagePost.title ?: '제목 없음'}">제목</div>
+                        <div class="muted"
+                             th:text="${'#' + pagePost.post_no + ' · ' + pagePost.name + ' · 조회수 ' + pagePost.view_count}">
+                            meta
+                        </div>
+                    </a>
+                </div>
+            </section>
+        </div>
+    </div>
 </main>
-
-<script src="/js/common.js"></script>
-<script src="/js/post-detail.js"></script>
-<script src="/js/page-init.js"></script>
 <script>
-    initPostPage();
+(() => {
+  document.querySelectorAll('.reply-toggle-button').forEach((button) => {
+    button.addEventListener('click', () => {
+      const targetId = button.dataset.target;
+      const form = targetId ? document.getElementById(targetId) : null;
+      if (!form) return;
+      form.classList.toggle('is-open');
+      if (form.classList.contains('is-open')) {
+        const textarea = form.querySelector('textarea');
+        if (textarea) textarea.focus();
+      }
+    });
+  });
+
+  document.querySelectorAll('.comment-delete-form').forEach((form) => {
+    form.addEventListener('submit', (event) => {
+      const requirePassword = form.dataset.requirePassword === 'true';
+      if (requirePassword) {
+        event.preventDefault();
+        const password = window.prompt('비밀번호를 입력하세요');
+        if (password === null) return;
+        const trimmed = password.trim();
+        if (!trimmed) return;
+        let input = form.querySelector('input[name="password"]');
+        if (!input) {
+          input = document.createElement('input');
+          input.type = 'hidden';
+          input.name = 'password';
+          form.appendChild(input);
+        }
+        input.value = trimmed;
+        form.submit();
+        return;
+      }
+      if (!window.confirm('댓글을 삭제할까요?')) {
+        event.preventDefault();
+      }
+    });
+  });
+})();
 </script>
 </body>
 </html>

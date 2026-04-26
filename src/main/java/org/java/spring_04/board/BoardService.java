@@ -19,6 +19,7 @@ import java.util.Map;
 
 @Service
 public class BoardService {
+    private static final String DEFAULT_BOARD_COVER_URL = "https://storage.googleapis.com/irisen-alpha/popolion.png";
     private static final String ALARM_REF_TYPE_BOARD_STAFF = "board_staff_request";
     private static final String ALARM_TYPE_MANAGER_REQUEST = "board_manager_request";
     private static final String ALARM_TYPE_SUBMANAGER_REQUEST = "board_submanager_request";
@@ -61,6 +62,24 @@ public class BoardService {
                     INDEX idx_alarm_uid_is_read (uid, is_read)
                 )
                 """);
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS gallery_setting (
+                    gall_id VARCHAR(50) NOT NULL,
+                    board_notice TEXT NULL,
+                    welcome_message TEXT NULL,
+                    cover_image_url VARCHAR(500) NULL,
+                    theme_color VARCHAR(20) NOT NULL DEFAULT '#ff8fab',
+                    concept_recommend_threshold INT NOT NULL DEFAULT 10,
+                    allow_guest_post TINYINT(1) NOT NULL DEFAULT 1,
+                    allow_guest_comment TINYINT(1) NOT NULL DEFAULT 1,
+                    updated_by VARCHAR(50) NULL,
+                    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (gall_id)
+                )
+                """);
+        if (!columnExists("gallery_setting", "concept_recommend_threshold")) {
+            jdbcTemplate.execute("ALTER TABLE gallery_setting ADD COLUMN concept_recommend_threshold INT NOT NULL DEFAULT 10");
+        }
     }
 
     private boolean columnExists(String tableName, String columnName) {
@@ -99,6 +118,7 @@ public class BoardService {
 
         String sql = """
                 SELECT p.*, g.gall_name, g.manager_uid,
+                       author.nick_icon_type,
                        (
                            SELECT COUNT(*)
                            FROM comment c
@@ -108,9 +128,10 @@ public class BoardService {
                        ) AS comment_count
                 FROM post p
                 JOIN gallery g ON g.gall_id = p.gall_id
+                LEFT JOIN user author ON author.uid = p.writer_uid
                 WHERE p.gall_id = ?
                   AND p.is_deleted = 0
-                ORDER BY p.post_no DESC
+                ORDER BY p.writed_at DESC, p.id DESC, p.post_no DESC
                 LIMIT ? OFFSET ?
                 """;
         return jdbcTemplate.queryForList(sql, gallId, size, offset);
@@ -119,6 +140,7 @@ public class BoardService {
     public Map<String, Object> getPostDetail(String gallId, Long postNo) {
         String sql = """
                 SELECT p.*, g.gall_name, g.manager_uid,
+                       author.nick_icon_type,
                        (
                            SELECT COUNT(*)
                            FROM comment c
@@ -128,6 +150,7 @@ public class BoardService {
                        ) AS comment_count
                 FROM post p
                 JOIN gallery g ON g.gall_id = p.gall_id
+                LEFT JOIN user author ON author.uid = p.writer_uid
                 WHERE p.gall_id = ?
                   AND p.post_no = ?
                   AND p.is_deleted = 0
@@ -156,6 +179,7 @@ public class BoardService {
                 "nick", nullableText(board.get("manager_nick")) == null ? managerUid : nullableText(board.get("manager_nick"))
         ));
         result.put("submanagers", getSubmanagers(gallId));
+        result.put("settings", getBoardSettings(gallId));
         result.put("permissions", Map.of(
                 "isManager", isBoardManager(gallId, viewerUid),
                 "isSubmanager", isBoardSubmanager(gallId, viewerUid),
@@ -163,6 +187,80 @@ public class BoardService {
                 "canAppoint", canAssignBoardStaff(gallId, viewerUid, viewerDivision)
         ));
         return result;
+    }
+
+    public Map<String, Object> getBoardSettings(String gallId) {
+        String boardId = required(gallId, "보드 ID가 필요합니다.");
+        Map<String, Object> defaults = defaultBoardSettings(boardId);
+        try {
+            Map<String, Object> row = jdbcTemplate.queryForMap("""
+                    SELECT gall_id,
+                           board_notice,
+                           welcome_message,
+                           theme_color,
+                           concept_recommend_threshold,
+                           allow_guest_post,
+                           allow_guest_comment,
+                           updated_by,
+                           updated_at
+                    FROM gallery_setting
+                    WHERE gall_id = ?
+                    """, boardId);
+            defaults.putAll(row);
+            defaults.put("theme_color", firstNonBlank(nullableText(row.get("theme_color")), "#ff8fab"));
+            defaults.put("concept_recommend_threshold", normalizeConceptThreshold(row.get("concept_recommend_threshold")));
+            defaults.put("allow_guest_post", toBooleanFlag(row.get("allow_guest_post")));
+            defaults.put("allow_guest_comment", toBooleanFlag(row.get("allow_guest_comment")));
+            return defaults;
+        } catch (EmptyResultDataAccessException e) {
+            return defaults;
+        }
+    }
+
+    @Transactional
+    public Map<String, Object> saveBoardSettings(String gallId, Map<String, String> payload, String uid, String memberDivision) {
+        String boardId = required(gallId, "보드 ID가 필요합니다.");
+        String actorUid = required(uid, "로그인이 필요합니다.");
+
+        requireBoard(boardId);
+        if (!canManageBoard(boardId, actorUid, memberDivision)) {
+            throw new RuntimeException("보드 설정을 수정할 권한이 없습니다.");
+        }
+
+        String boardNotice = nullableTrim(payload.get("boardNotice"));
+        String welcomeMessage = nullableTrim(payload.get("welcomeMessage"));
+        String themeColor = normalizeThemeColor(payload.get("themeColor"));
+        int conceptRecommendThreshold = normalizeConceptThreshold(payload.get("conceptRecommendThreshold"));
+        int allowGuestPost = parseBooleanFlag(payload.get("allowGuestPost"), true);
+        int allowGuestComment = parseBooleanFlag(payload.get("allowGuestComment"), true);
+
+        jdbcTemplate.update("""
+                INSERT INTO gallery_setting (
+                    gall_id, board_notice, welcome_message, theme_color, concept_recommend_threshold,
+                    allow_guest_post, allow_guest_comment, updated_by, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE
+                    board_notice = VALUES(board_notice),
+                    welcome_message = VALUES(welcome_message),
+                    theme_color = VALUES(theme_color),
+                    concept_recommend_threshold = VALUES(concept_recommend_threshold),
+                    allow_guest_post = VALUES(allow_guest_post),
+                    allow_guest_comment = VALUES(allow_guest_comment),
+                    updated_by = VALUES(updated_by),
+                    updated_at = NOW()
+                """,
+                boardId,
+                boardNotice,
+                welcomeMessage,
+                themeColor,
+                conceptRecommendThreshold,
+                allowGuestPost,
+                allowGuestComment,
+                actorUid
+        );
+
+        return getBoardSettings(boardId);
     }
 
     @Transactional
@@ -782,6 +880,82 @@ public class BoardService {
         }
         String text = String.valueOf(value).trim();
         return text.isEmpty() ? null : text;
+    }
+
+    private String nullableTrim(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private Map<String, Object> defaultBoardSettings(String gallId) {
+        Map<String, Object> settings = new LinkedHashMap<>();
+        settings.put("gall_id", gallId);
+        settings.put("board_notice", null);
+        settings.put("welcome_message", null);
+        settings.put("theme_color", "#ff8fab");
+        settings.put("concept_recommend_threshold", 10);
+        settings.put("allow_guest_post", true);
+        settings.put("allow_guest_comment", true);
+        settings.put("updated_by", null);
+        settings.put("updated_at", null);
+        return settings;
+    }
+
+    private boolean toBooleanFlag(Object value) {
+        if (value instanceof Boolean booleanValue) {
+            return booleanValue;
+        }
+        if (value instanceof Number number) {
+            return number.intValue() != 0;
+        }
+        String text = nullableText(value);
+        return text == null || text.equals("1") || text.equalsIgnoreCase("true") || text.equalsIgnoreCase("yes") || text.equalsIgnoreCase("on");
+    }
+
+    private int parseBooleanFlag(String value, boolean defaultValue) {
+        String normalized = nullableTrim(value);
+        if (normalized == null) {
+            return defaultValue ? 1 : 0;
+        }
+        return ("1".equals(normalized) || "true".equalsIgnoreCase(normalized) || "yes".equalsIgnoreCase(normalized) || "on".equalsIgnoreCase(normalized)) ? 1 : 0;
+    }
+
+    private int normalizeConceptThreshold(Object value) {
+        String normalized = nullableTrim(value == null ? null : String.valueOf(value));
+        if (normalized == null) {
+            return 10;
+        }
+        try {
+            int parsed = Integer.parseInt(normalized);
+            return parsed < 1 ? 10 : parsed;
+        } catch (NumberFormatException e) {
+            return 10;
+        }
+    }
+
+    private String normalizeThemeColor(String value) {
+        String normalized = nullableTrim(value);
+        if (normalized == null) {
+            return "#ff8fab";
+        }
+        if (!normalized.matches("^#[0-9a-fA-F]{6}$")) {
+            throw new RuntimeException("테마 색상 형식이 올바르지 않습니다.");
+        }
+        return normalized.toLowerCase();
+    }
+
+    private String normalizeCoverImageUrl(String value) {
+        String normalized = nullableTrim(value);
+        if (normalized == null) {
+            return DEFAULT_BOARD_COVER_URL;
+        }
+        if (!(normalized.startsWith("http://") || normalized.startsWith("https://"))) {
+            throw new RuntimeException("대문 이미지 주소는 http 또는 https로 시작해야 합니다.");
+        }
+        return normalized;
     }
 
     private record WriterInfo(String uid, String name, String ip, String passwordHash) {
