@@ -45,9 +45,9 @@
   const MAX_IMAGE_UPLOAD_BYTES = 50 * 1024 * 1024;
 
   const authorLabel = (item) => {
-    if (!item) return "?듬챸";
+    if (!item) return "익명";
     if (item.writer_uid) return item.name || item.writer_uid;
-    return item.name || "?듬챸";
+    return item.name || "익명";
   };
 
   function matchRoute(pathname) {
@@ -103,13 +103,13 @@
           ),
           h("div", { className: "nav-actions" },
             h(Link, { href: "/", className: "btn btn-ghost" }, "홈"),
-            h(Link, { href: "/boards", className: "btn btn-ghost" }, "蹂대뱶"),
+            h(Link, { href: "/boards", className: "btn btn-ghost" }, "보드"),
             session?.loggedIn
               ? [
                   h(Link, { href: "/profile", className: "btn btn-ghost", key: "profile" }, "프로필"),
                   h(Link, { href: "/alarms", className: "btn btn-ghost", key: "alarms" }, alarmCount > 0 ? `알림 ${alarmCount}` : "알림"),
                   h("span", { className: "chip", key: "nick" }, session.nick || session.uid),
-                  h("button", { type: "button", className: "btn btn-secondary", key: "logout", onClick: onLogout }, "濡쒓렇?꾩썐")
+                  h("button", { type: "button", className: "btn btn-secondary", key: "logout", onClick: onLogout }, "로그아웃")
                 ]
               : [
                   h(Link, { href: "/signin", className: "btn btn-ghost", key: "login" }, "로그인"),
@@ -283,7 +283,7 @@
       )
     );
   }
-  function PopupDeleteControl({ session, buttonLabel, passwordLabel = "鍮꾨?踰덊샇", onDelete }) {
+  function PopupDeleteControl({ session, buttonLabel, passwordLabel = "비밀번호", onDelete }) {
     return h("div", { className: "inline-actions delete-control" },
       h("button", {
         type: "button",
@@ -304,7 +304,7 @@
   function GuestFields({ name, password, setName, setPassword, prefix }) {
     return h("div", { className: "stack" },
       h("div", { className: "field" },
-        h("label", { htmlFor: `${prefix}-guest-name` }, "鍮꾪쉶???대쫫"),
+        h("label", { htmlFor: `${prefix}-guest-name` }, "비회원 이름"),
         h("input", {
           id: `${prefix}-guest-name`,
           type: "text",
@@ -313,7 +313,7 @@
         })
       ),
       h("div", { className: "field" },
-        h("label", { htmlFor: `${prefix}-guest-password` }, "鍮꾨?踰덊샇"),
+        h("label", { htmlFor: `${prefix}-guest-password` }, "비밀번호"),
         h("input", {
           id: `${prefix}-guest-password`,
           type: "password",
@@ -326,12 +326,12 @@
 
   function EditorToolbar({ onImageSelect, imageUploading }) {
     const tools = [
-      { label: "援듦쾶", command: "bold" },
+      { label: "굵게", command: "bold" },
       { label: "기울임", command: "italic" },
-      { label: "諛묒쨪", command: "underline" },
-      { label: "?쒕ぉ", command: "formatBlock", value: "h2" },
-      { label: "蹂몃Ц", command: "formatBlock", value: "p" },
-      { label: "?몄슜", command: "formatBlock", value: "blockquote" }
+      { label: "밑줄", command: "underline" },
+      { label: "제목", command: "formatBlock", value: "h2" },
+      { label: "본문", command: "formatBlock", value: "p" },
+      { label: "인용", command: "formatBlock", value: "blockquote" }
     ];
     return h("div", { className: "editor-toolbar" },
       tools.map((tool) =>
@@ -609,7 +609,7 @@ function BoardsView({ session, boards, query, onQueryChange, onLogout, alarmCoun
               )
             ),
             h("div", { className: "dc-board-tabs" },
-              h("button", { type: "button", className: "dc-tab is-active" }, "?꾩껜湲"),
+              h("button", { type: "button", className: "dc-tab is-active" }, "전체글"),
               h("button", { type: "button", className: "dc-tab" }, "?쇰컲湲"),
               h("button", { type: "button", className: "dc-tab" }, "怨듭?"),
               h("div", { className: "dc-board-actions" },
@@ -687,7 +687,7 @@ function BoardsView({ session, boards, query, onQueryChange, onLogout, alarmCoun
                 ? h("div", { className: "stack" },
                     posts.map((post) =>
                       h(Link, { href: `/board/${encodeURIComponent(gid)}/${post.post_no}?page=${page}`, className: "card quick-card", key: `${gid}-${post.post_no}`, reload: true },
-                        h("div", { className: "board-title" }, post.title || "?쒕ぉ ?놁쓬"),
+                        h("div", { className: "board-title" }, post.title || "제목 없음"),
                         h("div", { className: "muted" }, `#${post.post_no} 쨌 ${authorLabel(post)} 쨌 議고쉶??${post.view_count} 쨌${formatDate(post.writed_at || post.created_at)}`)
                       )
                     )
@@ -885,12 +885,12 @@ function BoardsView({ session, boards, query, onQueryChange, onLogout, alarmCoun
             h("article", { className: "card" },
               h(SectionHead, { eyebrow: "Write", title: `${gid} 湲?곌린` }),
               h("div", { className: "field" },
-                h("label", { htmlFor: "write-title" }, "?쒕ぉ"),
+                h("label", { htmlFor: "write-title" }, "제목"),
                 h("input", { id: "write-title", type: "text", value: title, onChange: (event) => setTitle(event.target.value) })
               ),
               h("div", { className: "field" },
-                h("label", { htmlFor: "write-content" }, "蹂몃Ц"),
-                h(HtmlEditor, { id: "write-content", value: content, onChange: setContent, placeholder: "湲 ?댁슜???낅젰??二쇱꽭??" })
+                h("label", { htmlFor: "write-content" }, "본문"),
+                h(HtmlEditor, { id: "write-content", value: content, onChange: setContent, placeholder: "글 내용을 입력해주세요." })
               ),
               session?.loggedIn ? null : h(GuestFields, { name: guestName, password: guestPassword, setName: setGuestName, setPassword: setGuestPassword, prefix: "write" }),
               h(Feedback, { feedback }),
@@ -912,14 +912,14 @@ function BoardsView({ session, boards, query, onQueryChange, onLogout, alarmCoun
                       setGuestPassword("");
                     });
                   }
-                }, "?묒꽦 ?꾨즺"),
-                h(Link, { href: `/board/${encodeURIComponent(gid)}`, className: "btn btn-ghost" }, "痍⑥냼")
+                }, "작성 완료"),
+                h(Link, { href: `/board/${encodeURIComponent(gid)}`, className: "btn btn-ghost" }, "취소")
               )
             ),
             h("aside", { className: "preview-card card" },
               h("span", { className: "eyebrow" }, "Preview"),
-              h("h3", { className: "section-title", style: { fontSize: "1.8rem" } }, "誘몃━蹂닿린"),
-              h("div", { className: "preview", dangerouslySetInnerHTML: { __html: content || "<p>?꾩쭅 ?묒꽦???댁슜???놁뒿?덈떎.</p>" } })
+              h("h3", { className: "section-title", style: { fontSize: "1.8rem" } }, "미리보기"),
+              h("div", { className: "preview", dangerouslySetInnerHTML: { __html: content || "<p>아직 작성된 내용이 없습니다.</p>" } })
             )
           )
         )
@@ -1028,7 +1028,7 @@ function BoardsView({ session, boards, query, onQueryChange, onLogout, alarmCoun
                         h("input", { id: "auth-login-id", type: "text", value: uid, onChange: (event) => setUid(event.target.value) })
                       ),
                       h("div", { className: "field" },
-                        h("label", { htmlFor: "auth-login-pw" }, "鍮꾨?踰덊샇"),
+                        h("label", { htmlFor: "auth-login-pw" }, "비밀번호"),
                         h("input", { id: "auth-login-pw", type: "password", value: password, onChange: (event) => setPassword(event.target.value) })
                       )
                     )
@@ -1095,7 +1095,7 @@ function BoardsView({ session, boards, query, onQueryChange, onLogout, alarmCoun
           h("section", { className: "section-stack" },
             h(SectionHead, { eyebrow: "Inbox", title: "?뚮┝" }),
             !session?.loggedIn
-              ? h("article", { className: "card auth-card" }, h("p", { className: "muted" }, "濡쒓렇?????뚮┝???뺤씤?????덉뒿?덈떎."))
+              ? h("article", { className: "card auth-card" }, h("p", { className: "muted" }, "로그인 후 알림을 확인할 수 있습니다."))
               : h("div", { className: "stack" },
                   h(Feedback, { feedback }),
                   alarms.length
@@ -1117,7 +1117,7 @@ function BoardsView({ session, boards, query, onQueryChange, onLogout, alarmCoun
                             : null
                         )
                       )
-                    : h("div", { className: "empty-box" }, "?꾩갑???뚮┝???놁뒿?덈떎.")
+                    : h("div", { className: "empty-box" }, "받은 알림이 없습니다.")
                 )
           )
         )
@@ -1146,7 +1146,7 @@ function BoardsView({ session, boards, query, onQueryChange, onLogout, alarmCoun
         h("main", { className: "shell" },
           h("div", { className: "frame" },
             h("section", { className: "section-stack" },
-              h("div", { className: "error-box" }, "?꾨줈?꾩쓣 遺덈윭?ㅼ? 紐삵뻽?듬땲??")
+              h("div", { className: "error-box" }, "프로필을 불러오지 못했습니다.")
             )
           )
         )
@@ -1171,9 +1171,9 @@ function BoardsView({ session, boards, query, onQueryChange, onLogout, alarmCoun
                 ),
                 h("div", { className: "profile-stat-grid" },
                   h("div", { className: "profile-stat-card" }, h("strong", null, stats.postCount ?? 0), h("span", null, "湲")),
-                  h("div", { className: "profile-stat-card" }, h("strong", null, stats.commentCount ?? 0), h("span", null, "?볤?")),
-                  h("div", { className: "profile-stat-card" }, h("strong", null, stats.managedBoardCount ?? 0), h("span", null, "愿由?蹂대뱶")),
-                  h("div", { className: "profile-stat-card" }, h("strong", null, stats.submanagerBoardCount ?? 0), h("span", null, "遺愿由?蹂대뱶"))
+                  h("div", { className: "profile-stat-card" }, h("strong", null, stats.commentCount ?? 0), h("span", null, "댓글")),
+                  h("div", { className: "profile-stat-card" }, h("strong", null, stats.managedBoardCount ?? 0), h("span", null, "관리 보드")),
+                  h("div", { className: "profile-stat-card" }, h("strong", null, stats.submanagerBoardCount ?? 0), h("span", null, "부관리 보드"))
                 )
               ),
               profileData.bio ? h("div", { className: "profile-bio-box" }, profileData.bio) : null,
@@ -1220,7 +1220,7 @@ function BoardsView({ session, boards, query, onQueryChange, onLogout, alarmCoun
                         checked: showPosts,
                         onChange: (event) => setShowPosts(event.target.checked)
                       }),
-                      h("span", null, "?묒꽦 湲 怨듦컻")
+                      h("span", null, "작성 글 공개")
                     ),
                     h("label", { className: "check-row" },
                       h("input", {
@@ -1228,7 +1228,7 @@ function BoardsView({ session, boards, query, onQueryChange, onLogout, alarmCoun
                         checked: showComments,
                         onChange: (event) => setShowComments(event.target.checked)
                       }),
-                      h("span", null, "?묒꽦 ?볤? 怨듦컻")
+                      h("span", null, "작성 댓글 공개")
                     ),
                     h(Feedback, { feedback }),
                     h("div", { className: "inline-actions" },
@@ -1257,17 +1257,17 @@ function BoardsView({ session, boards, query, onQueryChange, onLogout, alarmCoun
                   ? h("div", { className: "compact-stack" },
                       profileData.posts.map((post) =>
                         h(Link, { href: `/board/${encodeURIComponent(post.gall_id)}/${post.post_no}`, reload: true, className: "mini-link-card", key: `${post.gall_id}-${post.post_no}` },
-                          h("div", { className: "board-title", style: { fontSize: "1rem" } }, post.title || "?쒕ぉ ?놁쓬"),
-                          h("div", { className: "muted" }, `${post.gall_name || post.gall_id} 쨌 ${formatDate(post.writed_at)} 쨌 議고쉶 ${post.view_count ?? 0} 쨌 ?볤? ${post.comment_count ?? 0}`)
+                          h("div", { className: "board-title", style: { fontSize: "1rem" } }, post.title || "제목 없음"),
+                          h("div", { className: "muted" }, `${post.gall_name || post.gall_id} · ${formatDate(post.writed_at)} · 조회 ${post.view_count ?? 0} · 댓글 ${post.comment_count ?? 0}`)
                         )
                       )
                     )
-                  : h("div", { className: "empty-box" }, "?묒꽦??湲???놁뒿?덈떎.")
+                  : h("div", { className: "empty-box" }, "작성한 글이 없습니다.")
             ),
             h("article", { className: "card profile-list-card" },
-              h(SectionHead, { eyebrow: "Comments", title: "?묒꽦 ?볤?" }),
+              h(SectionHead, { eyebrow: "Comments", title: "작성 댓글" }),
               profileData.commentsHidden
-                ? h("div", { className: "empty-box" }, "???ъ슜?먮뒗 ?묒꽦 ?볤???鍮꾧났媛쒕줈 ?ㅼ젙?덉뒿?덈떎.")
+                ? h("div", { className: "empty-box" }, "이 사용자는 작성 댓글을 비공개로 설정했습니다.")
                 : profileData.comments?.length
                   ? h("div", { className: "compact-stack" },
                       profileData.comments.map((comment) =>
@@ -1278,7 +1278,7 @@ function BoardsView({ session, boards, query, onQueryChange, onLogout, alarmCoun
                         )
                       )
                     )
-                  : h("div", { className: "empty-box" }, "?묒꽦???볤????놁뒿?덈떎.")
+                  : h("div", { className: "empty-box" }, "작성한 댓글이 없습니다.")
             )
           )
         )
@@ -1429,7 +1429,7 @@ function BoardsView({ session, boards, query, onQueryChange, onLogout, alarmCoun
     function submitAuth(payload) {
       if (payload.mode === "login") {
         if (!payload.uid?.trim() || !payload.password) {
-          setAuthFeedback({ type: "error", message: "?꾩씠?붿? 鍮꾨?踰덊샇瑜??낅젰??二쇱꽭??" });
+          setAuthFeedback({ type: "error", message: "아이디와 비밀번호를 입력해주세요." });
           return;
         }
         api("/login", {
@@ -1437,11 +1437,11 @@ function BoardsView({ session, boards, query, onQueryChange, onLogout, alarmCoun
           body: JSON.stringify({ userID: payload.uid.trim(), password: payload.password })
         }).then((result) => {
           if (!result.success) {
-            setAuthFeedback({ type: "error", message: result.message || "濡쒓렇?몄뿉 ?ㅽ뙣?덉뒿?덈떎." });
+            setAuthFeedback({ type: "error", message: result.message || "로그인에 실패했습니다." });
             return;
           }
           refreshSession().then(() => navigate("/", true));
-        }).catch((error) => setAuthFeedback({ type: "error", message: error.message || "濡쒓렇???붿껌 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎." }));
+        }).catch((error) => setAuthFeedback({ type: "error", message: error.message || "로그인 요청 중 오류가 발생했습니다." }));
         return;
       }
 
@@ -1461,17 +1461,17 @@ function BoardsView({ session, boards, query, onQueryChange, onLogout, alarmCoun
           })
         }).then((result) => {
           if (!result.success) {
-            setAuthFeedback({ type: "error", message: result.message || "?몄쬆 硫붿씪 諛쒖넚???ㅽ뙣?덉뒿?덈떎." });
+            setAuthFeedback({ type: "error", message: result.message || "인증 메일 발송에 실패했습니다." });
             return;
           }
           payload.setVerificationSent?.(true);
-          setAuthFeedback({ type: "success", message: result.message || "?몄쬆 硫붿씪??蹂대깉?듬땲??" });
-        }).catch((error) => setAuthFeedback({ type: "error", message: error.message || "?몄쬆 硫붿씪 諛쒖넚 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎." }));
+          setAuthFeedback({ type: "success", message: result.message || "인증 메일을 보냈습니다." });
+        }).catch((error) => setAuthFeedback({ type: "error", message: error.message || "인증 메일 발송 중 오류가 발생했습니다." }));
         return;
       }
 
       if (!payload.code?.trim()) {
-        setAuthFeedback({ type: "error", message: "?몄쬆 肄붾뱶瑜??낅젰??二쇱꽭??" });
+        setAuthFeedback({ type: "error", message: "인증 코드를 입력해주세요." });
         return;
       }
 
@@ -1484,19 +1484,19 @@ function BoardsView({ session, boards, query, onQueryChange, onLogout, alarmCoun
         })
       }).then((result) => {
         if (!result.success) {
-          setAuthFeedback({ type: "error", message: result.message || "?대찓???몄쬆 ?뺤씤???ㅽ뙣?덉뒿?덈떎." });
+          setAuthFeedback({ type: "error", message: result.message || "이메일 인증 확인에 실패했습니다." });
           return;
         }
         setAuthFeedback({ type: "success", message: result.message || "?뚯썝媛?낆씠 ?꾨즺?섏뿀?듬땲??" });
         setTimeout(() => navigate("/signin"), 500);
-      }).catch((error) => setAuthFeedback({ type: "error", message: error.message || "?대찓???몄쬆 ?뺤씤 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎." }));
+      }).catch((error) => setAuthFeedback({ type: "error", message: error.message || "이메일 인증 확인 중 오류가 발생했습니다." }));
     }
 
     function submitPost(payload, reset) {
       api("/api/posts/write", { method: "POST", body: JSON.stringify(payload) })
         .then((result) => {
           if (!result.success) {
-            setWriteFeedback({ type: "error", message: result.message || "湲 ?묒꽦???ㅽ뙣?덉뒿?덈떎." });
+            setWriteFeedback({ type: "error", message: result.message || "글 작성에 실패했습니다." });
             return;
           }
           reset?.();
@@ -1505,21 +1505,21 @@ function BoardsView({ session, boards, query, onQueryChange, onLogout, alarmCoun
           refreshFeed();
           navigate(`/board/${encodeURIComponent(payload.gid)}`, true);
         })
-        .catch((error) => setWriteFeedback({ type: "error", message: error.message || "湲 ?묒꽦 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎." }));
+        .catch((error) => setWriteFeedback({ type: "error", message: error.message || "글 작성 중 오류가 발생했습니다." }));
     }
 
     function submitComment(payload, reset) {
       api("/api/posts/comment", { method: "POST", body: JSON.stringify(payload) })
         .then((result) => {
           if (!result.success) {
-            setCommentFeedback({ type: "error", message: result.message || "?볤? ?깅줉???ㅽ뙣?덉뒿?덈떎." });
+            setCommentFeedback({ type: "error", message: result.message || "댓글 등록에 실패했습니다." });
             return;
           }
           reset?.();
-          setCommentFeedback({ type: "success", message: "?볤????깅줉?덉뒿?덈떎." });
+          setCommentFeedback({ type: "success", message: "댓글이 등록되었습니다." });
           refreshPostDetail(payload.gid, payload.postNo);
         })
-        .catch((error) => setCommentFeedback({ type: "error", message: error.message || "?볤? ?깅줉 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎." }));
+        .catch((error) => setCommentFeedback({ type: "error", message: error.message || "댓글 등록 중 오류가 발생했습니다." }));
     }
 
     function submitDeletePost(payload, reset) {
@@ -1540,14 +1540,14 @@ function BoardsView({ session, boards, query, onQueryChange, onLogout, alarmCoun
       api("/api/posts/comment/delete", { method: "POST", body: JSON.stringify(payload) })
         .then((result) => {
           if (!result?.success) {
-            setDeleteFeedback({ type: "error", message: result?.message || "?볤? ??젣???ㅽ뙣?덉뒿?덈떎." });
+            setDeleteFeedback({ type: "error", message: result?.message || "댓글 삭제에 실패했습니다." });
             return;
           }
           reset?.();
-          setDeleteFeedback({ type: "success", message: "?볤?????젣?섏뿀?듬땲??" });
+          setDeleteFeedback({ type: "success", message: "댓글을 삭제했습니다." });
           refreshPostDetail(route.params.gid, route.params.postNo);
         })
-        .catch((error) => setDeleteFeedback({ type: "error", message: error.message || "?볤? ??젣???ㅽ뙣?덉뒿?덈떎." }));
+        .catch((error) => setDeleteFeedback({ type: "error", message: error.message || "댓글 삭제에 실패했습니다." }));
     }
 
     function submitVote(payload) {
@@ -1612,7 +1612,7 @@ function BoardsView({ session, boards, query, onQueryChange, onLogout, alarmCoun
           return;
         }
         setProfileData(result.data || null);
-        setProfileFeedback({ type: "success", message: "?꾨줈?꾩쓣 ??ν뻽?듬땲??" });
+        setProfileFeedback({ type: "success", message: "프로필을 저장했습니다." });
       }).catch((error) => setProfileFeedback({ type: "error", message: error.message || "?꾨줈????μ뿉 ?ㅽ뙣?덉뒿?덈떎." }));
     }
 

@@ -50,15 +50,19 @@
   }
 
   function isMainBoard(board) {
-    return String(board?.gall_type || "").toLowerCase() === "main";
+    return String(board?.gall_type || "").trim().toLowerCase() === "main";
+  }
+
+  function boardTypeLabel(board) {
+    return isMainBoard(board) ? "보드" : "사이드 보드";
   }
 
   function filterBoards() {
     const q = boardSearchEl.value.trim().toLowerCase();
     state.filteredBoards = state.boards.filter((board) => {
       return !q
-        || String(board.gall_id).toLowerCase().includes(q)
-        || String(board.gall_name).toLowerCase().includes(q);
+        || String(board.gall_id || "").toLowerCase().includes(q)
+        || String(board.gall_name || "").toLowerCase().includes(q);
     });
     renderBoardList();
   }
@@ -145,13 +149,13 @@
       const active = board.gall_id === state.selectedGid ? " active" : "";
       const managerText = board.manager_nick || board.manager_uid || "미지정";
       const manageText = isMainBoard(board)
-        ? "main 보드 · 운영진 관리 제외"
-        : `매니저 ${managerText} · 부매니저 ${board.submanager_count ?? 0}명`;
+        ? "보드 · 운영진 관리 제외"
+        : `${boardTypeLabel(board)} · 매니저 ${managerText} · 부매니저 ${board.submanager_count ?? 0}명`;
 
       return `
         <article class="board-card${active}" data-gid="${escapeHtml(board.gall_id)}">
           <strong>${escapeHtml(board.gall_name)}</strong>
-          <div class="meta">${escapeHtml(board.gall_id)} · 글 ${escapeHtml(board.post_count ?? 0)}개</div>
+          <div class="meta">${escapeHtml(board.gall_id)} · ${escapeHtml(boardTypeLabel(board))} · 글 ${escapeHtml(board.post_count ?? 0)}개</div>
           <div class="meta">${escapeHtml(manageText)}</div>
         </article>
       `;
@@ -178,11 +182,11 @@
     detailBodyEl.innerHTML = `
       <div class="badge-row">
         <span class="badge">보드 ${escapeHtml(board.gall_id)}</span>
-        <span class="badge">gall_type ${escapeHtml(board.gall_type || "-")}</span>
+        <span class="badge">${escapeHtml(boardTypeLabel(board))}</span>
         <span class="badge">현재 매니저 ${escapeHtml(manager ? (manager.nick || manager.uid) : "미지정")}</span>
       </div>
 
-      ${eligible ? "" : `<div class="feedback error">gall_type 이 main 인 보드는 매니저/부매니저 관리 대상이 아닙니다.</div>`}
+      ${eligible ? "" : `<div class="feedback error">보드(main) 타입은 매니저/부매니저 관리 대상이 아닙니다.</div>`}
 
       <div class="field">
         <label for="userSearch">사용자 검색</label>
@@ -201,7 +205,7 @@
                 </div>
               </div>
             `).join("")
-          : `<div class="hint">${eligible ? "사용자를 검색하면 여기서 바로 지정할 수 있습니다." : "main 보드는 운영진 관리가 비활성화됩니다."}</div>`}
+          : `<div class="hint">${eligible ? "사용자를 검색하면 여기서 바로 지정할 수 있습니다." : "보드(main) 타입은 운영진 관리가 비활성화됩니다."}</div>`}
       </div>
 
       <section class="stack">

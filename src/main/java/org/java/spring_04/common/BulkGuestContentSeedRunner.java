@@ -18,11 +18,12 @@ import java.util.Random;
 
 @Component
 public class BulkGuestContentSeedRunner implements CommandLineRunner {
-    private static final String SEED_KEY = "bulk_guest_content_v1";
+    private static final String SEED_KEY = "bulk_guest_content_v2_ordered";
     private static final List<String> TARGET_GALLERIES = List.of("alpha", "beta", "marine", "stockus", "uspolitics");
     private static final int POSTS_PER_GALLERY = 240;
     private static final int EXTRA_COMMENT_POSTS = 300;
     private static final String GUEST_PASSWORD_RAW = "guest1234";
+    private static final LocalDateTime BASE_WRITED_AT = LocalDateTime.of(2026, 1, 1, 0, 0);
 
     private final JdbcTemplate jdbcTemplate;
     private final TransactionTemplate transactionTemplate;
@@ -36,29 +37,29 @@ public class BulkGuestContentSeedRunner implements CommandLineRunner {
     public void run(String... args) {
         ensureSeedHistoryTable();
         if (isAlreadySeeded()) {
-            System.out.println("[SEED] Bulk guest content seed already completed. Skipping.");
+            System.out.println("[SEED] Ordered bulk guest content seed already completed. Skipping.");
             return;
         }
 
         transactionTemplate.executeWithoutResult(status -> {
             validateTargetGalleries();
             ensureGalleryCounters();
+            purgeExistingContent();
 
             String guestPasswordHash = BCrypt.hashpw(GUEST_PASSWORD_RAW, BCrypt.gensalt(10));
-            Random random = new Random(20260426L);
+            Random random = new Random(20260427L);
 
             List<PostSeedRow> postRows = new ArrayList<>();
             List<CommentSeedRow> commentRows = new ArrayList<>();
-            int postIndex = 0;
+            int globalPostIndex = 0;
 
             for (String gallId : TARGET_GALLERIES) {
-                long nextPostNo = nextPostNo(gallId);
                 for (int i = 0; i < POSTS_PER_GALLERY; i++) {
-                    long postNo = nextPostNo + i;
+                    long postNo = i + 1L;
                     int localIndex = i + 1;
-                    String writerName = guestName(postIndex + 1);
-                    String ip = guestIp(random, postIndex);
-                    LocalDateTime wroteAt = LocalDateTime.now().minusDays(random.nextInt(90)).minusMinutes(random.nextInt(1440));
+                    String writerName = guestName(globalPostIndex + 1);
+                    String ip = guestIp(random, globalPostIndex);
+                    LocalDateTime wroteAt = BASE_WRITED_AT.plusMinutes(globalPostIndex);
 
                     postRows.add(new PostSeedRow(
                             gallId,
@@ -68,39 +69,42 @@ public class BulkGuestContentSeedRunner implements CommandLineRunner {
                             writerName,
                             ip,
                             guestPasswordHash,
-                            random.nextInt(480),
-                            random.nextInt(60),
-                            random.nextInt(12),
+                            10 + (globalPostIndex % 200),
+                            globalPostIndex % 25,
+                            globalPostIndex % 7,
                             wroteAt
                     ));
 
                     commentRows.add(new CommentSeedRow(
                             gallId,
                             postNo,
-                            guestName(postIndex + 10001),
-                            guestIp(random, postIndex + 10001),
+                            guestName(globalPostIndex + 10001),
+                            guestIp(random, globalPostIndex + 10001),
                             guestPasswordHash,
                             commentContent(gallId, localIndex, 1),
-                            wroteAt.plusMinutes(5L + random.nextInt(120))
+                            wroteAt.plusMinutes(5)
                     ));
 
-                    if (postIndex < EXTRA_COMMENT_POSTS) {
+                    if (globalPostIndex < EXTRA_COMMENT_POSTS) {
                         commentRows.add(new CommentSeedRow(
                                 gallId,
                                 postNo,
-                                guestName(postIndex + 20001),
-                                guestIp(random, postIndex + 20001),
+                                guestName(globalPostIndex + 20001),
+                                guestIp(random, globalPostIndex + 20001),
                                 guestPasswordHash,
                                 commentContent(gallId, localIndex, 2),
-                                wroteAt.plusMinutes(30L + random.nextInt(240))
+                                wroteAt.plusMinutes(15)
                         ));
                     }
 
-                    postIndex++;
+                    globalPostIndex++;
                 }
 
-                long lastPostNo = nextPostNo + POSTS_PER_GALLERY - 1;
-                jdbcTemplate.update("UPDATE gallery_counter SET last_post_no = ? WHERE gall_id = ?", lastPostNo, gallId);
+                jdbcTemplate.update(
+                        "UPDATE gallery_counter SET last_post_no = ? WHERE gall_id = ?",
+                        POSTS_PER_GALLERY,
+                        gallId
+                );
             }
 
             batchInsertPosts(postRows);
@@ -110,7 +114,8 @@ public class BulkGuestContentSeedRunner implements CommandLineRunner {
             refreshGalleryPostCounts();
             markSeedCompleted(postRows.size(), commentRows.size());
 
-            System.out.println("[SEED] Bulk guest content inserted successfully. posts=" + postRows.size() + " comments=" + commentRows.size());
+            System.out.println("[SEED] Ordered bulk guest content inserted successfully. posts="
+                    + postRows.size() + " comments=" + commentRows.size());
         });
     }
 
@@ -159,18 +164,16 @@ public class BulkGuestContentSeedRunner implements CommandLineRunner {
                     INSERT INTO gallery_counter (gall_id, last_post_no)
                     VALUES (?, COALESCE((SELECT MAX(post_no) FROM post WHERE gall_id = ?), 0))
                     ON DUPLICATE KEY UPDATE
-                        last_post_no = GREATEST(last_post_no, VALUES(last_post_no))
+                        last_post_no = VALUES(last_post_no)
                     """, gallId, gallId);
         }
     }
 
-    private long nextPostNo(String gallId) {
-        Long current = jdbcTemplate.queryForObject(
-                "SELECT COALESCE(last_post_no, 0) FROM gallery_counter WHERE gall_id = ?",
-                Long.class,
-                gallId
-        );
-        return (current == null ? 0L : current) + 1L;
+    private void purgeExistingContent() {
+        jdbcTemplate.update("DELETE FROM comment");
+        jdbcTemplate.update("DELETE FROM post");
+        jdbcTemplate.update("UPDATE gallery_counter SET last_post_no = 0");
+        jdbcTemplate.update("UPDATE gallery SET post_count = 0");
     }
 
     private void batchInsertPosts(List<PostSeedRow> rows) {
@@ -277,7 +280,7 @@ public class BulkGuestContentSeedRunner implements CommandLineRunner {
         jdbcTemplate.update("""
                 INSERT INTO app_seed_history (seed_key, post_count, comment_count, note)
                 VALUES (?, ?, ?, ?)
-                """, SEED_KEY, postCount, commentCount, "Bulk guest seed for alpha,beta,marine,stockus,uspolitics");
+                """, SEED_KEY, postCount, commentCount, "Ordered bulk guest seed for alpha,beta,marine,stockus,uspolitics");
     }
 
     private String guestName(int index) {
@@ -294,22 +297,23 @@ public class BulkGuestContentSeedRunner implements CommandLineRunner {
 
     private String postTitle(String gallId, int localIndex) {
         return switch (gallId) {
-            case "alpha" -> "[알파] 테스트 게시글 " + localIndex;
-            case "beta" -> "[베타] 샘플 토론 글 " + localIndex;
-            case "marine" -> "[해병] 훈련 기록 " + localIndex;
-            case "stockus" -> "[미국주식] 시황 메모 " + localIndex;
-            case "uspolitics" -> "[미국정치] 브리핑 " + localIndex;
-            default -> "[테스트] 더미 글 " + localIndex;
+            case "alpha" -> "[알파] 순번 글 " + localIndex;
+            case "beta" -> "[베타] 순번 글 " + localIndex;
+            case "marine" -> "[마린] 순번 글 " + localIndex;
+            case "stockus" -> "[미국주식] 순번 글 " + localIndex;
+            case "uspolitics" -> "[미국정치] 순번 글 " + localIndex;
+            default -> "[테스트] 순번 글 " + localIndex;
         };
     }
 
     private String postContent(String gallId, int localIndex) {
         return """
-                <p>자동 생성된 비회원 더미 게시글입니다.</p>
+                <p>자동 생성된 비회원 테스트 게시글입니다.</p>
                 <p><strong>보드:</strong> %s</p>
-                <p><strong>순번:</strong> %d</p>
-                <p>이 글은 목록, 상세, 댓글, 추천, 검색 같은 흐름을 확인하기 위한 테스트 데이터입니다.</p>
-                <p>본문은 HTML 형식으로 저장되며, 렌더링 확인용으로 문단과 강조 태그를 포함합니다.</p>
+                <p><strong>포스트 번호:</strong> %d</p>
+                <p><strong>표시 순서:</strong> 날짜와 포스트 번호가 함께 오름차순으로 맞춰져 있습니다.</p>
+                <p>목록에서 오래된 글부터 최신 글까지 시간과 번호가 같은 흐름으로 보이도록 재생성한 데이터입니다.</p>
+                <p>본문은 HTML 형식으로 저장됩니다.</p>
                 """.formatted(gallId, localIndex);
     }
 
