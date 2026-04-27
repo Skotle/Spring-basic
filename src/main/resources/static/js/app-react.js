@@ -24,17 +24,17 @@
     return payload;
   };
 
-  const formatDate = (value) => {
-    if (!value) return "-";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return String(value);
-    return new Intl.DateTimeFormat("ko-KR", {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit"
-    }).format(date);
-  };
+    const formatDate = (value) => {
+        if (!value) return "-";
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return String(value);
+        return new Intl.DateTimeFormat("ko-KR", {
+            month: "short",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit"
+        }).format(date);
+    };
 
   const getCurrentPageFromLocation = () => {
     const params = new URLSearchParams(window.location.search);
@@ -44,11 +44,11 @@
 
   const MAX_IMAGE_UPLOAD_BYTES = 50 * 1024 * 1024;
 
-  const authorLabel = (item) => {
-    if (!item) return "?듬챸";
-    if (item.writer_uid) return item.name || item.writer_uid;
-    return item.name || "?듬챸";
-  };
+    const authorLabel = (item) => {
+        if (!item) return "익명";
+        if (item.writer_uid) return item.name || item.writer_uid;
+        return item.name || "익명";
+    };
 
   function matchRoute(pathname) {
     if (pathname === "/") return { name: "home", params: {} };
@@ -93,34 +93,33 @@
     return h("div", { className: feedback.type === "error" ? "error-box" : "success-box" }, feedback.message);
   }
 
-  function Topbar({ session, onLogout, alarmCount = 0 }) {
-    return h("header", { className: "topbar" },
-      h("div", { className: "frame" },
-        h("div", { className: "topbar-inner" },
-          h(Link, { href: "/", className: "brand" },
-            h("span", { className: "brand-mark" }),
-            h("span", null, "irisen web")
-          ),
-          h("div", { className: "nav-actions" },
-            h(Link, { href: "/", className: "btn btn-ghost" }, "홈"),
-            h(Link, { href: "/boards", className: "btn btn-ghost" }, "蹂대뱶"),
-            session?.loggedIn
-              ? [
-                  h(Link, { href: "/profile", className: "btn btn-ghost", key: "profile" }, "프로필"),
-                  h(Link, { href: "/alarms", className: "btn btn-ghost", key: "alarms" }, alarmCount > 0 ? `알림 ${alarmCount}` : "알림"),
-                  h("span", { className: "chip", key: "nick" }, session.nick || session.uid),
-                  h("button", { type: "button", className: "btn btn-secondary", key: "logout", onClick: onLogout }, "濡쒓렇?꾩썐")
-                ]
-              : [
-                  h(Link, { href: "/signin", className: "btn btn-ghost", key: "login" }, "로그인"),
-                  h(Link, { href: "/nid", className: "btn btn-primary", key: "signup" }, "회원가입")
-                ]
-          )
-        )
-      )
-    );
-  }
-
+    function Topbar({ session, onLogout, alarmCount = 0 }) {
+        return h("header", { className: "topbar" },
+            h("div", { className: "frame" },
+                h("div", { className: "topbar-inner" },
+                    h(Link, { href: "/", className: "brand" },
+                        h("span", { className: "brand-mark" }),
+                        h("span", null, "irisen web")
+                    ),
+                    h("div", { className: "nav-actions" },
+                        h(Link, { href: "/", className: "btn btn-ghost" }, "홈"),
+                        h(Link, { href: "/boards", className: "btn btn-ghost" }, "보드"), // '蹂대뱶' 복구
+                        session?.loggedIn
+                            ? [
+                                h(Link, { href: "/profile", className: "btn btn-ghost", key: "profile" }, "프로필"),
+                                h(Link, { href: "/alarms", className: "btn btn-ghost", key: "alarms" }, alarmCount > 0 ? `알림 ${alarmCount}` : "알림"),
+                                h("span", { className: "chip", key: "nick" }, session.nick || session.uid),
+                                h("button", { type: "button", className: "btn btn-secondary", key: "logout", onClick: onLogout }, "로그아웃") // '濡쒓렇?꾩썐' 복구
+                            ]
+                            : [
+                                h(Link, { href: "/signin", className: "btn btn-ghost", key: "login" }, "로그인"),
+                                h(Link, { href: "/nid", className: "btn btn-primary", key: "signup" }, "회원가입")
+                            ]
+                    )
+                )
+            )
+        );
+    }
   function SectionHead({ eyebrow, title, action }) {
     return h("div", { className: "section-head" },
       h("div", null,
@@ -572,6 +571,70 @@ function BoardsView({ session, boards, query, onQueryChange, onLogout, alarmCoun
       manager ? `매니저 ${manager.nick || manager.uid}` : "매니저 미지정",
       ...submanagers.slice(0, 4).map((user) => `부매니저 ${user.nick || user.uid}`)
     ];
+    const isMini = boardInfo?.gall_type === "m";
+    const accentStyle = settings?.theme_color ? { borderTop: `4px solid ${settings.theme_color}` } : null;
+    const coverImageUrl = boardInfo?.cover_image_url || `/api/board/cover/${encodeURIComponent(gid)}`;
+
+    if (isMini) return h(React.Fragment, null,
+      h(Topbar, { session, onLogout, alarmCount }),
+      h("main", { className: "shell" },
+        h("div", { className: "frame" },
+          h("div", { className: "board-layout" },
+            h("section", { className: "section-stack" },
+              h(SectionHead, {
+                eyebrow: "Board",
+                title: board?.gall_name || gid,
+                action: h(Link, { href: `/board/${encodeURIComponent(gid)}/write`, className: "btn btn-primary" }, "글쓰기")
+              }),
+              settings?.welcome_message
+                ? h("article", { className: "card board-setting-preview", style: accentStyle },
+                    h("div", { className: "muted" }, "Welcome"),
+                    h("div", null, settings.welcome_message)
+                  )
+                : null,
+              settings?.board_notice
+                ? h("article", { className: "card board-setting-preview", style: accentStyle },
+                    h("div", { className: "muted" }, "Notice"),
+                    h("div", null, settings.board_notice)
+                  )
+                : null,
+              permissions.canManage
+                ? h(Link, { href: `/board/${encodeURIComponent(gid)}/manage`, className: "card quick-card board-setting-link" },
+                    h("div", { className: "board-title" }, "Board manage"),
+                    h("div", { className: "muted" }, "Open the management page for notice, welcome message, theme color, and guest permissions")
+                  )
+                : null,
+              posts.length
+                ? h("div", { className: "stack" },
+                    posts.map((post) =>
+                      h(Link, { href: `/board/${encodeURIComponent(gid)}/${post.post_no}?page=${page}`, className: "card quick-card", key: `${gid}-${post.post_no}`, reload: true },
+                        h("div", { className: "board-title" }, post.title || "제목 없음"),
+                        h("div", { className: "muted" }, `#${post.post_no} · ${authorLabel(post)} · 조회 ${post.view_count} · ${formatDate(post.writed_at || post.created_at)}`)
+                      )
+                    )
+                  )
+                : h("div", { className: "empty-box" }, "게시글이 없습니다."),
+              h("div", { className: "inline-actions" },
+                h("button", { type: "button", className: "btn btn-ghost", onClick: onPrevPage }, "이전"),
+                h("span", { className: "chip" }, `page ${page}`),
+                h("button", { type: "button", className: "btn btn-ghost", onClick: onNextPage }, "다음")
+              )
+            ),
+            h("aside", { className: "board-sideboard" },
+              h("article", { className: "card board-cover-card", style: accentStyle },
+                h("img", { className: "board-cover-image", src: coverImageUrl, alt: `${board?.gall_name || gid} cover` }),
+                h("div", { className: "board-cover-body" },
+                  h("span", { className: "eyebrow" }, "Sideboard"),
+                  h("h3", { className: "board-title", style: { margin: 0 } }, board?.gall_name || gid),
+                  h("div", { className: "muted" }, `매니저 ${manager?.nick || manager?.uid || board?.manager_nick || board?.manager_uid || "미지정"}`)
+                )
+              )
+            )
+          )
+        )
+      )
+    );
+
     return h(React.Fragment, null,
       h(Topbar, { session, onLogout, alarmCount }),
       h("main", { className: "shell" },
@@ -650,65 +713,6 @@ function BoardsView({ session, boards, query, onQueryChange, onLogout, alarmCoun
               h("button", { type: "button", className: "btn btn-secondary btn-compact", onClick: onNextPage }, "?ㅼ쓬")
             ),
             settingsFeedback ? h("div", { className: "board-settings-feedback" }, h(Feedback, { feedback: settingsFeedback })) : null
-          )
-        )
-      )
-    );
-    return h(React.Fragment, null,
-      h(Topbar, { session, onLogout, alarmCount }),
-      h("main", { className: "shell" },
-        h("div", { className: "frame" },
-          h("div", { className: "board-layout" },
-            h("section", { className: "section-stack" },
-              h(SectionHead, {
-                eyebrow: "Board",
-                title: board?.gall_name || gid,
-                action: h(Link, { href: `/board/${encodeURIComponent(gid)}/write`, className: "btn btn-primary" }, "湲?곌린")
-              }),
-              settings?.welcome_message
-                ? h("article", { className: "card board-setting-preview", style: accentStyle },
-                    h("div", { className: "muted" }, "Welcome"),
-                    h("div", null, settings.welcome_message)
-                  )
-                : null,
-              settings?.board_notice
-                ? h("article", { className: "card board-setting-preview", style: accentStyle },
-                    h("div", { className: "muted" }, "Notice"),
-                    h("div", null, settings.board_notice)
-                  )
-                : null,
-              permissions.canManage
-                ? h(Link, { href: `/board/${encodeURIComponent(gid)}/manage`, className: "card quick-card board-setting-link" },
-                    h("div", { className: "board-title" }, "Board manage"),
-                    h("div", { className: "muted" }, "Open the management page for notice, welcome message, theme color, and guest permissions")
-                  )
-                : null,
-              posts.length
-                ? h("div", { className: "stack" },
-                    posts.map((post) =>
-                      h(Link, { href: `/board/${encodeURIComponent(gid)}/${post.post_no}?page=${page}`, className: "card quick-card", key: `${gid}-${post.post_no}`, reload: true },
-                        h("div", { className: "board-title" }, post.title || "?쒕ぉ ?놁쓬"),
-                        h("div", { className: "muted" }, `#${post.post_no} 쨌 ${authorLabel(post)} 쨌 議고쉶??${post.view_count} 쨌${formatDate(post.writed_at || post.created_at)}`)
-                      )
-                    )
-                  )
-                : h("div", { className: "empty-box" }, "寃뚯떆湲???놁뒿?덈떎."),
-              h("div", { className: "inline-actions" },
-                h("button", { type: "button", className: "btn btn-ghost", onClick: onPrevPage }, "?댁쟾"),
-                h("span", { className: "chip" }, `page ${page}`),
-                h("button", { type: "button", className: "btn btn-ghost", onClick: onNextPage }, "?ㅼ쓬")
-              )
-            ),
-            h("aside", { className: "board-sideboard" },
-              h("article", { className: "card board-cover-card", style: accentStyle },
-                h("img", { className: "board-cover-image", src: coverImageUrl, alt: `${board?.gall_name || gid} cover` }),
-                h("div", { className: "board-cover-body" },
-                  h("span", { className: "eyebrow" }, "Sideboard"),
-                  h("h3", { className: "board-title", style: { margin: 0 } }, board?.gall_name || gid),
-                  h("div", { className: "muted" }, `매니저 ${manager?.nick || manager?.uid || board?.manager_nick || board?.manager_uid || "미지정"}`)
-                )
-              )
-            )
           )
         )
       )
