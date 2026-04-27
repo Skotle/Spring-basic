@@ -123,6 +123,18 @@ public class BoardController {
         }
     }
 
+    @PostMapping("/request/side-board")
+    public Map<String, Object> requestSideBoard(@RequestBody Map<String, String> payload,
+                                                @SessionAttribute(name = "uid", required = false) String uid) {
+        System.out.println("[" + LocalDateTime.now() + "] API /api/board/request/side-board");
+        try {
+            boardService.requestSideBoardCreation(payload, uid);
+            return Map.of("success", true, "message", "사이드보드 개설 요청을 보냈습니다.");
+        } catch (Exception e) {
+            return Map.of("success", false, "message", e.getMessage());
+        }
+    }
+
     @PostMapping("/write")
     public Map<String, Object> writePost(@RequestBody Map<String, String> payload,
                                          HttpServletRequest request,

@@ -21,8 +21,10 @@ import java.util.Map;
 public class BoardService {
     private static final String DEFAULT_BOARD_COVER_URL = "https://storage.googleapis.com/irisen-alpha/popolion.png";
     private static final String ALARM_REF_TYPE_BOARD_STAFF = "board_staff_request";
+    private static final String ALARM_REF_TYPE_BOARD_OPEN = "board_open_request";
     private static final String ALARM_TYPE_MANAGER_REQUEST = "board_manager_request";
     private static final String ALARM_TYPE_SUBMANAGER_REQUEST = "board_submanager_request";
+    private static final String ALARM_TYPE_SIDE_BOARD_REQUEST = "side_board_request";
     private static final String ALARM_TYPE_MANAGER_ACCEPTED = "board_manager_request_accepted";
     private static final String ALARM_TYPE_SUBMANAGER_ACCEPTED = "board_submanager_request_accepted";
     private static final String ALARM_TYPE_MANAGER_REJECTED = "board_manager_request_rejected";
@@ -77,6 +79,24 @@ public class BoardService {
                     PRIMARY KEY (gall_id)
                 )
                 """);
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS board_request (
+                    request_id BIGINT NOT NULL AUTO_INCREMENT,
+                    requester_uid VARCHAR(50) NOT NULL,
+                    gall_id VARCHAR(50) NULL,
+                    gall_name VARCHAR(100) NOT NULL,
+                    gall_type VARCHAR(10) NOT NULL DEFAULT 'm',
+                    reason TEXT NULL,
+                    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+                    reviewed_by VARCHAR(50) NULL,
+                    reviewed_at DATETIME NULL,
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (request_id)
+                )
+                """);
+        if (!columnExists("board_request", "gall_id")) {
+            jdbcTemplate.execute("ALTER TABLE board_request ADD COLUMN gall_id VARCHAR(50) NULL AFTER requester_uid");
+        }
         if (!columnExists("gallery_setting", "concept_recommend_threshold")) {
             jdbcTemplate.execute("ALTER TABLE gallery_setting ADD COLUMN concept_recommend_threshold INT NOT NULL DEFAULT 10");
         }
@@ -392,6 +412,25 @@ public class BoardService {
             return;
         }
         throw new RuntimeException("吏?먰븯吏 ?딅뒗 ?꾨챸 ?붿껌?낅땲??");
+    }
+
+    @Transactional
+    public void requestSideBoardCreation(Map<String, String> payload, String requesterUid) {
+        String uid = required(requesterUid, "로그인이 필요합니다.");
+        String gallId = normalizeRequestedGallId(payload.get("gallId"));
+        String gallName = required(payload.get("gallName"), "보드 이름을 입력해주세요.");
+        String reason = required(payload.get("reason"), "개설 요청 사유를 입력해주세요.");
+
+        ensureSideBoardRequestAllowed(uid, gallId, gallName);
+
+        jdbcTemplate.update("""
+                INSERT INTO board_request (
+                    requester_uid, gall_id, gall_name, gall_type, reason, status, reviewed_by, reviewed_at, created_at
+                )
+                VALUES (?, ?, ?, 'm', ?, 'pending', NULL, NULL, NOW())
+                """, uid, gallId, gallName, reason);
+
+        notifyAdminsForSideBoardRequest(uid, gallId, gallName, reason);
     }
 
     @Transactional
@@ -719,6 +758,70 @@ public class BoardService {
         return builder.toString();
     }
 
+    private void ensureSideBoardRequestAllowed(String requesterUid, String gallId, String gallName) {
+        if (gallId == null || gallId.isBlank()) {
+            throw new RuntimeException("?? ID? ??????.");
+        }
+        if (!gallId.matches("^[a-z0-9_\\-]{3,50}$")) {
+            throw new RuntimeException("?? ID? 3~50?? ?? ???, ??, _, - ? ??? ? ????.");
+        }
+        if (gallName.length() < 2 || gallName.length() > 100) {
+            throw new RuntimeException("?? ??? 2~100?? ??????.");
+        }
+        Integer existingGallery = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM gallery WHERE gall_id = ?",
+                Integer.class,
+                gallId
+        );
+        if (existingGallery != null && existingGallery > 0) {
+            throw new RuntimeException("?? ?? ?? ?? ID???.");
+        }
+        Integer existingPending = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM board_request
+                WHERE requester_uid = ?
+                  AND gall_id = ?
+                  AND status = 'pending'
+                """, Integer.class, requesterUid, gallId);
+        if (existingPending != null && existingPending > 0) {
+            throw new RuntimeException("?? ?? ID? ?? ?? ??? ?? ????.");
+        }
+    }
+
+    private void notifyAdminsForSideBoardRequest(String requesterUid, String gallId, String gallName, String reason) {
+        List<String> adminUids = jdbcTemplate.query(
+                "SELECT uid FROM user WHERE member_division IN ('1', 'admin', 'operator') ORDER BY uid ASC",
+                (rs, rowNum) -> rs.getString("uid")
+        );
+        if (adminUids.isEmpty()) {
+            return;
+        }
+        String requesterNick = firstNonBlank(getUserNick(requesterUid), requesterUid);
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("requesterUid", requesterUid);
+        payload.put("requesterNick", requesterNick);
+        payload.put("gallId", gallId);
+        payload.put("gallName", gallName);
+        payload.put("reason", reason);
+        payload.put("requestedAt", LocalDateTime.now().toString());
+        String title = "[????? ?? ??] " + gallName;
+        String content = toJson(payload);
+        for (String adminUid : adminUids) {
+            jdbcTemplate.update("""
+                    INSERT INTO alarm (uid, alarm_type, title, content, ref_type, ref_id)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """, adminUid, ALARM_TYPE_SIDE_BOARD_REQUEST, title, content, ALARM_REF_TYPE_BOARD_OPEN, gallId);
+        }
+    }
+
+    private String normalizeRequestedGallId(String rawValue) {
+        String normalized = nullableTrim(rawValue);
+        if (normalized == null) {
+            return null;
+        }
+        return normalized.toLowerCase();
+    }
+
     private Map<String, Object> getBoardRow(String gallId) {
         try {
             return jdbcTemplate.queryForMap("""
@@ -961,4 +1064,5 @@ public class BoardService {
     private record WriterInfo(String uid, String name, String ip, String passwordHash) {
     }
 }
+
 

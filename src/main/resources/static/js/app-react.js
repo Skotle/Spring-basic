@@ -93,6 +93,14 @@
     return h("div", { className: feedback.type === "error" ? "error-box" : "success-box" }, feedback.message);
   }
 
+  function PermissionNotice({ label, detail }) {
+    return h("article", { className: "card" },
+      h("span", { className: "eyebrow" }, "권한 안내"),
+      h("div", { className: "board-title", style: { fontSize: "1rem" } }, label),
+      detail ? h("div", { className: "muted", style: { marginTop: "6px" } }, detail) : null
+    );
+  }
+
   function Topbar({ session, onLogout, alarmCount = 0 }) {
     return h("header", { className: "topbar" },
       h("div", { className: "frame" },
@@ -464,6 +472,7 @@ function HomeView({ session, boards, feed, onLogout, alarmCount }) {
           h(
             "section",
             { className: "section-stack" },
+            h(PermissionNotice, { label: "홈은 누구나 볼 수 있습니다.", detail: "로그인 없이 보드 탐색과 추천 글 확인이 가능합니다." }),
             h(SectionHead, { eyebrow: "Feed", title: "추천 글" }),
             feed.length
               ? h(
@@ -491,7 +500,10 @@ function HomeView({ session, boards, feed, onLogout, alarmCount }) {
     );
   }
 
-function BoardsView({ session, boards, query, onQueryChange, onLogout, alarmCount }) {
+function BoardsView({ session, boards, query, onQueryChange, onSubmitSideBoardRequest, requestFeedback, onLogout, alarmCount }) {
+    const [requestGid, setRequestGid] = useState("");
+    const [requestName, setRequestName] = useState("");
+    const [requestReason, setRequestReason] = useState("");
     const filtered = boards.filter((board) => {
       const q = query.trim().toLowerCase();
       if (!q) return true;
@@ -511,6 +523,10 @@ function BoardsView({ session, boards, query, onQueryChange, onLogout, alarmCoun
           h(
             "section",
             { className: "section-stack" },
+            h(PermissionNotice, {
+              label: "보드 목록은 누구나 볼 수 있습니다.",
+              detail: "사이드보드 개설 요청은 로그인한 사용자만 보낼 수 있습니다."
+            }),
             h(SectionHead, { eyebrow: "Boards", title: "보드 목록" }),
             h(
               "div",
@@ -540,7 +556,61 @@ function BoardsView({ session, boards, query, onQueryChange, onLogout, alarmCoun
                     )
                   )
                 )
-              : h("div", { className: "empty-box" }, "검색 결과가 없습니다.")
+              : h("div", { className: "empty-box" }, "검색 결과가 없습니다."),
+            h("article", { className: "card" },
+              h("span", { className: "eyebrow" }, "Request"),
+              h("h3", { className: "section-title", style: { fontSize: "1.3rem" } }, "사이드보드 개설 요청"),
+              h("div", { className: "muted" }, "원하는 사이드보드가 없으면 운영진에게 개설 요청을 보낼 수 있습니다."),
+              !session?.loggedIn
+                ? h("div", { className: "empty-box", style: { marginTop: "12px" } }, "로그인 후 요청할 수 있습니다.")
+                : h("div", { className: "stack", style: { marginTop: "12px" } },
+                    h("div", { className: "field" },
+                      h("label", { htmlFor: "side-board-gid" }, "보드 ID"),
+                      h("input", {
+                        id: "side-board-gid",
+                        type: "text",
+                        value: requestGid,
+                        onChange: (event) => setRequestGid(event.target.value)
+                      })
+                    ),
+                    h("div", { className: "field" },
+                      h("label", { htmlFor: "side-board-name" }, "보드 이름"),
+                      h("input", {
+                        id: "side-board-name",
+                        type: "text",
+                        value: requestName,
+                        onChange: (event) => setRequestName(event.target.value)
+                      })
+                    ),
+                    h("div", { className: "field" },
+                      h("label", { htmlFor: "side-board-reason" }, "요청 사유"),
+                      h("textarea", {
+                        id: "side-board-reason",
+                        rows: 4,
+                        value: requestReason,
+                        onChange: (event) => setRequestReason(event.target.value)
+                      })
+                    ),
+                    h(Feedback, { feedback: requestFeedback }),
+                    h("div", { className: "inline-actions" },
+                      h("button", {
+                        type: "button",
+                        className: "btn btn-primary",
+                        onClick() {
+                          onSubmitSideBoardRequest({
+                            gallId: requestGid,
+                            gallName: requestName,
+                            reason: requestReason
+                          }, () => {
+                            setRequestGid("");
+                            setRequestName("");
+                            setRequestReason("");
+                          });
+                        }
+                      }, "요청 보내기")
+                    )
+                  )
+            )
           )
         )
       )
@@ -577,6 +647,10 @@ function BoardsView({ session, boards, query, onQueryChange, onLogout, alarmCoun
       h("main", { className: "shell" },
         h("div", { className: "frame" },
           h("section", { className: "dc-board-shell", style: boardThemeStyle },
+            h(PermissionNotice, {
+              label: "보드 읽기는 누구나 가능합니다.",
+              detail: `글쓰기 ${settings?.allow_guest_post !== false ? "허용" : "로그인 필요"} · 댓글 ${settings?.allow_guest_comment !== false ? "허용" : "로그인 필요"}`
+            }),
             h("div", { className: "dc-board-head" },
               h("div", { className: "dc-board-title-row" },
                 h("h1", { className: "dc-board-title" }, boardInfo?.gall_name || gid),
@@ -883,6 +957,10 @@ function BoardsView({ session, boards, query, onQueryChange, onLogout, alarmCoun
         h("div", { className: "frame" },
           h("section", { className: "write-grid" },
             h("article", { className: "card" },
+              h(PermissionNotice, {
+                label: "글쓰기는 보드 설정에 따라 비회원 또는 로그인 사용자만 가능합니다.",
+                detail: "비회원 작성 시 이름과 비밀번호를 같이 입력해야 합니다."
+              }),
               h(SectionHead, { eyebrow: "Write", title: `${gid} 湲?곌린` }),
               h("div", { className: "field" },
                 h("label", { htmlFor: "write-title" }, "제목"),
@@ -1018,6 +1096,10 @@ function BoardsView({ session, boards, query, onQueryChange, onLogout, alarmCoun
         h("div", { className: "frame" },
           h("section", { className: "auth-wrap" },
             h("article", { className: "auth-card card" },
+              h(PermissionNotice, {
+                label: isLogin ? "로그인은 비회원 페이지입니다." : "회원가입은 비회원만 진행하면 됩니다.",
+                detail: isLogin ? "로그인하면 알림, 프로필, 보드 요청 기능을 사용할 수 있습니다." : "가입 후 이메일 인증을 완료해야 계정이 활성화됩니다."
+              }),
               h("span", { className: "eyebrow" }, isLogin ? "Access" : currentSignupStep.eyebrow),
               h("h1", { className: "section-title" }, isLogin ? "로그인" : currentSignupStep.title),
               h("div", { className: "stack", style: { marginTop: "16px" } },
@@ -1093,6 +1175,10 @@ function BoardsView({ session, boards, query, onQueryChange, onLogout, alarmCoun
       h("main", { className: "shell" },
         h("div", { className: "frame" },
           h("section", { className: "section-stack" },
+            h(PermissionNotice, {
+              label: "알림 페이지는 로그인 사용자만 확인할 수 있습니다.",
+              detail: "운영 관련 요청이나 개인 알림이 이곳으로 도착합니다."
+            }),
             h(SectionHead, { eyebrow: "Inbox", title: "?뚮┝" }),
             !session?.loggedIn
               ? h("article", { className: "card auth-card" }, h("p", { className: "muted" }, "로그인 후 알림을 확인할 수 있습니다."))
@@ -1161,6 +1247,10 @@ function BoardsView({ session, boards, query, onQueryChange, onLogout, alarmCoun
       h("main", { className: "shell" },
         h("div", { className: "frame" },
           h("section", { className: "section-stack" },
+            h(PermissionNotice, {
+              label: profileData.ownerView ? "내 프로필 수정은 로그인한 본인만 가능합니다." : "공개 프로필은 누구나 볼 수 있습니다.",
+              detail: "비공개 설정한 항목은 다른 사용자에게 노출되지 않습니다."
+            }),
             h("article", { className: "card profile-hero-card", style: accentStyle },
               h("div", { className: "profile-hero-head" },
                 h("div", { className: "stack", style: { gap: "8px" } },
@@ -1323,6 +1413,7 @@ function BoardsView({ session, boards, query, onQueryChange, onLogout, alarmCoun
     const [alarmFeedback, setAlarmFeedback] = useState(null);
     const [settingsFeedback, setSettingsFeedback] = useState(null);
     const [profileFeedback, setProfileFeedback] = useState(null);
+    const [boardRequestFeedback, setBoardRequestFeedback] = useState(null);
 
     const currentBoard = boards.find((board) => board.gall_id === route.params.gid) || null;
     const targetProfileUid = route.params.uid || session.uid || "";
@@ -1616,6 +1707,23 @@ function BoardsView({ session, boards, query, onQueryChange, onLogout, alarmCoun
       }).catch((error) => setProfileFeedback({ type: "error", message: error.message || "?꾨줈????μ뿉 ?ㅽ뙣?덉뒿?덈떎." }));
     }
 
+    function submitSideBoardRequest(payload, reset) {
+      api("/api/board/request/side-board", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      }).then((result) => {
+        if (!result?.success) {
+          setBoardRequestFeedback({ type: "error", message: result?.message || "사이드보드 요청에 실패했습니다." });
+          return;
+        }
+        reset?.();
+        setBoardRequestFeedback({ type: "success", message: result?.message || "사이드보드 개설 요청을 보냈습니다." });
+        if (session?.loggedIn) {
+          refreshAlarms();
+        }
+      }).catch((error) => setBoardRequestFeedback({ type: "error", message: error.message || "사이드보드 요청에 실패했습니다." }));
+    }
+
     function acceptAlarm(alarmId) {
       api(`/api/alarms/${encodeURIComponent(alarmId)}/accept`, { method: "POST" })
         .then((result) => {
@@ -1644,7 +1752,16 @@ function BoardsView({ session, boards, query, onQueryChange, onLogout, alarmCoun
     }
 
     if (route.name === "home") return h(HomeView, { session, boards, feed, onLogout: handleLogout, alarmCount });
-    if (route.name === "boards") return h(BoardsView, { session, boards, query, onQueryChange: setQuery, onLogout: handleLogout, alarmCount });
+    if (route.name === "boards") return h(BoardsView, {
+      session,
+      boards,
+      query,
+      onQueryChange: setQuery,
+      onSubmitSideBoardRequest: submitSideBoardRequest,
+      requestFeedback: boardRequestFeedback,
+      onLogout: handleLogout,
+      alarmCount
+    });
     if (route.name === "board") return h(BoardView, {
       session,
       gid: route.params.gid,
