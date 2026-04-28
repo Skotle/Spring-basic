@@ -408,6 +408,116 @@
     );
   }
 
+  function HomePortalView({ session, boards, feed, onLogout, alarmCount }) {
+    const normalizedBoards = Array.isArray(boards) ? boards : [];
+    const normalizedFeed = Array.isArray(feed) ? feed.slice(0, 8) : [];
+    const buckets = normalizedBoards.reduce((acc, board) => {
+      const type = String(board?.gall_type || "").toLowerCase();
+      if (type === "main") acc.main.push(board);
+      else if (type === "m" || type === "side" || type === "minor" || type === "s") acc.side.push(board);
+      else acc.other.push(board);
+      return acc;
+    }, { main: [], side: [], other: [] });
+
+    const renderBoardGroup = (title, items, emptyText) =>
+      h("article", { className: "home-board-group card" },
+        h("div", { className: "home-board-group-head" },
+          h("h3", { className: "home-board-group-title" }, title),
+          h("span", { className: "chip" }, `${items.length}개`)
+        ),
+        items.length
+          ? h("div", { className: "home-board-list" }, items.slice(0, 10).map((board) =>
+              h(Link, { href: `/board/${encodeURIComponent(board.gall_id)}`, className: "home-board-link", key: `${title}-${board.gall_id}` },
+                h("span", { className: "home-board-link-title" }, board.gall_name || board.gall_id),
+                h("span", { className: "home-board-link-meta" }, `${board.gall_id} · ${board.post_count ?? 0} posts`)
+              )
+            ))
+          : h("div", { className: "empty-box" }, emptyText)
+      );
+
+    return h(React.Fragment, null,
+      h(Topbar, { session, onLogout, alarmCount }),
+      h("main", { className: "shell" },
+        h("div", { className: "frame" },
+          h("section", { className: "home-portal" },
+            h("div", { className: "home-portal-main" },
+              h("article", { className: "home-hero card" },
+                h("div", { className: "home-hero-head" },
+                  h("span", { className: "home-hero-script" }, "irisen archive"),
+                  h("div", { className: "home-hero-search" },
+                    h("input", { type: "text", readOnly: true, value: "보드와 사이드보드 둘러보기", "aria-label": "board explorer" }),
+                    h(Link, { href: "/boards", className: "home-hero-search-button" }, "이동")
+                  )
+                ),
+                h("div", { className: "home-hero-nav" },
+                  h("span", null, "보드"),
+                  h("span", null, "/"),
+                  h("span", null, "사이드보드"),
+                  h("span", null, "/"),
+                  h("span", null, "기타")
+                ),
+                h("div", { className: "home-hero-foot" },
+                  h("strong", null, "오늘의 흐름"),
+                  h("span", null, `전체 보드 ${normalizedBoards.length}개 · 인기 글 ${normalizedFeed.length}개`),
+                  h("div", { className: "inline-actions" },
+                    h(Link, { href: "/boards", className: "btn btn-primary" }, "전체 보드"),
+                    session?.loggedIn
+                      ? h(Link, { href: "/profile", className: "btn btn-secondary" }, "내 프로필")
+                      : h(Link, { href: "/signin", className: "btn btn-secondary" }, "로그인")
+                  )
+                )
+              ),
+              h("div", { className: "home-board-columns" },
+                renderBoardGroup("보드", buckets.main, "표시할 메인 보드가 없습니다."),
+                renderBoardGroup("사이드보드", buckets.side, "표시할 사이드보드가 없습니다."),
+                renderBoardGroup("기타", buckets.other, "표시할 기타 보드가 없습니다.")
+              ),
+              h("article", { className: "card home-feed-card" },
+                h(SectionHead, { eyebrow: "Live", title: "지금 반응 많은 글" }),
+                normalizedFeed.length
+                  ? h("div", { className: "home-feed-list" }, normalizedFeed.map((post, index) =>
+                      h(Link, { href: `/board/${encodeURIComponent(post.gall_id)}/${post.post_no}`, className: "home-feed-row", key: `${post.gall_id}-${post.post_no}`, reload: true },
+                        h("span", { className: "home-feed-rank" }, String(index + 1).padStart(2, "0")),
+                        h("div", { className: "home-feed-copy" },
+                          h("div", { className: "home-feed-title" }, post.title || "제목 없음"),
+                          h("div", { className: "home-feed-meta" }, `${post.gall_name || post.gall_id} · ${authorLabel(post)}`)
+                        )
+                      )
+                    ))
+                  : h("div", { className: "empty-box" }, "추천 글이 없습니다.")
+              )
+            ),
+            h("aside", { className: "home-portal-side" },
+              h("article", { className: "card home-side-card" },
+                h("span", { className: "eyebrow" }, "Status"),
+                h("h3", { className: "home-side-title" }, session?.loggedIn ? `${session.nick || session.uid} 님` : "게스트 모드"),
+                h("p", { className: "home-side-copy" }, session?.loggedIn ? "프로필, 알림, 작성 기능을 바로 사용할 수 있습니다." : "로그인 없이도 보드와 인기 글을 둘러볼 수 있습니다."),
+                h(PermissionMatrix, { items: [
+                  { action: "보드 열람", required: "전체 사용자", available: true },
+                  { action: "인기 글 열람", required: "전체 사용자", available: true },
+                  { action: "개인화 기능", required: "로그인 사용자", available: !!session?.loggedIn }
+                ] })
+              ),
+              h("article", { className: "card home-side-card" },
+                h(SectionHead, { eyebrow: "Quick", title: "바로 가기" }),
+                h("div", { className: "compact-stack" },
+                  h(Link, { href: "/boards", className: "mini-link-card" },
+                    h("div", { className: "board-title", style: { fontSize: "1rem" } }, "보드 모아보기"),
+                    h("div", { className: "muted" }, "전체 보드와 사이드보드 요청")
+                  ),
+                  h(Link, { href: session?.loggedIn ? "/profile" : "/signin", className: "mini-link-card" },
+                    h("div", { className: "board-title", style: { fontSize: "1rem" } }, session?.loggedIn ? "내 프로필" : "로그인"),
+                    h("div", { className: "muted" }, session?.loggedIn ? "팔로우와 작성 기록 확인" : "개인 기능 사용을 위해 로그인")
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    );
+  }
+
   function BoardView({ session, gid, board, posts, page, manageData, settingsFeedback, onPrevPage, onNextPage, onLogout, alarmCount }) {
     const settings = manageData?.settings || null;
     const permissions = manageData?.permissions || {};
@@ -1735,7 +1845,7 @@
         .catch((error) => setAlarmFeedback({ type: "error", message: error.message || "알림 읽음 처리에 실패했습니다." }));
     }
 
-    if (route.name === "home") return h(HomeView, { session, boards, feed, onLogout: handleLogout, alarmCount });
+    if (route.name === "home") return h(HomePortalView, { session, boards, feed, onLogout: handleLogout, alarmCount });
     if (route.name === "boards") return h(BoardsView, { session, boards, query, onQueryChange: setQuery, onSubmitSideBoardRequest: submitSideBoardRequest, requestFeedback: boardRequestFeedback, onLogout: handleLogout, alarmCount });
     if (route.name === "board") return h(BoardView, { session, gid: route.params.gid, board: currentBoard, posts: boardPosts, page, manageData: boardManageData, settingsFeedback, onPrevPage: () => navigate(`/board/${encodeURIComponent(route.params.gid)}?page=${Math.max(1, page - 1)}`), onNextPage: () => navigate(`/board/${encodeURIComponent(route.params.gid)}?page=${page + 1}`), onLogout: handleLogout, alarmCount });
     if (route.name === "boardManage") return h(BoardManageView, { session, gid: route.params.gid, board: currentBoard, manageData: boardManageData, feedback: settingsFeedback, onSaveSettings: submitBoardSettings, onLogout: handleLogout, alarmCount });
