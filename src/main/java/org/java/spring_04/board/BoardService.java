@@ -19,7 +19,6 @@ import java.util.Map;
 
 @Service
 public class BoardService {
-    private static final String DEFAULT_BOARD_COVER_URL = "https://storage.googleapis.com/irisen-alpha/popolion.png";
     private static final String ALARM_REF_TYPE_BOARD_STAFF = "board_staff_request";
     private static final String ALARM_REF_TYPE_BOARD_OPEN = "board_open_request";
     private static final String ALARM_TYPE_MANAGER_REQUEST = "board_manager_request";
@@ -27,16 +26,18 @@ public class BoardService {
     private static final String ALARM_TYPE_SIDE_BOARD_REQUEST = "side_board_request";
     private static final String ALARM_TYPE_MANAGER_ACCEPTED = "board_manager_request_accepted";
     private static final String ALARM_TYPE_SUBMANAGER_ACCEPTED = "board_submanager_request_accepted";
+    private static final String ALARM_TYPE_SIDE_BOARD_ACCEPTED = "side_board_request_accepted";
     private static final String ALARM_TYPE_MANAGER_REJECTED = "board_manager_request_rejected";
     private static final String ALARM_TYPE_SUBMANAGER_REJECTED = "board_submanager_request_rejected";
+    private static final String ALARM_TYPE_SIDE_BOARD_REJECTED = "side_board_request_rejected";
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
     @PostConstruct
     public void initializeBoardManagementSchema() {
-        if (!columnExists("gallery", "manager_uid")) {
-            jdbcTemplate.execute("ALTER TABLE gallery ADD COLUMN manager_uid VARCHAR(50) NULL");
+        if (!columnExists("board", "manager_uid")) {
+            jdbcTemplate.execute("ALTER TABLE board ADD COLUMN manager_uid VARCHAR(50) NULL");
         }
         jdbcTemplate.execute("""
                 CREATE TABLE IF NOT EXISTS board_submanager (
@@ -70,6 +71,7 @@ public class BoardService {
                     board_notice TEXT NULL,
                     welcome_message TEXT NULL,
                     cover_image_url VARCHAR(500) NULL,
+                    category_options TEXT NULL,
                     theme_color VARCHAR(20) NOT NULL DEFAULT '#ff8fab',
                     concept_recommend_threshold INT NOT NULL DEFAULT 10,
                     allow_guest_post TINYINT(1) NOT NULL DEFAULT 1,
@@ -94,11 +96,49 @@ public class BoardService {
                     PRIMARY KEY (request_id)
                 )
                 """);
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS board_counter (
+                    gall_id VARCHAR(50) NOT NULL,
+                    last_post_no INT NOT NULL DEFAULT 0,
+                    PRIMARY KEY (gall_id)
+                )
+                """);
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS board_transfer (
+                    transfer_id BIGINT NOT NULL AUTO_INCREMENT,
+                    gall_id VARCHAR(50) NOT NULL,
+                    from_uid VARCHAR(50) NOT NULL,
+                    to_uid VARCHAR(50) NOT NULL,
+                    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+                    responded_at DATETIME NULL,
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (transfer_id)
+                )
+                """);
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS board_ban (
+                    ban_id BIGINT NOT NULL AUTO_INCREMENT,
+                    gall_id VARCHAR(50) NOT NULL,
+                    target_uid VARCHAR(50) NULL,
+                    target_ip VARCHAR(45) NULL,
+                    banned_by VARCHAR(50) NOT NULL,
+                    reason VARCHAR(255) NULL,
+                    banned_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    expires_at DATETIME NULL,
+                    PRIMARY KEY (ban_id)
+                )
+                """);
         if (!columnExists("board_request", "gall_id")) {
             jdbcTemplate.execute("ALTER TABLE board_request ADD COLUMN gall_id VARCHAR(50) NULL AFTER requester_uid");
         }
         if (!columnExists("gallery_setting", "concept_recommend_threshold")) {
             jdbcTemplate.execute("ALTER TABLE gallery_setting ADD COLUMN concept_recommend_threshold INT NOT NULL DEFAULT 10");
+        }
+        if (!columnExists("gallery_setting", "category_options")) {
+            jdbcTemplate.execute("ALTER TABLE gallery_setting ADD COLUMN category_options TEXT NULL");
+        }
+        if (!columnExists("post", "category")) {
+            jdbcTemplate.execute("ALTER TABLE post ADD COLUMN category VARCHAR(50) NULL");
         }
     }
 
@@ -117,6 +157,9 @@ public class BoardService {
         String sql = """
                 SELECT g.gall_id,
                        g.gall_name,
+                       g.gall_type,
+                       g.category,
+                       g.status,
                        g.post_count,
                        g.manager_uid,
                        manager.nick AS manager_nick,
@@ -125,7 +168,7 @@ public class BoardService {
                            FROM board_submanager bs
                            WHERE bs.gall_id = g.gall_id
                        ) AS submanager_count
-                FROM gallery g
+                FROM board g
                 LEFT JOIN user manager ON manager.uid = g.manager_uid
                 ORDER BY g.gall_id ASC
                 """;
@@ -147,10 +190,13 @@ public class BoardService {
                              AND c.is_deleted = 0
                        ) AS comment_count
                 FROM post p
-                JOIN gallery g ON g.gall_id = p.gall_id
+                JOIN board g ON g.gall_id = p.gall_id
                 LEFT JOIN user author ON author.uid = p.writer_uid
                 WHERE p.gall_id = ?
                   AND p.is_deleted = 0
+                  AND COALESCE(p.is_draft, 0) = 0
+                  AND COALESCE(p.is_secret, 0) = 0
+                  AND COALESCE(p.review_status, 'normal') <> 'review'
                 ORDER BY p.writed_at DESC, p.id DESC, p.post_no DESC
                 LIMIT ? OFFSET ?
                 """;
@@ -169,7 +215,7 @@ public class BoardService {
                              AND c.is_deleted = 0
                        ) AS comment_count
                 FROM post p
-                JOIN gallery g ON g.gall_id = p.gall_id
+                JOIN board g ON g.gall_id = p.gall_id
                 LEFT JOIN user author ON author.uid = p.writer_uid
                 WHERE p.gall_id = ?
                   AND p.post_no = ?
@@ -186,7 +232,7 @@ public class BoardService {
     public Map<String, Object> getBoardManageInfo(String gallId, String viewerUid, String viewerDivision) {
         Map<String, Object> board = getBoardRow(gallId);
         if (board == null) {
-            throw new RuntimeException("?대떦 蹂대뱶瑜?李얠쓣 ???놁뒿?덈떎.");
+            throw new RuntimeException("해당 게시판을 찾을 수 없습니다.");
         }
 
         boolean eligible = isManagedBoardEligible(board);
@@ -204,23 +250,33 @@ public class BoardService {
                 "isManager", isBoardManager(gallId, viewerUid),
                 "isSubmanager", isBoardSubmanager(gallId, viewerUid),
                 "canManage", canManageBoard(gallId, viewerUid, viewerDivision),
-                "canAppoint", canAssignBoardStaff(gallId, viewerUid, viewerDivision)
+                "canAppoint", canAssignBoardStaff(gallId, viewerUid, viewerDivision),
+                "isAdmin", isGlobalAdmin(viewerDivision)
         ));
+        result.put("roleLabels", resolveBoardRoleLabels(gallId, viewerUid, viewerDivision));
         return result;
     }
 
     public Map<String, Object> getBoardSettings(String gallId) {
-        String boardId = required(gallId, "보드 ID가 필요합니다.");
+        String boardId = required(gallId, "게시판 ID가 필요합니다.");
         Map<String, Object> defaults = defaultBoardSettings(boardId);
         try {
             Map<String, Object> row = jdbcTemplate.queryForMap("""
                     SELECT gall_id,
                            board_notice,
                            welcome_message,
+                           category_options,
                            theme_color,
                            concept_recommend_threshold,
                            allow_guest_post,
                            allow_guest_comment,
+                           join_policy,
+                           visibility,
+                           pinned_notice_count,
+                           allowed_attachment_types,
+                           attachment_max_bytes,
+                           side_board_approval_policy,
+                           dormant_after_days,
                            updated_by,
                            updated_at
                     FROM gallery_setting
@@ -228,9 +284,19 @@ public class BoardService {
                     """, boardId);
             defaults.putAll(row);
             defaults.put("theme_color", firstNonBlank(nullableText(row.get("theme_color")), "#ff8fab"));
+            String categoryOptions = normalizeCategoryOptions(nullableText(row.get("category_options")));
+            defaults.put("category_options", categoryOptions);
+            defaults.put("category_options_list", parseCategoryOptions(categoryOptions));
             defaults.put("concept_recommend_threshold", normalizeConceptThreshold(row.get("concept_recommend_threshold")));
             defaults.put("allow_guest_post", toBooleanFlag(row.get("allow_guest_post")));
             defaults.put("allow_guest_comment", toBooleanFlag(row.get("allow_guest_comment")));
+            defaults.put("join_policy", firstNonBlank(nullableText(row.get("join_policy")), "free"));
+            defaults.put("visibility", firstNonBlank(nullableText(row.get("visibility")), "public"));
+            defaults.put("pinned_notice_count", normalizeConceptThreshold(row.get("pinned_notice_count")));
+            defaults.put("allowed_attachment_types", nullableText(row.get("allowed_attachment_types")));
+            defaults.put("attachment_max_bytes", row.get("attachment_max_bytes"));
+            defaults.put("side_board_approval_policy", firstNonBlank(nullableText(row.get("side_board_approval_policy")), "operator"));
+            defaults.put("dormant_after_days", normalizeConceptThreshold(row.get("dormant_after_days")));
             return defaults;
         } catch (EmptyResultDataAccessException e) {
             return defaults;
@@ -239,27 +305,38 @@ public class BoardService {
 
     @Transactional
     public Map<String, Object> saveBoardSettings(String gallId, Map<String, String> payload, String uid, String memberDivision) {
-        String boardId = required(gallId, "보드 ID가 필요합니다.");
-        String actorUid = required(uid, "로그인이 필요합니다.");
+        String boardId = required(gallId, "갤러리 ID를 입력해주세요.");
+        String actorUid = required(uid, "로그인 정보가 필요합니다.");
 
         requireBoard(boardId);
         if (!canManageBoard(boardId, actorUid, memberDivision)) {
-            throw new RuntimeException("보드 설정을 수정할 권한이 없습니다.");
+            throw new RuntimeException("게시판 설정을 변경할 권한이 없습니다.");
         }
 
         String boardNotice = nullableTrim(payload.get("boardNotice"));
         String welcomeMessage = nullableTrim(payload.get("welcomeMessage"));
+        String categoryOptions = normalizeCategoryOptions(payload.get("categoryOptions"));
         String themeColor = normalizeThemeColor(payload.get("themeColor"));
         int conceptRecommendThreshold = normalizeConceptThreshold(payload.get("conceptRecommendThreshold"));
-        int allowGuestPost = parseBooleanFlag(payload.get("allowGuestPost"), true);
-        int allowGuestComment = parseBooleanFlag(payload.get("allowGuestComment"), true);
+        int allowGuestPost = parseBooleanFlag(payload.get("allowGuestPost"));
+        int allowGuestComment = parseBooleanFlag(payload.get("allowGuestComment"));
+        String joinPolicy = normalizeChoice(payload.get("joinPolicy"), List.of("free", "approval"), "free");
+        String visibility = normalizeChoice(payload.get("visibility"), List.of("public", "private", "members"), "public");
+        int pinnedNoticeCount = normalizeNonNegativeInt(payload.get("pinnedNoticeCount"), 3);
+        String allowedAttachmentTypes = nullableTrim(payload.get("allowedAttachmentTypes"));
+        long attachmentMaxBytes = normalizeLong(payload.get("attachmentMaxBytes"), 10_485_760L);
+        String sideBoardApprovalPolicy = normalizeChoice(payload.get("sideBoardApprovalPolicy"), List.of("operator", "auto"), "operator");
+        int dormantAfterDays = normalizeNonNegativeInt(payload.get("dormantAfterDays"), 180);
 
         jdbcTemplate.update("""
                 INSERT INTO gallery_setting (
                     gall_id, board_notice, welcome_message, theme_color, concept_recommend_threshold,
-                    allow_guest_post, allow_guest_comment, updated_by, updated_at
+                    allow_guest_post, allow_guest_comment, category_options,
+                    join_policy, visibility, pinned_notice_count, allowed_attachment_types,
+                    attachment_max_bytes, side_board_approval_policy, dormant_after_days,
+                    updated_by, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
                 ON DUPLICATE KEY UPDATE
                     board_notice = VALUES(board_notice),
                     welcome_message = VALUES(welcome_message),
@@ -267,6 +344,14 @@ public class BoardService {
                     concept_recommend_threshold = VALUES(concept_recommend_threshold),
                     allow_guest_post = VALUES(allow_guest_post),
                     allow_guest_comment = VALUES(allow_guest_comment),
+                    category_options = VALUES(category_options),
+                    join_policy = VALUES(join_policy),
+                    visibility = VALUES(visibility),
+                    pinned_notice_count = VALUES(pinned_notice_count),
+                    allowed_attachment_types = VALUES(allowed_attachment_types),
+                    attachment_max_bytes = VALUES(attachment_max_bytes),
+                    side_board_approval_policy = VALUES(side_board_approval_policy),
+                    dormant_after_days = VALUES(dormant_after_days),
                     updated_by = VALUES(updated_by),
                     updated_at = NOW()
                 """,
@@ -277,6 +362,14 @@ public class BoardService {
                 conceptRecommendThreshold,
                 allowGuestPost,
                 allowGuestComment,
+                categoryOptions,
+                joinPolicy,
+                visibility,
+                pinnedNoticeCount,
+                allowedAttachmentTypes,
+                attachmentMaxBytes,
+                sideBoardApprovalPolicy,
+                dormantAfterDays,
                 actorUid
         );
 
@@ -285,9 +378,9 @@ public class BoardService {
 
     @Transactional
     public void assignManager(String gallId, String targetUid, String actorUid, String actorDivision) {
-        String boardId = required(gallId, "蹂대뱶 ID媛 ?꾩슂?⑸땲??");
-        String actor = required(actorUid, "濡쒓렇?몄씠 ?꾩슂?⑸땲??");
-        String resolvedTarget = required(targetUid == null || targetUid.isBlank() ? actorUid : targetUid, "留ㅻ땲? UID媛 ?꾩슂?⑸땲??");
+        String boardId = required(gallId, "갤러리 ID를 입력해주세요.");
+        String actor = required(actorUid, "요청자 정보를 입력해주세요.");
+        String resolvedTarget = required(targetUid == null || targetUid.isBlank() ? actorUid : targetUid, "대상자 UID를 입력해주세요.");
         Map<String, Object> board = requireBoard(boardId);
         ensureManagedBoardEligible(board);
         ensureUserExists(resolvedTarget);
@@ -297,10 +390,14 @@ public class BoardService {
 
         if (currentManager == null || currentManager.isBlank()) {
             if (!globalAdmin && !actor.equals(resolvedTarget)) {
-                throw new RuntimeException("泥?留ㅻ땲? 吏?뺤? 蹂몄씤 怨꾩젙?쇰줈留??????덉뒿?덈떎.");
+                throw new RuntimeException("매니저가 없는 갤러리는 본인만 매니저를 요청할 수 있습니다.");
             }
         } else if (!globalAdmin && !currentManager.equals(actor)) {
-            throw new RuntimeException("?꾩옱 留ㅻ땲?留???留ㅻ땲?瑜?吏?뺥븷 ???덉뒿?덈떎.");
+            throw new RuntimeException("현재 매니저만 다른 매니저에게 양도 요청할 수 있습니다.");
+        }
+
+        if (currentManager != null && !currentManager.isBlank() && !globalAdmin && !isBoardSubmanager(boardId, resolvedTarget)) {
+            throw new RuntimeException("기존 매니저가 있는 갤러리는 부매니저 한 명에게만 양도할 수 있습니다.");
         }
 
         createBoardStaffRequest(board, resolvedTarget, actor, "manager");
@@ -308,20 +405,20 @@ public class BoardService {
 
     @Transactional
     public void appointSubmanager(String gallId, String targetUid, String actorUid, String actorDivision) {
-        String boardId = required(gallId, "蹂대뱶 ID媛 ?꾩슂?⑸땲??");
-        String actor = required(actorUid, "濡쒓렇?몄씠 ?꾩슂?⑸땲??");
-        String resolvedTarget = required(targetUid, "遺留ㅻ땲? UID媛 ?꾩슂?⑸땲??");
+        String boardId = required(gallId, "갤러리 ID를 입력해주세요.");
+        String actor = required(actorUid, "요청자 정보를 입력해주세요.");
+        String resolvedTarget = required(targetUid, "부매니저 대상자 UID를 입력해주세요.");
         Map<String, Object> board = requireBoard(boardId);
         ensureManagedBoardEligible(board);
         ensureUserExists(resolvedTarget);
 
         if (!canAssignBoardStaff(boardId, actor, actorDivision)) {
-            throw new RuntimeException("留ㅻ땲?留?遺留ㅻ땲?瑜??꾨챸?????덉뒿?덈떎.");
+            throw new RuntimeException("매니저만 부매니저를 임명할 수 있습니다.");
         }
 
         String managerUid = getManagerUid(boardId);
         if (managerUid != null && managerUid.equals(resolvedTarget)) {
-            throw new RuntimeException("?꾩옱 留ㅻ땲???遺留ㅻ땲?濡?以묐났 吏?뺥븷 ???놁뒿?덈떎.");
+            throw new RuntimeException("현재 매니저는 부매니저로 임명할 수 없습니다.");
         }
 
         createBoardStaffRequest(board, resolvedTarget, actor, "submanager");
@@ -329,21 +426,21 @@ public class BoardService {
 
     @Transactional
     public void revokeSubmanager(String gallId, String targetUid, String actorUid, String actorDivision) {
-        String boardId = required(gallId, "蹂대뱶 ID媛 ?꾩슂?⑸땲??");
-        String actor = required(actorUid, "濡쒓렇?몄씠 ?꾩슂?⑸땲??");
-        String resolvedTarget = required(targetUid, "遺留ㅻ땲? UID媛 ?꾩슂?⑸땲??");
+        String boardId = required(gallId, "갤러리 ID를 입력해주세요.");
+        String actor = required(actorUid, "요청자 정보를 입력해주세요.");
+        String resolvedTarget = required(targetUid, "부매니저 대상자 UID를 입력해주세요.");
         Map<String, Object> board = requireBoard(boardId);
         ensureManagedBoardEligible(board);
 
         if (!canAssignBoardStaff(boardId, actor, actorDivision)) {
-            throw new RuntimeException("留ㅻ땲?留?遺留ㅻ땲?瑜??댁젣?????덉뒿?덈떎.");
+            throw new RuntimeException("매니저만 부매니저를 해임할 수 있습니다.");
         }
 
         jdbcTemplate.update("DELETE FROM board_submanager WHERE gall_id = ? AND uid = ?", boardId, resolvedTarget);
     }
 
     public List<Map<String, Object>> getMyAlarms(String uid) {
-        String resolvedUid = required(uid, "濡쒓렇?몄씠 ?꾩슂?⑸땲??");
+        String resolvedUid = required(uid, "요청자 정보를 입력해주세요.");
         List<Map<String, Object>> rows = jdbcTemplate.queryForList("""
                 SELECT alarm_id,
                        uid,
@@ -372,19 +469,25 @@ public class BoardService {
     public void acceptAlarm(Long alarmId, String uid) {
         Map<String, Object> alarm = requireAlarm(alarmId, uid);
         ensurePendingBoardStaffAlarm(alarm);
+        String alarmType = nullableText(alarm.get("alarm_type"));
         Map<String, String> payload = parseAlarmPayload(alarm.get("content"));
-        String role = required(payload.get("role"), "?뚮┝ ?뺣낫媛 ?щ컮瑜댁? ?딆뒿?덈떎.");
-        String gallId = required(payload.get("gallId"), "蹂대뱶 ?뺣낫媛 ?놁뒿?덈떎.");
-        String targetUid = required(payload.get("targetUid"), "????ъ슜???뺣낫媛 ?놁뒿?덈떎.");
-        String requesterUid = required(payload.get("requesterUid"), "?붿껌???뺣낫媛 ?놁뒿?덈떎.");
+        if (ALARM_TYPE_SIDE_BOARD_REQUEST.equals(alarmType)) {
+            acceptSideBoardRequest(alarmId, uid, payload);
+            return;
+        }
+        String role = required(payload.get("role"), "알림 페이로드에 역할 정보가 없습니다.");
+        String gallId = required(payload.get("gallId"), "알림 페이로드에 갤러리 정보가 없습니다.");
+        String targetUid = required(payload.get("targetUid"), "알림 페이로드에 대상자 정보가 없습니다.");
+        String requesterUid = required(payload.get("requesterUid"), "알림 페이로드에 요청자 정보가 없습니다.");
 
         if (!uid.equals(targetUid)) {
-            throw new RuntimeException("蹂몄씤?먭쾶 ?꾩갑???붿껌留??섎씫?????덉뒿?덈떎.");
+            throw new RuntimeException("본인에게 온 요청만 처리할 수 있습니다.");
         }
 
         String requesterDivision = getUserMemberDivision(requesterUid);
         if ("manager".equalsIgnoreCase(role)) {
             applyManagerAssignment(gallId, targetUid, requesterUid, requesterDivision);
+            markBoardTransfer(payload.get("transferId"), "accepted");
             markAlarmProcessed(alarmId, ALARM_TYPE_MANAGER_ACCEPTED);
             return;
         }
@@ -395,7 +498,7 @@ public class BoardService {
             return;
         }
 
-        throw new RuntimeException("吏?먰븯吏 ?딅뒗 ?꾨챸 ?붿껌?낅땲??");
+        throw new RuntimeException("처리할 수 없는 알림 유형입니다.");
     }
 
     @Transactional
@@ -403,7 +506,13 @@ public class BoardService {
         Map<String, Object> alarm = requireAlarm(alarmId, uid);
         ensurePendingBoardStaffAlarm(alarm);
         String alarmType = nullableText(alarm.get("alarm_type"));
+        if (ALARM_TYPE_SIDE_BOARD_REQUEST.equals(alarmType)) {
+            rejectSideBoardRequest(alarmId, uid, parseAlarmPayload(alarm.get("content")));
+            return;
+        }
         if (ALARM_TYPE_MANAGER_REQUEST.equals(alarmType)) {
+            Map<String, String> payload = parseAlarmPayload(alarm.get("content"));
+            markBoardTransfer(payload.get("transferId"), "rejected");
             markAlarmProcessed(alarmId, ALARM_TYPE_MANAGER_REJECTED);
             return;
         }
@@ -411,17 +520,37 @@ public class BoardService {
             markAlarmProcessed(alarmId, ALARM_TYPE_SUBMANAGER_REJECTED);
             return;
         }
-        throw new RuntimeException("吏?먰븯吏 ?딅뒗 ?꾨챸 ?붿껌?낅땲??");
+        throw new RuntimeException("처리할 수 없는 알림 유형입니다.");
     }
 
     @Transactional
     public void requestSideBoardCreation(Map<String, String> payload, String requesterUid) {
-        String uid = required(requesterUid, "로그인이 필요합니다.");
+        String uid = required(requesterUid, "로그인 정보가 필요합니다.");
         String gallId = normalizeRequestedGallId(payload.get("gallId"));
-        String gallName = required(payload.get("gallName"), "보드 이름을 입력해주세요.");
-        String reason = required(payload.get("reason"), "개설 요청 사유를 입력해주세요.");
+        String gallName = required(payload.get("gallName"), "갤러리 이름을 입력해주세요.");
+        String reason = required(payload.get("reason"), "요청 사유를 입력해주세요.");
 
         ensureSideBoardRequestAllowed(uid, gallId, gallName);
+
+        if (isSideBoardAutoApprovalEnabled()) {
+            jdbcTemplate.update("""
+                    INSERT INTO board (gall_id, gall_name, gall_type, category, manager_uid, post_count, status)
+                    VALUES (?, ?, 'm', 'user-requested', ?, 0, 'active')
+                    """, gallId, gallName, uid);
+            jdbcTemplate.update("""
+                    INSERT INTO board_counter (gall_id, last_post_no)
+                    VALUES (?, 0)
+                    ON DUPLICATE KEY UPDATE last_post_no = last_post_no
+                    """, gallId);
+            jdbcTemplate.update("""
+                    INSERT INTO board_request (
+                        requester_uid, gall_id, gall_name, gall_type, reason, status, reviewed_by, reviewed_at, created_at
+                    )
+                    VALUES (?, ?, ?, 'm', ?, 'approved', 'system', NOW(), NOW())
+                    """, uid, gallId, gallName, reason);
+            notifyRequesterBoardRequestResult(uid, gallId, gallName, true, reason);
+            return;
+        }
 
         jdbcTemplate.update("""
                 INSERT INTO board_request (
@@ -433,39 +562,148 @@ public class BoardService {
         notifyAdminsForSideBoardRequest(uid, gallId, gallName, reason);
     }
 
+    public Map<String, Object> getAdminRequestDashboard(String adminUid) {
+        String uid = required(adminUid, "로그인 정보가 필요합니다.");
+        List<Map<String, Object>> inboxRows = jdbcTemplate.queryForList("""
+                SELECT alarm_id,
+                       uid,
+                       alarm_type,
+                       title,
+                       content,
+                       ref_type,
+                       ref_id,
+                       is_read,
+                       created_at,
+                       read_at
+                FROM alarm
+                WHERE uid = ?
+                  AND (
+                      ref_type IN (?, ?)
+                      OR alarm_type IN (
+                          ?, ?, ?, ?, ?, ?, ?, ?, ?
+                      )
+                  )
+                ORDER BY created_at DESC, alarm_id DESC
+                LIMIT 100
+                """,
+                uid,
+                ALARM_REF_TYPE_BOARD_STAFF,
+                ALARM_REF_TYPE_BOARD_OPEN,
+                ALARM_TYPE_MANAGER_REQUEST,
+                ALARM_TYPE_SUBMANAGER_REQUEST,
+                ALARM_TYPE_SIDE_BOARD_REQUEST,
+                ALARM_TYPE_MANAGER_ACCEPTED,
+                ALARM_TYPE_SUBMANAGER_ACCEPTED,
+                ALARM_TYPE_SIDE_BOARD_ACCEPTED,
+                ALARM_TYPE_MANAGER_REJECTED,
+                ALARM_TYPE_SUBMANAGER_REJECTED,
+                ALARM_TYPE_SIDE_BOARD_REJECTED
+        );
+
+        List<Map<String, Object>> inbox = new ArrayList<>();
+        for (Map<String, Object> row : inboxRows) {
+            inbox.add(enrichRequestAlarm(row, "received"));
+        }
+
+        String requesterToken = "requesterUid=" + URLEncoder.encode(uid, StandardCharsets.UTF_8);
+        List<Map<String, Object>> sentStaffRows = jdbcTemplate.queryForList("""
+                SELECT alarm_id,
+                       uid,
+                       alarm_type,
+                       title,
+                       content,
+                       ref_type,
+                       ref_id,
+                       is_read,
+                       created_at,
+                       read_at
+                FROM alarm
+                WHERE ref_type = ?
+                  AND content LIKE ?
+                ORDER BY created_at DESC, alarm_id DESC
+                LIMIT 100
+                """, ALARM_REF_TYPE_BOARD_STAFF, "%" + requesterToken + "%");
+
+        List<Map<String, Object>> sent = new ArrayList<>();
+        for (Map<String, Object> row : sentStaffRows) {
+            sent.add(enrichRequestAlarm(row, "sent"));
+        }
+
+        List<Map<String, Object>> sideBoardRows = jdbcTemplate.queryForList("""
+                SELECT br.request_id,
+                       br.requester_uid,
+                       requester.nick AS requester_nick,
+                       br.gall_id,
+                       br.gall_name,
+                       br.gall_type,
+                       br.reason,
+                       br.status,
+                       br.reviewed_by,
+                       reviewer.nick AS reviewed_by_nick,
+                       br.reviewed_at,
+                       br.created_at
+                FROM board_request br
+                LEFT JOIN user requester ON requester.uid = br.requester_uid
+                LEFT JOIN user reviewer ON reviewer.uid = br.reviewed_by
+                WHERE br.requester_uid = ?
+                ORDER BY br.created_at DESC, br.request_id DESC
+                LIMIT 100
+                """, uid);
+        for (Map<String, Object> row : sideBoardRows) {
+            Map<String, Object> item = new LinkedHashMap<>(row);
+            item.put("direction", "sent");
+            item.put("request_kind", "side_board");
+            item.put("actionable", false);
+            sent.add(item);
+        }
+
+        return Map.of(
+                "inbox", inbox,
+                "sent", sent
+        );
+    }
+
     @Transactional
     public void insertPost(Map<String, String> payload, String uid, String nick, String clientIp) {
-        String gallId = required(payload.get("gid"), "媛ㅻ윭由?ID媛 ?꾩슂?⑸땲??");
-        String title = required(payload.get("title"), "?쒕ぉ???낅젰??二쇱꽭??");
-        String content = requiredHtml(payload.get("content"), "蹂몃Ц???낅젰??二쇱꽭??");
+        String gallId = required(payload.get("gid"), "갤러리 ID를 입력해주세요.");
+        String title = required(payload.get("title"), "제목을 입력해주세요.");
+        String content = requiredHtml(payload.get("content"), "내용을 입력해주세요.");
+        String category = normalizePostCategory(gallId, payload.get("category"));
         WriterInfo writer = resolveWriter(payload, uid, nick, clientIp);
 
         String updateCounterSql = """
-                UPDATE gallery_counter
+                UPDATE board_counter
                 SET last_post_no = last_post_no + 1
                 WHERE gall_id = ?
                 """;
 
         int rows = jdbcTemplate.update(updateCounterSql, gallId);
         if (rows == 0) {
-            throw new RuntimeException("?대떦 媛ㅻ윭由щ? 李얠쓣 ???놁뒿?덈떎: " + gallId);
+            jdbcTemplate.update(
+                    "INSERT INTO board_counter (gall_id, last_post_no) VALUES (?, 0) ON DUPLICATE KEY UPDATE last_post_no = last_post_no",
+                    gallId
+            );
+            rows = jdbcTemplate.update(updateCounterSql, gallId);
+        }
+        if (rows == 0) {
+            throw new RuntimeException("존재하지 않는 갤러리입니다: " + gallId);
         }
 
         Integer createdPostNo = jdbcTemplate.queryForObject(
-                "SELECT last_post_no FROM gallery_counter WHERE gall_id = ?",
+                "SELECT last_post_no FROM board_counter WHERE gall_id = ?",
                 Integer.class,
                 gallId
         );
         if (createdPostNo == null) {
-            throw new RuntimeException("寃뚯떆湲 踰덊샇瑜??앹꽦?섏? 紐삵뻽?듬땲??");
+            throw new RuntimeException("게시글 번호를 가져오지 못했습니다.");
         }
 
         String updateGallerySql = """
-                UPDATE gallery
+                UPDATE board
                 SET post_count = (
                     SELECT COUNT(*)
                     FROM post
-                    WHERE post.gall_id = gallery.gall_id
+                    WHERE post.gall_id = board.gall_id
                       AND post.is_deleted = 0
                 )
                 WHERE gall_id = ?
@@ -473,14 +711,15 @@ public class BoardService {
         jdbcTemplate.update(updateGallerySql, gallId);
 
         String insertPostSql = """
-                INSERT INTO post (gall_id, post_no, title, content, writer_uid, name, ip, password)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO post (gall_id, post_no, category, title, content, writer_uid, name, ip, password)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """;
 
         jdbcTemplate.update(
                 insertPostSql,
                 gallId,
                 createdPostNo,
+                category,
                 title,
                 content,
                 writer.uid(),
@@ -493,11 +732,11 @@ public class BoardService {
     @Transactional
     public void syncGalleryPostCount() {
         String sql = """
-                UPDATE gallery
+                UPDATE board
                 SET post_count = (
                     SELECT COUNT(*)
                     FROM post
-                    WHERE post.gall_id = gallery.gall_id
+                    WHERE post.gall_id = board.gall_id
                       AND post.is_deleted = 0
                 )
                 """;
@@ -532,7 +771,7 @@ public class BoardService {
             return false;
         }
         Integer count = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM gallery WHERE gall_id = ? AND manager_uid = ?",
+                "SELECT COUNT(*) FROM board WHERE gall_id = ? AND manager_uid = ?",
                 Integer.class,
                 gallId,
                 uid
@@ -569,9 +808,9 @@ public class BoardService {
     }
 
     private void applyManagerAssignment(String gallId, String targetUid, String actorUid, String actorDivision) {
-        String boardId = required(gallId, "蹂대뱶 ID媛 ?꾩슂?⑸땲??");
-        String actor = required(actorUid, "?붿껌???뺣낫媛 ?꾩슂?⑸땲??");
-        String resolvedTarget = required(targetUid, "留ㅻ땲? UID媛 ?꾩슂?⑸땲??");
+        String boardId = required(gallId, "갤러리 ID를 입력해주세요.");
+        String actor = required(actorUid, "요청자 정보를 입력해주세요.");
+        String resolvedTarget = required(targetUid, "대상자 UID를 입력해주세요.");
         Map<String, Object> board = requireBoard(boardId);
         ensureManagedBoardEligible(board);
         ensureUserExists(resolvedTarget);
@@ -581,31 +820,31 @@ public class BoardService {
 
         if (currentManager == null || currentManager.isBlank()) {
             if (!globalAdmin && !actor.equals(resolvedTarget)) {
-                throw new RuntimeException("泥?留ㅻ땲? 吏?뺤? 蹂몄씤 怨꾩젙?쇰줈留??붿껌?????덉뒿?덈떎.");
+                throw new RuntimeException("매니저가 없는 갤러리는 본인만 매니저를 요청할 수 있습니다.");
             }
         } else if (!globalAdmin && !currentManager.equals(actor)) {
-            throw new RuntimeException("?꾩옱 留ㅻ땲?留???留ㅻ땲?瑜?吏紐낇븷 ???덉뒿?덈떎.");
+            throw new RuntimeException("현재 매니저만 다른 매니저에게 양도할 수 있습니다.");
         }
 
-        jdbcTemplate.update("UPDATE gallery SET manager_uid = ? WHERE gall_id = ?", resolvedTarget, boardId);
+        jdbcTemplate.update("UPDATE board SET manager_uid = ? WHERE gall_id = ?", resolvedTarget, boardId);
         jdbcTemplate.update("DELETE FROM board_submanager WHERE gall_id = ? AND uid = ?", boardId, resolvedTarget);
     }
 
     private void applySubmanagerAppointment(String gallId, String targetUid, String actorUid, String actorDivision) {
-        String boardId = required(gallId, "蹂대뱶 ID媛 ?꾩슂?⑸땲??");
-        String actor = required(actorUid, "?붿껌???뺣낫媛 ?꾩슂?⑸땲??");
-        String resolvedTarget = required(targetUid, "遺留ㅻ땲? UID媛 ?꾩슂?⑸땲??");
+        String boardId = required(gallId, "갤러리 ID를 입력해주세요.");
+        String actor = required(actorUid, "요청자 정보를 입력해주세요.");
+        String resolvedTarget = required(targetUid, "부매니저 대상자 UID를 입력해주세요.");
         Map<String, Object> board = requireBoard(boardId);
         ensureManagedBoardEligible(board);
         ensureUserExists(resolvedTarget);
 
         if (!canAssignBoardStaff(boardId, actor, actorDivision)) {
-            throw new RuntimeException("留ㅻ땲?留?遺留ㅻ땲?瑜??꾨챸?????덉뒿?덈떎.");
+            throw new RuntimeException("매니저만 부매니저를 임명할 수 있습니다.");
         }
 
         String managerUid = getManagerUid(boardId);
         if (managerUid != null && managerUid.equals(resolvedTarget)) {
-            throw new RuntimeException("?꾩옱 留ㅻ땲???遺留ㅻ땲?濡?以묐났 吏?뺥븷 ???놁뒿?덈떎.");
+            throw new RuntimeException("현재 매니저는 부매니저로 임명할 수 없습니다.");
         }
 
         jdbcTemplate.update("""
@@ -615,17 +854,95 @@ public class BoardService {
                 """, boardId, resolvedTarget, actor);
     }
 
+    private void acceptSideBoardRequest(Long alarmId, String adminUid, Map<String, String> payload) {
+        if (!isGlobalAdmin(getUserMemberDivision(adminUid))) {
+            throw new RuntimeException("사이드 갤러리 요청은 관리자 또는 운영자만 승인할 수 있습니다.");
+        }
+
+        String requesterUid = required(payload.get("requesterUid"), "요청자 사용자 정보가 없습니다.");
+        String gallId = required(payload.get("gallId"), "갤러리 ID 정보가 없습니다.");
+        String gallName = required(payload.get("gallName"), "갤러리 이름 정보가 없습니다.");
+        String reason = nullableTrim(payload.get("reason"));
+
+        ensureSideBoardRequestAllowed(requesterUid, gallId, gallName);
+        ensureUserExists(requesterUid);
+
+        jdbcTemplate.update("""
+                INSERT INTO board (gall_id, gall_name, gall_type, category, manager_uid, post_count, status)
+                VALUES (?, ?, 'm', 'user-requested', ?, 0, 'active')
+                """, gallId, gallName, requesterUid);
+        jdbcTemplate.update("""
+                INSERT INTO board_counter (gall_id, last_post_no)
+                VALUES (?, 0)
+                ON DUPLICATE KEY UPDATE last_post_no = last_post_no
+                """, gallId);
+        jdbcTemplate.update("""
+                INSERT INTO gallery_setting (
+                    gall_id, board_notice, welcome_message, theme_color,
+                    allow_guest_post, allow_guest_comment, concept_recommend_threshold, updated_by, updated_at
+                )
+                VALUES (?, NULL, ?, '#ff8fab', 1, 1, 10, ?, NOW())
+                ON DUPLICATE KEY UPDATE
+                    updated_by = VALUES(updated_by),
+                    updated_at = NOW()
+                """, gallId, gallName + " 갤러리에 오신 것을 환영합니다.", adminUid);
+        jdbcTemplate.update("""
+                UPDATE board_request
+                SET status = 'approved',
+                    reviewed_by = ?,
+                    reviewed_at = NOW()
+                WHERE requester_uid = ?
+                  AND gall_id = ?
+                  AND status = 'pending'
+                """, adminUid, requesterUid, gallId);
+        markAlarmProcessed(alarmId, ALARM_TYPE_SIDE_BOARD_ACCEPTED);
+        notifyRequesterBoardRequestResult(requesterUid, gallId, gallName, true, reason);
+    }
+
+    private void rejectSideBoardRequest(Long alarmId, String adminUid, Map<String, String> payload) {
+        if (!isGlobalAdmin(getUserMemberDivision(adminUid))) {
+            throw new RuntimeException("사이드 갤러리 요청은 관리자 또는 운영자만 거절할 수 있습니다.");
+        }
+
+        String requesterUid = required(payload.get("requesterUid"), "요청자 사용자 정보가 없습니다.");
+        String gallId = required(payload.get("gallId"), "갤러리 ID 정보가 없습니다.");
+        String gallName = required(payload.get("gallName"), "갤러리 이름 정보가 없습니다.");
+        String reason = nullableTrim(payload.get("reason"));
+
+        jdbcTemplate.update("""
+                UPDATE board_request
+                SET status = 'rejected',
+                    reviewed_by = ?,
+                    reviewed_at = NOW()
+                WHERE requester_uid = ?
+                  AND gall_id = ?
+                  AND status = 'pending'
+                """, adminUid, requesterUid, gallId);
+        markAlarmProcessed(alarmId, ALARM_TYPE_SIDE_BOARD_REJECTED);
+        notifyRequesterBoardRequestResult(requesterUid, gallId, gallName, false, reason);
+    }
+
+    // 매니저 요청은 수락 시 board_transfer 상태를 함께 갱신한다.
     private void createBoardStaffRequest(Map<String, Object> board, String targetUid, String actorUid, String role) {
-        String boardId = required(nullableText(board.get("gall_id")), "蹂대뱶 ?뺣낫媛 ?놁뒿?덈떎.");
+        String boardId = required(nullableText(board.get("gall_id")), "갤러리 ID를 찾을 수 없습니다.");
         String boardName = firstNonBlank(nullableText(board.get("gall_name")), boardId);
-        String resolvedTarget = required(targetUid, "????ъ슜???뺣낫媛 ?놁뒿?덈떎.");
-        String requesterUid = required(actorUid, "?붿껌???뺣낫媛 ?놁뒿?덈떎.");
+        String resolvedTarget = required(targetUid, "대상자 정보를 찾을 수 없습니다.");
+        String requesterUid = required(actorUid, "요청자 정보를 찾을 수 없습니다.");
         String requesterNick = firstNonBlank(getUserNick(requesterUid), requesterUid);
         ensureNoPendingBoardStaffRequest(resolvedTarget, boardId, role);
 
+        Long transferId = null;
+        if ("manager".equalsIgnoreCase(role)) {
+            jdbcTemplate.update("""
+                    INSERT INTO board_transfer (gall_id, from_uid, to_uid, status, responded_at, created_at)
+                    VALUES (?, ?, ?, 'pending', NULL, NOW())
+                    """, boardId, requesterUid, resolvedTarget);
+            transferId = jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+        }
+
         String alarmType = "manager".equalsIgnoreCase(role) ? ALARM_TYPE_MANAGER_REQUEST : ALARM_TYPE_SUBMANAGER_REQUEST;
-        String roleLabel = "manager".equalsIgnoreCase(role) ? "留ㅻ땲?" : "遺留ㅻ땲?";
-        String title = "[" + boardName + "] " + roleLabel + " ?꾨챸 ?붿껌";
+        String roleLabel = "manager".equalsIgnoreCase(role) ? "manager" : "submanager";
+        String title = "[" + boardName + "] " + roleLabel + " request";
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("role", role);
@@ -635,6 +952,9 @@ public class BoardService {
         payload.put("requesterUid", requesterUid);
         payload.put("requesterNick", requesterNick);
         payload.put("requestedAt", LocalDateTime.now().toString());
+        if (transferId != null) {
+            payload.put("transferId", transferId);
+        }
 
         jdbcTemplate.update("""
                 INSERT INTO alarm (uid, alarm_type, title, content, ref_type, ref_id)
@@ -654,7 +974,7 @@ public class BoardService {
                   AND is_read = 0
                 """, Integer.class, targetUid, alarmType, ALARM_REF_TYPE_BOARD_STAFF, gallId);
         if (count != null && count > 0) {
-            throw new RuntimeException("?대? ?湲?以묒씤 ?꾨챸 ?붿껌???덉뒿?덈떎.");
+            throw new RuntimeException("이미 처리 대기 중인 요청이 있습니다.");
         }
     }
 
@@ -663,17 +983,72 @@ public class BoardService {
         String alarmType = nullableText(row.get("alarm_type"));
         boolean actionable = isPendingBoardStaffAlarmType(alarmType) && !isReadAlarm(row.get("is_read"));
         result.put("actionable", actionable);
-        if (ALARM_REF_TYPE_BOARD_STAFF.equals(nullableText(row.get("ref_type")))) {
+        String refType = nullableText(row.get("ref_type"));
+        if (ALARM_REF_TYPE_BOARD_STAFF.equals(refType) || ALARM_REF_TYPE_BOARD_OPEN.equals(refType)) {
             result.put("payload", parseAlarmPayload(row.get("content")));
         }
         return result;
     }
 
+    private Map<String, Object> enrichRequestAlarm(Map<String, Object> row, String direction) {
+        Map<String, Object> result = enrichAlarm(row);
+        String alarmType = nullableText(row.get("alarm_type"));
+        Map<String, String> payload = parseAlarmPayload(row.get("content"));
+        result.put("payload", payload);
+        result.put("direction", direction);
+        result.put("request_kind", requestKindFromAlarmType(alarmType));
+        result.put("status", requestStatusFromAlarmType(alarmType, row.get("is_read")));
+        result.put("role", payload.get("role"));
+        result.put("gall_id", firstNonBlank(payload.get("gallId"), nullableText(row.get("ref_id"))));
+        result.put("gall_name", payload.get("gallName"));
+        result.put("requester_uid", payload.get("requesterUid"));
+        result.put("requester_nick", payload.get("requesterNick"));
+        result.put("target_uid", payload.get("targetUid"));
+        result.put("reason", payload.get("reason"));
+        return result;
+    }
+
+    private String requestKindFromAlarmType(String alarmType) {
+        if (ALARM_TYPE_SIDE_BOARD_REQUEST.equals(alarmType)
+                || ALARM_TYPE_SIDE_BOARD_ACCEPTED.equals(alarmType)
+                || ALARM_TYPE_SIDE_BOARD_REJECTED.equals(alarmType)) {
+            return "side_board";
+        }
+        if (ALARM_TYPE_MANAGER_REQUEST.equals(alarmType)
+                || ALARM_TYPE_MANAGER_ACCEPTED.equals(alarmType)
+                || ALARM_TYPE_MANAGER_REJECTED.equals(alarmType)) {
+            return "manager";
+        }
+        if (ALARM_TYPE_SUBMANAGER_REQUEST.equals(alarmType)
+                || ALARM_TYPE_SUBMANAGER_ACCEPTED.equals(alarmType)
+                || ALARM_TYPE_SUBMANAGER_REJECTED.equals(alarmType)) {
+            return "submanager";
+        }
+        return "request";
+    }
+
+    private String requestStatusFromAlarmType(String alarmType, Object isRead) {
+        if (ALARM_TYPE_MANAGER_ACCEPTED.equals(alarmType)
+                || ALARM_TYPE_SUBMANAGER_ACCEPTED.equals(alarmType)
+                || ALARM_TYPE_SIDE_BOARD_ACCEPTED.equals(alarmType)) {
+            return "accepted";
+        }
+        if (ALARM_TYPE_MANAGER_REJECTED.equals(alarmType)
+                || ALARM_TYPE_SUBMANAGER_REJECTED.equals(alarmType)
+                || ALARM_TYPE_SIDE_BOARD_REJECTED.equals(alarmType)) {
+            return "rejected";
+        }
+        if (isPendingBoardStaffAlarmType(alarmType) && !isReadAlarm(isRead)) {
+            return "pending";
+        }
+        return "processed";
+    }
+
     private Map<String, Object> requireAlarm(Long alarmId, String uid) {
         if (alarmId == null) {
-            throw new RuntimeException("?뚮┝ ID媛 ?꾩슂?⑸땲??");
+            throw new RuntimeException("알림 ID를 입력해주세요.");
         }
-        String resolvedUid = required(uid, "濡쒓렇?몄씠 ?꾩슂?⑸땲??");
+        String resolvedUid = required(uid, "요청자 정보를 입력해주세요.");
         try {
             return jdbcTemplate.queryForMap("""
                     SELECT alarm_id,
@@ -691,19 +1066,21 @@ public class BoardService {
                       AND uid = ?
                     """, alarmId, resolvedUid);
         } catch (EmptyResultDataAccessException e) {
-            throw new RuntimeException("?대떦 ?뚮┝??李얠쓣 ???놁뒿?덈떎.");
+            throw new RuntimeException("대상 알림을 찾을 수 없습니다.");
         }
     }
 
     private void ensurePendingBoardStaffAlarm(Map<String, Object> alarm) {
         String alarmType = nullableText(alarm.get("alarm_type"));
         if (!isPendingBoardStaffAlarmType(alarmType) || isReadAlarm(alarm.get("is_read"))) {
-            throw new RuntimeException("?대? 泥섎━?섏뿀嫄곕굹 ?섎씫?????녿뒗 ?뚮┝?낅땲??");
+            throw new RuntimeException("처리 가능한 상태의 알림이 아닙니다.");
         }
     }
 
     private boolean isPendingBoardStaffAlarmType(String alarmType) {
-        return ALARM_TYPE_MANAGER_REQUEST.equals(alarmType) || ALARM_TYPE_SUBMANAGER_REQUEST.equals(alarmType);
+        return ALARM_TYPE_MANAGER_REQUEST.equals(alarmType)
+                || ALARM_TYPE_SUBMANAGER_REQUEST.equals(alarmType)
+                || ALARM_TYPE_SIDE_BOARD_REQUEST.equals(alarmType);
     }
 
     private boolean isReadAlarm(Object value) {
@@ -727,11 +1104,28 @@ public class BoardService {
                 """, nextType, alarmId);
     }
 
+    private void markBoardTransfer(String transferIdText, String status) {
+        String normalized = nullableTrim(transferIdText);
+        if (normalized == null) {
+            return;
+        }
+        try {
+            Long transferId = Long.parseLong(normalized);
+            jdbcTemplate.update("""
+                    UPDATE board_transfer
+                    SET status = ?,
+                        responded_at = NOW()
+                    WHERE transfer_id = ?
+                    """, status, transferId);
+        } catch (NumberFormatException ignored) {
+        }
+    }
+
     private Map<String, String> parseAlarmPayload(Object rawContent) {
-        String content = required(nullableText(rawContent), "알림 정보가 비어 있습니다.");
+        String content = required(nullableText(rawContent), "알림 내용이 비어 있습니다.");
         Map<String, String> payload = new LinkedHashMap<>();
         for (String line : content.split("\\R")) {
-            if (line == null || line.isBlank()) {
+            if (line.isBlank()) {
                 continue;
             }
             int separator = line.indexOf('=');
@@ -748,7 +1142,7 @@ public class BoardService {
     private String toJson(Map<String, Object> payload) {
         StringBuilder builder = new StringBuilder();
         for (Map.Entry<String, Object> entry : payload.entrySet()) {
-            if (builder.length() > 0) {
+            if (!builder.isEmpty()) {
                 builder.append('\n');
             }
             String key = URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8);
@@ -760,21 +1154,21 @@ public class BoardService {
 
     private void ensureSideBoardRequestAllowed(String requesterUid, String gallId, String gallName) {
         if (gallId == null || gallId.isBlank()) {
-            throw new RuntimeException("?? ID? ??????.");
+            throw new RuntimeException("갤러리 ID를 입력해주세요.");
         }
         if (!gallId.matches("^[a-z0-9_\\-]{3,50}$")) {
-            throw new RuntimeException("?? ID? 3~50?? ?? ???, ??, _, - ? ??? ? ????.");
+            throw new RuntimeException("갤러리 ID는 3~50자의 영소문자, 숫자, _, - 만 사용할 수 있습니다.");
         }
         if (gallName.length() < 2 || gallName.length() > 100) {
-            throw new RuntimeException("?? ??? 2~100?? ??????.");
+            throw new RuntimeException("갤러리 이름은 2~100자여야 합니다.");
         }
         Integer existingGallery = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM gallery WHERE gall_id = ?",
+                "SELECT COUNT(*) FROM board WHERE gall_id = ?",
                 Integer.class,
                 gallId
         );
         if (existingGallery != null && existingGallery > 0) {
-            throw new RuntimeException("?? ?? ?? ?? ID???.");
+            throw new RuntimeException("이미 사용 중인 갤러리 ID입니다.");
         }
         Integer existingPending = jdbcTemplate.queryForObject("""
                 SELECT COUNT(*)
@@ -784,10 +1178,23 @@ public class BoardService {
                   AND status = 'pending'
                 """, Integer.class, requesterUid, gallId);
         if (existingPending != null && existingPending > 0) {
-            throw new RuntimeException("?? ?? ID? ?? ?? ??? ?? ????.");
+            throw new RuntimeException("해당 갤러리 ID로 이미 대기 중인 요청이 있습니다.");
         }
     }
 
+    private boolean isSideBoardAutoApprovalEnabled() {
+        try {
+            String policy = jdbcTemplate.queryForObject(
+                    "SELECT side_board_approval_policy FROM gallery_setting WHERE gall_id = '__service__'",
+                    String.class
+            );
+            return "auto".equalsIgnoreCase(nullableText(policy));
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    // 관리자에게 사이드 보드 개설 요청 알림을 보낸다.
     private void notifyAdminsForSideBoardRequest(String requesterUid, String gallId, String gallName, String reason) {
         List<String> adminUids = jdbcTemplate.query(
                 "SELECT uid FROM user WHERE member_division IN ('1', 'admin', 'operator') ORDER BY uid ASC",
@@ -797,6 +1204,7 @@ public class BoardService {
             return;
         }
         String requesterNick = firstNonBlank(getUserNick(requesterUid), requesterUid);
+
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("requesterUid", requesterUid);
         payload.put("requesterNick", requesterNick);
@@ -804,7 +1212,8 @@ public class BoardService {
         payload.put("gallName", gallName);
         payload.put("reason", reason);
         payload.put("requestedAt", LocalDateTime.now().toString());
-        String title = "[????? ?? ??] " + gallName;
+
+        String title = "[사이드 보드 요청] " + gallName;
         String content = toJson(payload);
         for (String adminUid : adminUids) {
             jdbcTemplate.update("""
@@ -812,6 +1221,22 @@ public class BoardService {
                     VALUES (?, ?, ?, ?, ?, ?)
                     """, adminUid, ALARM_TYPE_SIDE_BOARD_REQUEST, title, content, ALARM_REF_TYPE_BOARD_OPEN, gallId);
         }
+    }
+
+    private void notifyRequesterBoardRequestResult(String requesterUid, String gallId, String gallName, boolean approved, String reason) {
+        String alarmType = approved ? ALARM_TYPE_SIDE_BOARD_ACCEPTED : ALARM_TYPE_SIDE_BOARD_REJECTED;
+        String title = approved
+                ? "[" + gallName + "] 사이드 갤러리 요청이 승인되었습니다."
+                : "[" + gallName + "] 사이드 갤러리 요청이 거절되었습니다.";
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("gallId", gallId);
+        payload.put("gallName", gallName);
+        payload.put("approved", approved);
+        payload.put("reason", reason);
+        jdbcTemplate.update("""
+                INSERT INTO alarm (uid, alarm_type, title, content, ref_type, ref_id)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """, requesterUid, alarmType, title, toJson(payload), ALARM_REF_TYPE_BOARD_OPEN, gallId);
     }
 
     private String normalizeRequestedGallId(String rawValue) {
@@ -832,7 +1257,7 @@ public class BoardService {
                            g.post_count,
                            g.manager_uid,
                            manager.nick AS manager_nick
-                    FROM gallery g
+                    FROM board g
                     LEFT JOIN user manager ON manager.uid = g.manager_uid
                     WHERE g.gall_id = ?
                     """, gallId);
@@ -844,7 +1269,7 @@ public class BoardService {
     private Map<String, Object> requireBoard(String gallId) {
         Map<String, Object> board = getBoardRow(gallId);
         if (board == null) {
-            throw new RuntimeException("?대떦 蹂대뱶瑜?李얠쓣 ???놁뒿?덈떎.");
+            throw new RuntimeException("대상 게시판을 찾을 수 없습니다.");
         }
         return board;
     }
@@ -859,7 +1284,7 @@ public class BoardService {
 
     private void ensureManagedBoardEligible(Map<String, Object> board) {
         if (!isManagedBoardEligible(board)) {
-            throw new RuntimeException("gall_type ??main ??蹂대뱶??留ㅻ땲?媛 愿由ы븯吏 ?딆뒿?덈떎.");
+            throw new RuntimeException("gall_type이 main인 게시판은 매니저를 지정할 수 없습니다.");
         }
     }
 
@@ -870,7 +1295,7 @@ public class BoardService {
                 uid
         );
         if (count == null || count == 0) {
-            throw new RuntimeException("????좎?瑜?李얠쓣 ???놁뒿?덈떎: " + uid);
+            throw new RuntimeException("존재하지 않는 사용자입니다: " + uid);
         }
     }
 
@@ -901,7 +1326,7 @@ public class BoardService {
     private String getManagerUid(String gallId) {
         try {
             return jdbcTemplate.queryForObject(
-                    "SELECT manager_uid FROM gallery WHERE gall_id = ?",
+                    "SELECT manager_uid FROM board WHERE gall_id = ?",
                     String.class,
                     gallId
             );
@@ -910,12 +1335,38 @@ public class BoardService {
         }
     }
 
+    private List<String> resolveBoardRoleLabels(String gallId, String uid, String memberDivision) {
+        List<String> labels = new ArrayList<>();
+        if (uid == null || uid.isBlank()) {
+            labels.add("guest");
+            return labels;
+        }
+
+        labels.add("member");
+        String division = nullableText(memberDivision);
+        if ("operator".equalsIgnoreCase(division)) {
+            labels.add("operator");
+        }
+        if (isGlobalAdmin(memberDivision) || "operator".equalsIgnoreCase(division)) {
+            labels.add("admin");
+        }
+        if (isBoardManager(gallId, uid)) {
+            labels.add("board-manager");
+        }
+        if (isBoardSubmanager(gallId, uid)) {
+            labels.add("board-submanager");
+        }
+        return labels;
+    }
+
     private boolean isGlobalAdmin(String memberDivision) {
         if (memberDivision == null) {
             return false;
         }
         String normalized = memberDivision.trim();
-        return normalized.equalsIgnoreCase("admin") || normalized.equals("1");
+        return normalized.equalsIgnoreCase("admin")
+                || normalized.equalsIgnoreCase("operator")
+                || normalized.equals("1");
     }
 
     private WriterInfo resolveWriter(Map<String, String> payload, String uid, String nick, String clientIp) {
@@ -924,8 +1375,8 @@ public class BoardService {
             return new WriterInfo(uid, resolvedNick, normalizedIp(clientIp), null);
         }
 
-        String guestName = required(firstNonBlank(payload.get("name"), payload.get("guestName")), "鍮꾪쉶?먯? ?대쫫???낅젰?댁빞 ?⑸땲??");
-        String guestPassword = required(firstNonBlank(payload.get("password"), payload.get("guestPassword")), "鍮꾪쉶?먯? 鍮꾨?踰덊샇瑜??낅젰?댁빞 ?⑸땲??");
+        String guestName = required(firstNonBlank(payload.get("name"), payload.get("guestName")), "비회원 이름을 입력해주세요.");
+        String guestPassword = required(firstNonBlank(payload.get("password"), payload.get("guestPassword")), "비회원 비밀번호를 입력해주세요.");
         return new WriterInfo(null, guestName, normalizedIp(clientIp), BCrypt.hashpw(guestPassword, BCrypt.gensalt()));
     }
 
@@ -998,10 +1449,19 @@ public class BoardService {
         settings.put("gall_id", gallId);
         settings.put("board_notice", null);
         settings.put("welcome_message", null);
+        settings.put("category_options", "일반");
+        settings.put("category_options_list", List.of("일반"));
         settings.put("theme_color", "#ff8fab");
         settings.put("concept_recommend_threshold", 10);
         settings.put("allow_guest_post", true);
         settings.put("allow_guest_comment", true);
+        settings.put("join_policy", "free");
+        settings.put("visibility", "public");
+        settings.put("pinned_notice_count", 3);
+        settings.put("allowed_attachment_types", null);
+        settings.put("attachment_max_bytes", 10_485_760L);
+        settings.put("side_board_approval_policy", "operator");
+        settings.put("dormant_after_days", 180);
         settings.put("updated_by", null);
         settings.put("updated_at", null);
         return settings;
@@ -1018,10 +1478,10 @@ public class BoardService {
         return text == null || text.equals("1") || text.equalsIgnoreCase("true") || text.equalsIgnoreCase("yes") || text.equalsIgnoreCase("on");
     }
 
-    private int parseBooleanFlag(String value, boolean defaultValue) {
+    private int parseBooleanFlag(String value) {
         String normalized = nullableTrim(value);
         if (normalized == null) {
-            return defaultValue ? 1 : 0;
+            return 1;
         }
         return ("1".equals(normalized) || "true".equalsIgnoreCase(normalized) || "yes".equalsIgnoreCase(normalized) || "on".equalsIgnoreCase(normalized)) ? 1 : 0;
     }
@@ -1039,30 +1499,94 @@ public class BoardService {
         }
     }
 
+    private int normalizeNonNegativeInt(Object value, int fallback) {
+        String normalized = nullableTrim(value == null ? null : String.valueOf(value));
+        if (normalized == null) {
+            return fallback;
+        }
+        try {
+            return Math.max(0, Integer.parseInt(normalized));
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
+    }
+
+    private long normalizeLong(Object value, long fallback) {
+        String normalized = nullableTrim(value == null ? null : String.valueOf(value));
+        if (normalized == null) {
+            return fallback;
+        }
+        try {
+            return Math.max(0L, Long.parseLong(normalized));
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
+    }
+
+    private String normalizeChoice(String value, List<String> allowed, String fallback) {
+        String normalized = nullableTrim(value);
+        if (normalized == null) {
+            return fallback;
+        }
+        String lower = normalized.toLowerCase();
+        return allowed.contains(lower) ? lower : fallback;
+    }
+
     private String normalizeThemeColor(String value) {
         String normalized = nullableTrim(value);
         if (normalized == null) {
             return "#ff8fab";
         }
         if (!normalized.matches("^#[0-9a-fA-F]{6}$")) {
-            throw new RuntimeException("테마 색상 형식이 올바르지 않습니다.");
+            throw new RuntimeException("유효하지 않은 테마 색상 형식입니다.");
         }
         return normalized.toLowerCase();
     }
 
-    private String normalizeCoverImageUrl(String value) {
-        String normalized = nullableTrim(value);
-        if (normalized == null) {
-            return DEFAULT_BOARD_COVER_URL;
+    private String normalizeCategoryOptions(String value) {
+        List<String> options = parseCategoryOptions(value);
+        if (options.isEmpty()) {
+            options = List.of("일반");
         }
-        if (!(normalized.startsWith("http://") || normalized.startsWith("https://"))) {
-            throw new RuntimeException("대문 이미지 주소는 http 또는 https로 시작해야 합니다.");
-        }
-        return normalized;
+        return String.join("\n", options);
     }
 
+    private List<String> parseCategoryOptions(Object value) {
+        String raw = nullableText(value);
+        if (raw == null) {
+            return new ArrayList<>();
+        }
+        List<String> options = new ArrayList<>();
+        for (String token : raw.split("[\\r\\n,]+")) {
+            String option = token.trim();
+            if (option.isEmpty() || options.contains(option)) {
+                continue;
+            }
+            if (option.length() > 20) {
+                throw new RuntimeException("말머리는 20자 이하로 입력해주세요.");
+            }
+            options.add(option);
+            if (options.size() >= 30) {
+                break;
+            }
+        }
+        return options;
+    }
+
+    private String normalizePostCategory(String gallId, String value) {
+        String category = nullableTrim(value);
+        List<String> options = parseCategoryOptions(getBoardSettings(gallId).get("category_options"));
+        if (category == null) {
+            return options.isEmpty() ? null : options.get(0);
+        }
+        if (!options.isEmpty() && !options.contains(category)) {
+            throw new RuntimeException("이 보드에서 사용할 수 없는 말머리입니다.");
+        }
+        if (category.length() > 20) {
+            throw new RuntimeException("말머리는 20자 이하로 입력해주세요.");
+        }
+        return category;
+    }
     private record WriterInfo(String uid, String name, String ip, String passwordHash) {
     }
 }
-
-

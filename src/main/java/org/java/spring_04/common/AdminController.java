@@ -29,6 +29,12 @@ public class AdminController {
         return "admin-board-managers";
     }
 
+    @GetMapping("/admin/requests")
+    public String requestPage(HttpSession session) {
+        ensureAdmin(session);
+        return "admin-requests";
+    }
+
     @ResponseBody
     @GetMapping("/api/admin/boards")
     public List<Map<String, Object>> getBoards(HttpSession session) {
@@ -60,6 +66,74 @@ public class AdminController {
                 ORDER BY uid ASC
                 LIMIT 20
                 """, normalized, normalized);
+    }
+
+    @ResponseBody
+    @GetMapping("/api/admin/requests")
+    public Map<String, Object> getRequests(HttpSession session) {
+        ensureAdmin(session);
+        String uid = (String) session.getAttribute("uid");
+        return Map.of("success", true, "data", boardService.getAdminRequestDashboard(uid));
+    }
+
+    @ResponseBody
+    @PostMapping("/api/admin/requests/staff")
+    public Map<String, Object> sendStaffRequest(@RequestBody Map<String, String> payload, HttpSession session) {
+        ensureAdmin(session);
+        String uid = (String) session.getAttribute("uid");
+        try {
+            String role = String.valueOf(payload.getOrDefault("role", "")).trim();
+            String gid = payload.get("gallId");
+            if ("manager".equalsIgnoreCase(role)) {
+                boardService.assignManager(gid, payload.get("targetUid"), uid, "admin");
+            } else if ("submanager".equalsIgnoreCase(role)) {
+                boardService.appointSubmanager(gid, payload.get("targetUid"), uid, "admin");
+            } else {
+                return Map.of("success", false, "message", "role은 manager 또는 submanager만 가능합니다.");
+            }
+            return Map.of("success", true);
+        } catch (RuntimeException e) {
+            return Map.of("success", false, "message", e.getMessage());
+        }
+    }
+
+    @ResponseBody
+    @PostMapping("/api/admin/requests/side-board")
+    public Map<String, Object> sendSideBoardRequest(@RequestBody Map<String, String> payload, HttpSession session) {
+        ensureAdmin(session);
+        String uid = (String) session.getAttribute("uid");
+        try {
+            boardService.requestSideBoardCreation(payload, uid);
+            return Map.of("success", true);
+        } catch (RuntimeException e) {
+            return Map.of("success", false, "message", e.getMessage());
+        }
+    }
+
+    @ResponseBody
+    @PostMapping("/api/admin/requests/{alarmId}/accept")
+    public Map<String, Object> acceptRequest(@PathVariable("alarmId") Long alarmId, HttpSession session) {
+        ensureAdmin(session);
+        String uid = (String) session.getAttribute("uid");
+        try {
+            boardService.acceptAlarm(alarmId, uid);
+            return Map.of("success", true);
+        } catch (RuntimeException e) {
+            return Map.of("success", false, "message", e.getMessage());
+        }
+    }
+
+    @ResponseBody
+    @PostMapping("/api/admin/requests/{alarmId}/reject")
+    public Map<String, Object> rejectRequest(@PathVariable("alarmId") Long alarmId, HttpSession session) {
+        ensureAdmin(session);
+        String uid = (String) session.getAttribute("uid");
+        try {
+            boardService.rejectAlarm(alarmId, uid);
+            return Map.of("success", true);
+        } catch (RuntimeException e) {
+            return Map.of("success", false, "message", e.getMessage());
+        }
     }
 
     @ResponseBody
@@ -102,7 +176,9 @@ public class AdminController {
         }
 
         String normalized = String.valueOf(division).trim();
-        if (!normalized.equals("1") && !normalized.equalsIgnoreCase("admin")) {
+        if (!normalized.equals("1")
+                && !normalized.equalsIgnoreCase("admin")
+                && !normalized.equalsIgnoreCase("operator")) {
             throw new ResponseStatusException(FORBIDDEN, "어드민 권한이 필요합니다.");
         }
     }

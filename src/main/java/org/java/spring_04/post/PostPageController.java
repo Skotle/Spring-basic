@@ -49,10 +49,11 @@ public class PostPageController {
                                @RequestParam(value = "page", defaultValue = "1") int page,
                                @RequestParam(value = "parentId", required = false) String parentId,
                                @RequestParam(value = "name", required = false) String name,
-                               @RequestParam(value = "password", required = false) String password,
-                               @SessionAttribute(name = "uid", required = false) String uid,
-                               @SessionAttribute(name = "nick", required = false) String nick,
-                               HttpServletRequest request,
+                                @RequestParam(value = "password", required = false) String password,
+                                @SessionAttribute(name = "uid", required = false) String uid,
+                                @SessionAttribute(name = "nick", required = false) String nick,
+                                @SessionAttribute(name = "memberDivision", required = false) String memberDivision,
+                                HttpServletRequest request,
                                RedirectAttributes redirectAttributes) {
         String actor = uid == null || uid.isBlank() ? "guest" : uid;
         String clientIp = extractClientIp(request);
@@ -66,7 +67,7 @@ public class PostPageController {
         payload.put("password", password == null ? "" : password);
 
         try {
-            Map<String, Object> result = postService.insertComment(payload, uid, nick, clientIp);
+            Map<String, Object> result = postService.insertComment(payload, uid, nick, clientIp, memberDivision);
             System.out.println("[" + LocalDateTime.now() + "] PAGE POST RESULT /board/" + gid + "/" + postNo + "/comment success=" + result.get("success"));
             putFlash(redirectAttributes, result, "Comment added.");
         } catch (Exception e) {

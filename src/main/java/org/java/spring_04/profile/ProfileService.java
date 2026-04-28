@@ -26,6 +26,9 @@ public class ProfileService {
                     accent_color VARCHAR(20) NOT NULL DEFAULT '#ff8fab',
                     show_posts TINYINT(1) NOT NULL DEFAULT 1,
                     show_comments TINYINT(1) NOT NULL DEFAULT 1,
+                    show_birthdate TINYINT(1) NOT NULL DEFAULT 1,
+                    show_gender TINYINT(1) NOT NULL DEFAULT 1,
+                    show_sns TINYINT(1) NOT NULL DEFAULT 1,
                     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY (uid)
                 )
@@ -49,15 +52,21 @@ public class ProfileService {
         }
 
         boolean ownerView = resolvedTarget.equals(nullableText(viewerUid));
+        boolean blockedView = !ownerView && isBlockedBetween(viewerUid, resolvedTarget);
         Map<String, Object> settings = getProfileSettings(resolvedTarget);
-        boolean showPosts = ownerView || toBooleanFlag(settings.get("show_posts"));
-        boolean showComments = ownerView || toBooleanFlag(settings.get("show_comments"));
+        boolean showPosts = !blockedView && (ownerView || toBooleanFlag(settings.get("show_posts")));
+        boolean showComments = !blockedView && (ownerView || toBooleanFlag(settings.get("show_comments")));
 
         Map<String, Object> profile = new LinkedHashMap<>();
         profile.put("uid", user.get("uid"));
         profile.put("nick", user.get("nick"));
         profile.put("nickIconType", user.get("nick_icon_type"));
         profile.put("memberDivision", user.get("member_division"));
+        profile.put("roleLabels", resolveRoleLabels(
+                nullableText(user.get("member_division")),
+                countManagedBoards(resolvedTarget),
+                countSubmanagedBoards(resolvedTarget)
+        ));
         profile.put("email", ownerView ? nullableText(user.get("email")) : null);
         profile.put("statusMessage", nullableText(settings.get("status_message")));
         profile.put("bio", nullableText(settings.get("bio")));
@@ -69,6 +78,7 @@ public class ProfileService {
         profile.put("stats", Map.of(
                 "postCount", countPosts(resolvedTarget),
                 "commentCount", countComments(resolvedTarget),
+                "scrapCount", countScraps(resolvedTarget),
                 "managedBoardCount", countManagedBoards(resolvedTarget),
                 "submanagerBoardCount", countSubmanagedBoards(resolvedTarget),
                 "followerCount", countFollowers(resolvedTarget),
@@ -85,6 +95,8 @@ public class ProfileService {
         profile.put("commentsHidden", !showComments);
         profile.put("posts", showPosts ? getPostsByUser(resolvedTarget) : List.of());
         profile.put("comments", showComments ? getCommentsByUser(resolvedTarget) : List.of());
+        profile.put("blockedView", blockedView);
+        profile.put("scraps", ownerView ? getScrapsByUser(resolvedTarget) : List.of());
         return profile;
     }
 
@@ -122,8 +134,8 @@ public class ProfileService {
         String statusMessage = nullableTrim(payload.get("statusMessage"));
         String bio = nullableTrim(payload.get("bio"));
         String accentColor = normalizeThemeColor(payload.get("accentColor"));
-        int showPosts = parseBooleanFlag(payload.get("showPosts"), true);
-        int showComments = parseBooleanFlag(payload.get("showComments"), true);
+        int showPosts = parseBooleanFlag(payload.get("showPosts"));
+        int showComments = parseBooleanFlag(payload.get("showComments"));
 
         if (statusMessage != null && statusMessage.length() > 160) {
             throw new RuntimeException("상태 메시지는 160자까지 입력할 수 있습니다.");
@@ -134,9 +146,10 @@ public class ProfileService {
 
         jdbcTemplate.update("""
                 INSERT INTO user_profile_setting (
-                    uid, status_message, bio, accent_color, show_posts, show_comments, updated_at
+                    uid, status_message, bio, accent_color, show_posts, show_comments,
+                    show_birthdate, show_gender, show_sns, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, NOW())
+                VALUES (?, ?, ?, ?, ?, ?, 1, 1, 1, NOW())
                 ON DUPLICATE KEY UPDATE
                     status_message = VALUES(status_message),
                     bio = VALUES(bio),
@@ -164,9 +177,13 @@ public class ProfileService {
         defaults.put("accent_color", "#ff8fab");
         defaults.put("show_posts", true);
         defaults.put("show_comments", true);
+        defaults.put("show_birthdate", true);
+        defaults.put("show_gender", true);
+        defaults.put("show_sns", true);
         try {
             Map<String, Object> row = jdbcTemplate.queryForMap("""
-                    SELECT uid, status_message, bio, accent_color, show_posts, show_comments, updated_at
+                    SELECT uid, status_message, bio, accent_color, show_posts, show_comments,
+                           show_birthdate, show_gender, show_sns, updated_at
                     FROM user_profile_setting
                     WHERE uid = ?
                     """, uid);
@@ -217,7 +234,7 @@ public class ProfileService {
     private int countManagedBoards(String uid) {
         Integer count = jdbcTemplate.queryForObject("""
                 SELECT COUNT(*)
-                FROM gallery
+                FROM board
                 WHERE manager_uid = ?
                 """, Integer.class, uid);
         return count == null ? 0 : count;
@@ -248,6 +265,29 @@ public class ProfileService {
                 WHERE follower_uid = ?
                 """, Integer.class, uid);
         return count == null ? 0 : count;
+    }
+
+    private int countScraps(String uid) {
+        Integer count = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM post_scrap
+                WHERE uid = ?
+                """, Integer.class, uid);
+        return count == null ? 0 : count;
+    }
+
+    private boolean isBlockedBetween(String viewerUid, String targetUid) {
+        String viewer = nullableText(viewerUid);
+        if (viewer == null || targetUid == null) {
+            return false;
+        }
+        Integer count = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM user_block
+                WHERE (blocker_uid = ? AND blocked_uid = ?)
+                   OR (blocker_uid = ? AND blocked_uid = ?)
+                """, Integer.class, viewer, targetUid, targetUid, viewer);
+        return count != null && count > 0;
     }
 
     private boolean isFollowing(String followerUid, String followingUid) {
@@ -305,7 +345,7 @@ public class ProfileService {
                              AND c.is_deleted = 0
                        ) AS comment_count
                 FROM post p
-                JOIN gallery g ON g.gall_id = p.gall_id
+                JOIN board g ON g.gall_id = p.gall_id
                 LEFT JOIN user author ON author.uid = p.writer_uid
                 WHERE p.writer_uid = ?
                   AND p.is_deleted = 0
@@ -322,16 +362,36 @@ public class ProfileService {
                        c.post_no,
                        c.content,
                        author.nick_icon_type,
-                       c.writed_at,
+                       c.created_at AS writed_at,
                        p.title AS post_title
                 FROM comment c
                 JOIN post p ON p.gall_id = c.gall_id AND p.post_no = c.post_no
-                JOIN gallery g ON g.gall_id = c.gall_id
+                JOIN board g ON g.gall_id = c.gall_id
                 LEFT JOIN user author ON author.uid = c.writer_uid
                 WHERE c.writer_uid = ?
                   AND c.is_deleted = 0
                   AND p.is_deleted = 0
-                ORDER BY c.writed_at DESC, c.id DESC
+                ORDER BY c.created_at DESC, c.id DESC
+                LIMIT 50
+                """, uid);
+    }
+
+    private List<Map<String, Object>> getScrapsByUser(String uid) {
+        return jdbcTemplate.queryForList("""
+                SELECT s.gall_id,
+                       g.gall_name,
+                       s.post_no,
+                       p.title,
+                       p.writed_at,
+                       s.created_at AS scrapped_at
+                FROM post_scrap s
+                JOIN post p ON p.gall_id = s.gall_id AND p.post_no = s.post_no
+                JOIN board g ON g.gall_id = s.gall_id
+                WHERE s.uid = ?
+                  AND p.is_deleted = 0
+                  AND COALESCE(p.is_draft, 0) = 0
+                  AND COALESCE(p.is_secret, 0) = 0
+                ORDER BY s.created_at DESC
                 LIMIT 50
                 """, uid);
     }
@@ -370,10 +430,10 @@ public class ProfileService {
         return text == null || text.equals("1") || text.equalsIgnoreCase("true") || text.equalsIgnoreCase("yes") || text.equalsIgnoreCase("on");
     }
 
-    private int parseBooleanFlag(String value, boolean defaultValue) {
+    private int parseBooleanFlag(String value) {
         String normalized = nullableTrim(value);
         if (normalized == null) {
-            return defaultValue ? 1 : 0;
+            return 1;
         }
         return ("1".equals(normalized) || "true".equalsIgnoreCase(normalized) || "yes".equalsIgnoreCase(normalized) || "on".equalsIgnoreCase(normalized)) ? 1 : 0;
     }
@@ -394,5 +454,23 @@ public class ProfileService {
             return first;
         }
         return second;
+    }
+
+    private List<String> resolveRoleLabels(String memberDivision, int managedBoardCount, int submanagedBoardCount) {
+        List<String> labels = new java.util.ArrayList<>();
+        labels.add("member");
+        if ("operator".equalsIgnoreCase(memberDivision)) {
+            labels.add("operator");
+            labels.add("admin");
+        } else if ("admin".equalsIgnoreCase(memberDivision) || "1".equals(memberDivision)) {
+            labels.add("admin");
+        }
+        if (managedBoardCount > 0) {
+            labels.add("board-manager");
+        }
+        if (submanagedBoardCount > 0) {
+            labels.add("board-submanager");
+        }
+        return labels;
     }
 }

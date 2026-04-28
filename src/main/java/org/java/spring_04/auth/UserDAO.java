@@ -1,11 +1,11 @@
 package org.java.spring_04.auth;
 
+import java.util.Optional;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.BeanPropertyRowMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
-
-import java.util.Optional;
 
 @Repository
 public class UserDAO {
@@ -60,20 +60,10 @@ public class UserDAO {
     }
 
     public void save(UserEntity user) {
-        ensureDefaultUserRole();
-
         String sql = """
-                INSERT INTO user (uid, nick, password_hash, email, nick_icon_type, member_division, role_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO user (uid, nick, password_hash, email, nick_icon_type, member_division)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """;
-
-        Integer roleId = jdbcTemplate.queryForObject(
-                "SELECT role_id FROM roles WHERE LOWER(role_name) = 'user' LIMIT 1",
-                Integer.class
-        );
-        if (roleId == null) {
-            throw new IllegalStateException("기본 user 역할을 찾을 수 없습니다.");
-        }
 
         jdbcTemplate.update(
                 sql,
@@ -82,22 +72,7 @@ public class UserDAO {
                 user.getPasswordHash(),
                 user.getEmail(),
                 "default",
-                "user",
-                roleId
+                "user"
         );
-    }
-
-    private void ensureDefaultUserRole() {
-        Integer count = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM roles WHERE LOWER(role_name) = 'user'",
-                Integer.class
-        );
-        if (count == null || count == 0) {
-            jdbcTemplate.update(
-                    "INSERT INTO roles (role_name, description) VALUES (?, ?)",
-                    "user",
-                    "Default member role"
-            );
-        }
     }
 }

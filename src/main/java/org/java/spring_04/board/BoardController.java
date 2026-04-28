@@ -2,6 +2,8 @@ package org.java.spring_04.board;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
+import org.java.spring_04.feature.FeatureService;
+import org.java.spring_04.post.PostService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.web.bind.annotation.*;
@@ -17,6 +19,12 @@ public class BoardController {
     @Autowired
     private BoardService boardService;
 
+    @Autowired
+    private PostService postService;
+
+    @Autowired
+    private FeatureService featureService;
+
     @GetMapping("/list")
     public List<Map<String, Object>> getBoardList() {
         System.out.println("[" + LocalDateTime.now() + "] API /api/board/list");
@@ -26,20 +34,28 @@ public class BoardController {
     @GetMapping("/posts/{gid}")
     public List<Map<String, Object>> getPosts(
             @PathVariable("gid") String gid,
-            @RequestParam(value = "page", defaultValue = "1") int page) {
+            @RequestParam(value = "page", defaultValue = "1") int page,
+            @SessionAttribute(name = "uid", required = false) String uid,
+            @SessionAttribute(name = "memberDivision", required = false) String memberDivision) {
         System.out.println("[" + LocalDateTime.now() + "] API /api/board/posts/" + gid + "?page=" + page);
+        featureService.assertBoardReadable(gid, uid, memberDivision);
         return boardService.getPostsByGallery(gid, page);
     }
 
     @GetMapping("/posts/{gid}/{postNo}")
     public Map<String, Object> getPostDetail(
             @PathVariable("gid") String gid,
-            @PathVariable("postNo") Long postNo) {
+            @PathVariable("postNo") Long postNo,
+            @SessionAttribute(name = "uid", required = false) String uid,
+            @SessionAttribute(name = "memberDivision", required = false) String memberDivision) {
         System.out.println("[" + LocalDateTime.now() + "] API /api/board/posts/" + gid + "/" + postNo);
         Map<String, Object> post = boardService.getPostDetail(gid, postNo);
 
         if (post == null) {
             return Map.of("success", false, "message", "게시글을 찾을 수 없습니다.");
+        }
+        if (!featureService.canViewPost(post, uid, memberDivision)) {
+            return Map.of("success", false, "message", "게시글을 열람할 권한이 없습니다.");
         }
 
         return Map.of("success", true, "post", post);
@@ -144,8 +160,14 @@ public class BoardController {
         String nick = (String) session.getAttribute("nick");
 
         try {
-            boardService.insertPost(payload, uid, nick, extractClientIp(request));
-            return Map.of("success", true);
+            if (uid == null || uid.isBlank()) {
+                Map<String, Object> settings = boardService.getBoardSettings(payload.get("gid"));
+                if (!flagEnabled(settings.get("allow_guest_post"))) {
+                    return Map.of("success", false, "message", "이 보드는 비회원 글쓰기가 비활성화되어 있습니다.");
+                }
+            }
+            String memberDivision = (String) session.getAttribute("memberDivision");
+            return postService.insertPost(payload, uid, nick, extractClientIp(request), memberDivision);
         } catch (Exception e) {
             return Map.of("success", false, "message", e.getMessage());
         }
@@ -171,5 +193,19 @@ public class BoardController {
         }
 
         return request.getRemoteAddr();
+    }
+
+    private boolean flagEnabled(Object value) {
+        if (value instanceof Boolean booleanValue) {
+            return booleanValue;
+        }
+        if (value instanceof Number number) {
+            return number.intValue() != 0;
+        }
+        if (value == null) {
+            return false;
+        }
+        String text = String.valueOf(value).trim();
+        return text.equals("1") || text.equalsIgnoreCase("true") || text.equalsIgnoreCase("yes") || text.equalsIgnoreCase("on");
     }
 }

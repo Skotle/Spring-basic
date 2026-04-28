@@ -22,6 +22,16 @@
     }).format(date);
   };
 
+  const categoryOptionsFromSettings = (settings) => {
+    if (Array.isArray(settings?.category_options_list)) {
+      return settings.category_options_list.map((item) => String(item).trim()).filter(Boolean);
+    }
+    return String(settings?.category_options || "일반")
+      .split(/[\n,]/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  };
+
   function matchRoute(pathname) {
     if (pathname === "/m") return { name: "home", params: {} };
     if (pathname === "/m/signin") return { name: "login", params: {} };
@@ -59,26 +69,40 @@
   }
 
   function MobileTopbar({ session, onLogout }) {
+    const navItems = [
+      { label: "홈", href: "/m" },
+      { label: "보드", href: "/m/boards" },
+      { label: "피드", href: "/m" },
+      { label: session?.loggedIn ? "내정보" : "로그인", href: session?.loggedIn ? "/m" : "/m/signin" },
+      { label: "가입", href: "/m/nid" }
+    ];
     return h(
       "header",
       { className: "m-topbar" },
       h(
         "div",
-        { className: "m-topbar-inner" },
-        h(MLink, { href: "/m", className: "m-brand" }, h("span", { className: "m-brand-mark" }), h("span", null, "irisen m")),
-        h(
-          "div",
-          { className: "m-actions" },
-          session?.loggedIn
-            ? [
-                h("span", { className: "m-chip", key: "nick" }, h("span", { className: "m-dot" }), session.nick || session.uid),
-                h("button", { type: "button", className: "m-btn m-btn-secondary", key: "logout", onClick: onLogout }, "로그아웃")
-              ]
-            : [
-                h(MLink, { href: "/m/signin", className: "m-btn m-btn-secondary", key: "login" }, "로그인"),
-                h(MLink, { href: "/m/nid", className: "m-btn m-btn-primary", key: "signup" }, "가입")
-              ]
+        { className: "m-top-searchbar" },
+        h(MLink, { href: "/m", className: "m-mobile-logo", "aria-label": "모바일 홈" }, "I"),
+        h("div", { className: "m-search-panel" },
+          h("button", { type: "button", className: "m-menu-btn", "aria-label": "메뉴" }, h("span"), h("span"), h("span")),
+          h("span", { className: "m-search-placeholder" }, "보드 & 게시글 검색"),
+          h("span", { className: "m-search-symbol", "aria-hidden": "true" }),
+          h("span", { className: "m-recent-visit" }, session?.loggedIn ? "내 보드" : "로그인")
         )
+      ),
+      h("nav", { className: "m-primary-tabs", "aria-label": "모바일 주요 메뉴" },
+        navItems.map((item) => h(MLink, { key: item.label, href: item.href, className: item.label === "보드" ? "is-active" : "" }, item.label))
+      ),
+      h("div", { className: "m-session-strip" },
+        session?.loggedIn
+          ? [
+              h("span", { className: "m-session-name", key: "nick" }, session.nick || session.uid),
+              h("button", { type: "button", className: "m-session-link", key: "logout", onClick: onLogout }, "로그아웃")
+            ]
+          : [
+              h(MLink, { href: "/m/signin", className: "m-session-link", key: "login" }, "로그인"),
+              h(MLink, { href: "/m/nid", className: "m-session-link", key: "signup" }, "가입")
+            ]
       )
     );
   }
@@ -205,23 +229,115 @@
     );
   }
 
-  function BoardView({ session, gid, board, posts, page, onPrev, onNext, onLogout }) {
+  function BoardView({ session, gid, board, posts, page, settings, onPrev, onNext, onLogout }) {
+    const [selectedCategory, setSelectedCategory] = useState("전체");
+    const [listMode, setListMode] = useState("all");
+    const configuredCategories = categoryOptionsFromSettings(settings);
+    const postCategories = posts.map((post) => String(post.category || "").trim()).filter(Boolean);
+    const categories = ["전체", ...Array.from(new Set([...configuredCategories, ...postCategories]))];
+    const parsedConceptThreshold = Number(settings?.concept_recommend_threshold || settings?.concept_threshold);
+    const conceptThreshold = Number.isFinite(parsedConceptThreshold) && parsedConceptThreshold > 0 ? parsedConceptThreshold : 10;
+    const isConceptPost = (post) =>
+      Number(post.is_concept || post.concept || 0) === 1 ||
+      Number(post.recommend_count || post.recommend || post.likes || 0) >= conceptThreshold;
+    const isNoticePost = (post) => Number(post.notice || post.is_notice || 0) === 1;
+    const filteredPosts = posts.filter((post) => {
+      const matchesCategory = selectedCategory === "전체" || String(post.category || "일반") === selectedCategory;
+      const matchesMode =
+        listMode === "all" ||
+        (listMode === "concept" && isConceptPost(post)) ||
+        (listMode === "notice" && isNoticePost(post));
+      return matchesCategory && matchesMode;
+    });
+    const visiblePosts = filteredPosts.slice(0, 15);
+    const boardInitial = String(board?.gall_name || gid || "I").trim().charAt(0).toUpperCase();
+
+    useEffect(() => {
+      if (!categories.includes(selectedCategory)) {
+        setSelectedCategory("전체");
+      }
+    }, [gid, categories.join("|")]);
+
     return h(
       React.Fragment,
       null,
       h(MobileTopbar, { session, onLogout }),
       h(
         "main",
-        { className: "m-shell m-stack" },
+        { className: "m-shell m-board-screen" },
         h(
           "section",
-          { className: "m-panel m-stack" },
-          h(MSectionHead, { eyebrow: "Board", title: board ? board.gall_name : gid, action: h("span", { className: "m-chip m-mono" }, gid) }),
-          posts.length
-            ? posts.map((post) => h(MLink, { href: `/m/board/${encodeURIComponent(gid)}/${post.post_no}`, className: "m-post-row", key: `${gid}-${post.post_no}` }, h("div", { className: "m-meta m-muted" }, h("span", { className: "m-mono" }, `#${post.post_no}`), h("span", null, formatDate(post.writed_at || post.created_at || post.reg_date))), h("div", { className: "m-post-title" }, post.title || "제목 없음"), h("div", { className: "m-meta m-muted" }, h("span", null, post.name || "익명"), h("span", null, `${post.comment_count ?? 0} comments`))))
-            : h("div", { className: "m-empty" }, "게시글이 없습니다."),
-          h("div", { className: "m-pagination" }, h("button", { type: "button", className: "m-btn m-btn-secondary", onClick: onPrev }, "이전"), h("span", { className: "m-chip" }, `page ${page}`), h("button", { type: "button", className: "m-btn m-btn-secondary", onClick: onNext }, "다음")),
-          h(MLink, { href: `/m/board/${encodeURIComponent(gid)}/write`, className: "m-btn m-btn-primary" }, "글쓰기")
+          { className: "m-board-titlebar" },
+          h("div", { className: "m-board-title-main" },
+            h("h1", { className: "m-board-name" }, board ? board.gall_name : gid),
+            h("span", { className: "m-board-type" }, String(board?.gall_type || "m").toUpperCase()),
+            h("span", { className: "m-board-count" }, `(${posts.length.toLocaleString("ko-KR")})`)
+          ),
+          h("div", { className: "m-board-title-actions" },
+            h("span", { className: "m-info-dot" }, "i"),
+            h("span", null, "보드정보"),
+            h("span", null, "운영"),
+            h(MLink, { href: `/m/board/${encodeURIComponent(gid)}/write`, className: "m-write-outline" }, "글쓰기")
+          )
+        ),
+        h(
+          "section",
+          { className: "m-board-notice-card" },
+          h("div", { className: "m-board-notice-logo" }, boardInitial),
+          h("div", null,
+            h("strong", null, settings?.board_notice || settings?.welcome_message || `${board ? board.gall_name : gid} 모바일 게시판입니다.`),
+            h("span", null, settings?.welcome_message && settings?.board_notice ? settings.welcome_message : "말머리를 선택해서 원하는 글만 빠르게 볼 수 있습니다.")
+          ),
+          h("span", { className: "m-info-float" }, "i")
+        ),
+        h(
+          "section",
+          { className: "m-board-tabs", "aria-label": "글 목록 종류" },
+          h("button", { type: "button", className: listMode === "all" ? "is-active" : "", onClick: () => setListMode("all") }, "전체"),
+          h("button", { type: "button", className: listMode === "concept" ? "is-active" : "", onClick: () => setListMode("concept") }, "개념글"),
+          h("button", { type: "button", className: listMode === "notice" ? "is-active" : "", onClick: () => setListMode("notice") }, "공지"),
+          h("button", { type: "button", className: "m-tab-count" }, `${filteredPosts.length}개`)
+        ),
+        h(
+          "section",
+          { className: "m-category-strip", "aria-label": "말머리 목록" },
+          categories.map((category) =>
+            h("button", {
+              key: category,
+              type: "button",
+              className: selectedCategory === category ? "is-active" : "",
+              onClick: () => setSelectedCategory(category)
+            }, category)
+          )
+        ),
+        h(
+          "section",
+          { className: "m-compact-list" },
+          visiblePosts.length
+            ? visiblePosts.map((post) =>
+                h(MLink, { href: `/m/board/${encodeURIComponent(gid)}/${post.post_no}`, className: "m-compact-post", key: `${gid}-${post.post_no}` },
+                  h("div", { className: "m-compact-main" },
+                    h("span", { className: "m-compact-no" }, post.post_no),
+                    h("span", { className: "m-compact-category" }, post.category || "일반"),
+                    h("strong", { className: "m-compact-title" }, post.title || "제목 없음"),
+                    Number(post.comment_count || 0) > 0 ? h("span", { className: "m-compact-comments" }, post.comment_count) : null
+                  ),
+                  h("div", { className: "m-compact-meta" },
+                    h("span", null, post.name || "익명"),
+                    h("span", null, formatDate(post.writed_at || post.created_at || post.reg_date)),
+                    isConceptPost(post) ? h("span", { className: "m-concept-mark" }, "개념") : null
+                  )
+                )
+              )
+            : h("div", { className: "m-empty" }, listMode === "concept" ? "조건에 맞는 개념글이 없습니다." : "게시글이 없습니다."),
+          filteredPosts.length > 15 ? h("div", { className: "m-list-note" }, "모바일 화면 가독성을 위해 현재 페이지에서 15개까지 표시합니다.") : null
+        ),
+        h(
+          "section",
+          { className: "m-board-bottom" },
+          h("button", { type: "button", className: "m-btn m-btn-secondary", onClick: onPrev }, "이전"),
+          h("span", { className: "m-chip" }, `page ${page}`),
+          h("button", { type: "button", className: "m-btn m-btn-secondary", onClick: onNext }, "다음")
         )
       )
     );
@@ -244,7 +360,7 @@
           { className: "m-post-card" },
           post
             ? [
-                h("div", { className: "m-meta m-muted", key: "meta" }, h("span", { className: "m-chip m-mono" }, `${gid}/${postNo}`), h("span", null, formatDate(post.writed_at || post.created_at || post.reg_date))),
+                h("div", { className: "m-meta m-muted", key: "meta" }, h("span", { className: "m-chip m-mono" }, `${gid}/${postNo}`), post.category ? h("span", { className: "m-chip" }, `[${post.category}]`) : null, h("span", null, formatDate(post.writed_at || post.created_at || post.reg_date))),
                 h("h1", { className: "m-post-heading", key: "title" }, post.title || "제목 없음"),
                 h("div", { className: "m-post-meta m-muted", key: "author" }, h("span", null, post.name || "익명"), h("span", null, `${post.comment_count ?? comments.length} comments`)),
                 h("div", { className: "m-post-body", key: "body", dangerouslySetInnerHTML: { __html: post.content || "" } }),
@@ -288,11 +404,22 @@
     );
   }
 
-  function WriteView({ session, gid, feedback, onSubmitPost, onLogout }) {
+  function WriteView({ session, gid, feedback, settings, onSubmitPost, onLogout }) {
     const [title, setTitle] = useState("");
     const [content, setContent] = useState("");
+    const [category, setCategory] = useState("");
     const [guestName, setGuestName] = useState("");
     const [guestPassword, setGuestPassword] = useState("");
+    const categoryOptions = categoryOptionsFromSettings(settings);
+
+    useEffect(() => {
+      if (!category && categoryOptions.length) {
+        setCategory(categoryOptions[0]);
+      }
+      if (category && categoryOptions.length && !categoryOptions.includes(category)) {
+        setCategory(categoryOptions[0]);
+      }
+    }, [settings?.category_options]);
 
     return h(
       React.Fragment,
@@ -307,6 +434,14 @@
           h(MSectionHead, { eyebrow: "Compose", title: `${gid} 글쓰기`, action: h(MLink, { href: `/m/board/${encodeURIComponent(gid)}`, className: "m-btn m-btn-secondary" }, "보드") }),
           h("div", { className: session?.loggedIn ? "m-feedback-success" : "m-feedback-error" }, session?.loggedIn ? `${session.nick || session.uid} 계정으로 작성합니다.` : "비회원은 이름과 비밀번호를 반드시 입력해야 합니다."),
           session?.loggedIn ? null : h(MGuestFields, { name: guestName, password: guestPassword, setName: setGuestName, setPassword: setGuestPassword, prefix: "m-post" }),
+          categoryOptions.length
+            ? h("div", { className: "m-field" },
+                h("label", { htmlFor: "m-write-category" }, "말머리"),
+                h("select", { id: "m-write-category", value: category || categoryOptions[0], onChange: (event) => setCategory(event.target.value) },
+                  categoryOptions.map((option) => h("option", { key: option, value: option }, `[${option}]`))
+                )
+              )
+            : null,
           h("div", { className: "m-field" }, h("label", { htmlFor: "m-write-title" }, "제목"), h("input", { id: "m-write-title", type: "text", value: title, onChange: (event) => setTitle(event.target.value) })),
           h("div", { className: "m-field" }, h("label", { htmlFor: "m-write-content" }, "본문"), h(MHtmlEditor, { id: "m-write-content", value: content, onChange: setContent, placeholder: "모바일에서도 바로 글을 쓰면 HTML로 저장됩니다." })),
           h(MFeedback, { feedback }),
@@ -316,6 +451,7 @@
             onClick() {
               onSubmitPost({
                 gid,
+                category: category || categoryOptions[0] || "",
                 title: title.trim(),
                 content: content.trim(),
                 name: guestName.trim(),
@@ -323,6 +459,7 @@
               }, () => {
                 setTitle("");
                 setContent("");
+                setCategory(categoryOptions[0] || "");
                 setGuestName("");
                 setGuestPassword("");
               });
@@ -382,6 +519,7 @@
     const [query, setQuery] = useState("");
     const [page, setPage] = useState(1);
     const [boardPosts, setBoardPosts] = useState([]);
+    const [boardSettings, setBoardSettings] = useState(null);
     const [postData, setPostData] = useState({ post: null, comments: [] });
     const [authFeedback, setAuthFeedback] = useState(null);
     const [writeFeedback, setWriteFeedback] = useState(null);
@@ -421,12 +559,18 @@
           });
         }).catch(() => setPostData({ post: null, comments: [] }));
       }
+      if (route.name === "board" || route.name === "write") {
+        api(`/api/board/manage/${encodeURIComponent(route.params.gid)}/settings`).then((result) => {
+          setBoardSettings(result && result.success ? result.data : null);
+        }).catch(() => setBoardSettings(null));
+      }
     }, [route, page]);
 
     useEffect(() => {
       if (route.name !== "board") setPage(1);
       if (route.name !== "login" && route.name !== "signup") setAuthFeedback(null);
       if (route.name !== "write") setWriteFeedback(null);
+      if (route.name !== "write" && route.name !== "board") setBoardSettings(null);
       if (route.name !== "post") setCommentFeedback(null);
       window.scrollTo({ top: 0, behavior: "auto" });
     }, [route]);
@@ -494,6 +638,11 @@
         setWriteFeedback({ type: "error", message: "비회원은 이름과 비밀번호를 반드시 입력해야 합니다." });
         return;
       }
+      const categoryOptions = categoryOptionsFromSettings(boardSettings);
+      if (categoryOptions.length && !categoryOptions.includes(payload.category)) {
+        setWriteFeedback({ type: "error", message: "사용할 수 없는 말머리입니다." });
+        return;
+      }
 
       api("/api/posts/write", {
         method: "POST",
@@ -540,9 +689,9 @@
 
     if (route.name === "home") return h(HomeView, { session, boards, feed, onLogout: handleLogout });
     if (route.name === "boards") return h(BoardsView, { session, boards, query, onChangeQuery: setQuery, onLogout: handleLogout });
-    if (route.name === "board") return h(BoardView, { session, gid: route.params.gid, board: currentBoard, posts: boardPosts, page, onPrev: () => setPage((value) => Math.max(1, value - 1)), onNext: () => setPage((value) => value + 1), onLogout: handleLogout });
+    if (route.name === "board") return h(BoardView, { session, gid: route.params.gid, board: currentBoard, posts: boardPosts, page, settings: boardSettings, onPrev: () => setPage((value) => Math.max(1, value - 1)), onNext: () => setPage((value) => value + 1), onLogout: handleLogout });
     if (route.name === "post") return h(PostView, { session, gid: route.params.gid, postNo: route.params.postNo, post: postData.post, comments: postData.comments, feedback: commentFeedback, onSubmitComment: submitComment, onLogout: handleLogout });
-    if (route.name === "write") return h(WriteView, { session, gid: route.params.gid, feedback: writeFeedback, onSubmitPost: submitPost, onLogout: handleLogout });
+    if (route.name === "write") return h(WriteView, { session, gid: route.params.gid, feedback: writeFeedback, settings: boardSettings, onSubmitPost: submitPost, onLogout: handleLogout });
     if (route.name === "login") return h(AuthView, { mode: "login", feedback: authFeedback, onSubmitAuth: submitAuth, session, onLogout: handleLogout });
     if (route.name === "signup") return h(AuthView, { mode: "signup", feedback: authFeedback, onSubmitAuth: submitAuth, session, onLogout: handleLogout });
     return h(NotFoundView, { session, onLogout: handleLogout });

@@ -2,6 +2,7 @@ package org.java.spring_04.post;
 
 import jakarta.annotation.PostConstruct;
 import org.java.spring_04.board.BoardService;
+import org.java.spring_04.feature.FeatureService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -28,6 +29,9 @@ public class PostService {
     @Autowired
     private BoardService boardService;
 
+    @Autowired
+    private FeatureService featureService;
+
     @PostConstruct
     public void initializePostSchema() {
         if (!columnExists("post", "recommend_count")) {
@@ -39,8 +43,11 @@ public class PostService {
         if (!columnExists("post", "view_count")) {
             jdbcTemplate.execute("ALTER TABLE post ADD COLUMN view_count INT NOT NULL DEFAULT 0");
         }
+        if (!columnExists("post", "category")) {
+            jdbcTemplate.execute("ALTER TABLE post ADD COLUMN category VARCHAR(50) NULL");
+        }
         if (!columnExists("comment", "parent_id")) {
-            jdbcTemplate.execute("ALTER TABLE comment ADD COLUMN parent_id BIGINT NULL");
+            jdbcTemplate.execute("ALTER TABLE comment ADD COLUMN parent_id INT NULL");
         }
         if (!columnExists("comment", "reply_depth")) {
             jdbcTemplate.execute("ALTER TABLE comment ADD COLUMN reply_depth INT NOT NULL DEFAULT 0");
@@ -62,6 +69,13 @@ public class PostService {
                     INDEX idx_post_vote_post_date (gall_id, post_no, vote_date)
                 )
                 """);
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS gallery_counter (
+                    gall_id VARCHAR(50) NOT NULL,
+                    last_post_no INT NOT NULL DEFAULT 0,
+                    PRIMARY KEY (gall_id)
+                )
+                """);
     }
 
     public List<Map<String, Object>> getPostsByGallery(String gallId) {
@@ -76,10 +90,13 @@ public class PostService {
                              AND c.is_deleted = 0
                        ) AS comment_count
                 FROM post p
-                JOIN gallery g ON g.gall_id = p.gall_id
+                JOIN board g ON g.gall_id = p.gall_id
                 LEFT JOIN user author ON author.uid = p.writer_uid
                 WHERE p.gall_id = ?
                   AND p.is_deleted = 0
+                  AND COALESCE(p.is_draft, 0) = 0
+                  AND COALESCE(p.is_secret, 0) = 0
+                  AND COALESCE(p.review_status, 'normal') <> 'review'
                 ORDER BY p.writed_at DESC, p.id DESC, p.post_no DESC
                 LIMIT 20
                 """;
@@ -98,9 +115,12 @@ public class PostService {
                              AND c.is_deleted = 0
                        ) AS comment_count
                 FROM post p
-                JOIN gallery g ON g.gall_id = p.gall_id
+                JOIN board g ON g.gall_id = p.gall_id
                 LEFT JOIN user author ON author.uid = p.writer_uid
                 WHERE p.is_deleted = 0
+                  AND COALESCE(p.is_draft, 0) = 0
+                  AND COALESCE(p.is_secret, 0) = 0
+                  AND COALESCE(p.review_status, 'normal') <> 'review'
                 ORDER BY p.recommend_count DESC, p.view_count DESC, p.id DESC
                 LIMIT 5
                 """;
@@ -126,7 +146,7 @@ public class PostService {
                          AND c.is_deleted = 0
                    ) AS comment_count
             FROM post p
-            JOIN gallery g ON g.gall_id = p.gall_id
+            JOIN board g ON g.gall_id = p.gall_id
             LEFT JOIN user author ON author.uid = p.writer_uid
             WHERE p.id = ?
               AND p.is_deleted = 0
@@ -161,7 +181,7 @@ public class PostService {
                          AND c.is_deleted = 0
                    ) AS comment_count
             FROM post p
-            JOIN gallery g ON g.gall_id = p.gall_id
+            JOIN board g ON g.gall_id = p.gall_id
             LEFT JOIN user author ON author.uid = p.writer_uid
             WHERE p.gall_id = ?
               AND p.post_no = ?
@@ -179,14 +199,16 @@ public class PostService {
 
     public List<Map<String, Object>> getComments(String gallId, Long postNo) {
         String sql = """
-                SELECT c.id, c.writer_uid, c.name, c.ip, c.content, c.writed_at,
-                       c.parent_id, c.reply_depth, c.sort_key, author.nick_icon_type
+                SELECT c.id, c.writer_uid, c.name, c.ip, c.content, c.created_at AS writed_at,
+                       c.parent_id, c.reply_depth, c.sort_key, c.like_count, c.report_count, c.review_status,
+                       author.nick_icon_type
                 FROM comment c
                 JOIN post p ON p.gall_id = c.gall_id AND p.post_no = c.post_no
                 LEFT JOIN user author ON author.uid = c.writer_uid
                 WHERE c.gall_id = ?
                   AND c.post_no = ?
                   AND c.is_deleted = 0
+                  AND COALESCE(c.review_status, 'normal') <> 'review'
                   AND p.is_deleted = 0
                 ORDER BY COALESCE(c.sort_key, LPAD(c.id, 10, '0')) ASC, c.id ASC
         """;
@@ -202,6 +224,15 @@ public class PostService {
         Map<String, Object> post = findPostRow(gallId, postNo);
         if (post == null) {
             return Map.of("success", false, "message", "Post not found.");
+        }
+
+        String writerUid = nullableText(post.get("writer_uid"));
+        String writerIp = nullableText(post.get("ip"));
+        if (writerUid != null && uid != null && writerUid.equals(uid.trim())) {
+            return Map.of("success", false, "message", "본인 글에는 공감할 수 없습니다.");
+        }
+        if (writerUid == null && writerIp != null && writerIp.equals(normalizedIp(clientIp))) {
+            return Map.of("success", false, "message", "본인 글에는 공감할 수 없습니다.");
         }
 
         String actorKey = resolveVoteActorKey(uid, clientIp);
@@ -236,6 +267,7 @@ public class PostService {
                 postNo
         );
 
+        featureService.refreshConceptState(gallId, postNo);
         return Map.of(
                 "success", true,
                 "message", "Vote recorded.",
@@ -271,11 +303,14 @@ public class PostService {
     }
 
     @Transactional
-    public Map<String, Object> insertPost(Map<String, String> payload, String uid, String nick, String clientIp) {
+    public Map<String, Object> insertPost(Map<String, String> payload, String uid, String nick, String clientIp, String memberDivision) {
         String gallId = required(payload.get("gid"), "갤러리 ID가 필요합니다.");
-        String title = required(payload.get("title"), "제목을 입력해 주세요.");
-        String content = requiredHtml(payload.get("content"), "본문을 입력해 주세요.");
+        String title = required(payload.get("title"), "제목을 입력해주세요.");
+        String content = requiredHtml(payload.get("content"), "본문을 입력해주세요.");
+        String category = normalizePostCategory(gallId, payload.get("category"));
 
+        featureService.assertBoardWritable(gallId, uid, memberDivision, clientIp);
+        featureService.validateTextPolicy(gallId, title + "\n" + content);
         WriterInfo writer = resolveWriter(payload, uid, nick, clientIp);
 
         String updateCounterSql = """
@@ -287,7 +322,15 @@ public class PostService {
         int updatedRows = jdbcTemplate.update(updateCounterSql, gallId);
 
         if (updatedRows == 0) {
-            throw new RuntimeException("해당 갤러리를 찾을 수 없습니다: " + gallId);
+            jdbcTemplate.update(
+                    "INSERT INTO gallery_counter (gall_id, last_post_no) VALUES (?, 0) ON DUPLICATE KEY UPDATE last_post_no = last_post_no",
+                    gallId
+            );
+            updatedRows = jdbcTemplate.update(updateCounterSql, gallId);
+        }
+
+        if (updatedRows == 0) {
+            throw new RuntimeException("대상 보드를 찾을 수 없습니다: " + gallId);
         }
 
         Integer createdPostNo = jdbcTemplate.queryForObject(
@@ -300,14 +343,15 @@ public class PostService {
         }
 
         String insertPostSql = """
-                INSERT INTO post (gall_id, post_no, title, content, writer_uid, name, ip, password)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO post (gall_id, post_no, category, title, content, writer_uid, name, ip, password)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """;
 
         jdbcTemplate.update(
                 insertPostSql,
                 gallId,
                 createdPostNo,
+                category,
                 title,
                 content,
                 writer.uid(),
@@ -316,13 +360,14 @@ public class PostService {
                 writer.passwordHash()
         );
 
+        featureService.afterPostCreated(gallId, createdPostNo, uid, payload);
         return Map.of("success", true, "postNo", createdPostNo);
     }
 
     @Transactional
-    public Map<String, Object> insertComment(Map<String, String> payload, String uid, String nick, String clientIp) {
+    public Map<String, Object> insertComment(Map<String, String> payload, String uid, String nick, String clientIp, String memberDivision) {
         String gallId = required(payload.get("gid"), "갤러리 ID가 필요합니다.");
-        String content = required(payload.get("content"), "댓글 내용을 입력해 주세요.");
+        String content = required(payload.get("content"), "댓글 내용을 입력해주세요.");
         Long postNo = parseLong(payload.get("postNo"), "게시글 번호가 필요합니다.");
         Long parentId = parseOptionalLong(payload.get("parentId"));
 
@@ -330,6 +375,8 @@ public class PostService {
             throw new RuntimeException("댓글을 작성할 게시글을 찾을 수 없습니다.");
         }
 
+        featureService.assertBoardWritable(gallId, uid, memberDivision, clientIp);
+        featureService.validateTextPolicy(gallId, content);
         WriterInfo writer = resolveWriter(payload, uid, nick, clientIp);
         CommentParent parent = resolveCommentParent(gallId, postNo, parentId);
 
@@ -366,7 +413,8 @@ public class PostService {
                 : parent.sortKeyPrefix() + "." + padCommentId(commentId);
         jdbcTemplate.update("UPDATE comment SET sort_key = ? WHERE id = ?", sortKey, commentId);
 
-        return Map.of("success", true);
+        featureService.afterCommentCreated(gallId, postNo, commentId, parentId, uid);
+        return Map.of("success", true, "commentId", commentId);
     }
 
     @Transactional
@@ -450,7 +498,7 @@ public class PostService {
         try {
             return jdbcTemplate.queryForMap(
                     """
-                    SELECT id, gall_id, post_no, writer_uid, password, recommend_count, unrecommend_count, view_count
+                    SELECT id, gall_id, post_no, writer_uid, ip, password, recommend_count, unrecommend_count, view_count
                     FROM post
                     WHERE gall_id = ?
                       AND post_no = ?
@@ -495,7 +543,7 @@ public class PostService {
         }
         Map<String, Object> parent = findCommentRow(parentId);
         if (parent == null) {
-            throw new RuntimeException("답글 대상 댓글을 찾을 수 없습니다.");
+            throw new RuntimeException("상위 댓글을 찾을 수 없습니다.");
         }
         if (!gallId.equals(String.valueOf(parent.get("gall_id"))) || !postNo.equals(toLong(parent.get("post_no")))) {
             throw new RuntimeException("같은 게시글의 댓글에만 답글을 달 수 있습니다.");
@@ -544,8 +592,8 @@ public class PostService {
             return new WriterInfo(uid, resolvedNick, normalizedIp(clientIp), null);
         }
 
-        String guestName = required(firstNonBlank(payload.get("name"), payload.get("guestName")), "비회원은 이름을 입력해야 합니다.");
-        String guestPassword = required(firstNonBlank(payload.get("password"), payload.get("guestPassword")), "비회원은 비밀번호를 입력해야 합니다.");
+        String guestName = required(firstNonBlank(payload.get("name"), payload.get("guestName")), "비회원 이름을 입력해야 합니다.");
+        String guestPassword = required(firstNonBlank(payload.get("password"), payload.get("guestPassword")), "비회원 비밀번호를 입력해야 합니다.");
         return new WriterInfo(null, guestName, normalizedIp(clientIp), BCrypt.hashpw(guestPassword, BCrypt.gensalt()));
     }
 
@@ -608,6 +656,34 @@ public class PostService {
         throw new RuntimeException("Vote type is invalid.");
     }
 
+    private String normalizePostCategory(String gallId, String value) {
+        String category = nullableTrim(value);
+        Map<String, Object> settings = boardService.getBoardSettings(gallId);
+        List<String> options = parseCategoryOptions(settings.get("category_options"));
+        if (category == null) {
+            return options.isEmpty() ? null : options.get(0);
+        }
+        if (!options.isEmpty() && !options.contains(category)) {
+            throw new RuntimeException("이 보드에서 사용할 수 없는 말머리입니다.");
+        }
+        if (category.length() > 20) {
+            throw new RuntimeException("말머리는 20자 이하로 입력해주세요.");
+        }
+        return category;
+    }
+
+    private List<String> parseCategoryOptions(Object value) {
+        String raw = nullableTrim(value == null ? null : String.valueOf(value));
+        if (raw == null) {
+            return List.of();
+        }
+        return java.util.Arrays.stream(raw.split("[\\r\\n,]+"))
+                .map(String::trim)
+                .filter(text -> !text.isEmpty())
+                .distinct()
+                .toList();
+    }
+
     private boolean columnExists(String tableName, String columnName) {
         Integer count = jdbcTemplate.queryForObject("""
                 SELECT COUNT(*)
@@ -638,7 +714,7 @@ public class PostService {
         try {
             return Long.parseLong(normalized);
         } catch (NumberFormatException e) {
-            throw new RuntimeException("답글 대상이 올바르지 않습니다.");
+            throw new RuntimeException("댓글 대상이 올바르지 않습니다.");
         }
     }
 

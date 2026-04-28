@@ -22,7 +22,7 @@ public class SignupVerificationRepository {
                     request_id BIGINT NOT NULL AUTO_INCREMENT,
                     uid VARCHAR(50) NOT NULL,
                     nick VARCHAR(100) NOT NULL,
-                    email VARCHAR(255) NOT NULL,
+                    email VARCHAR(191) NOT NULL,
                     password_hash VARCHAR(255) NOT NULL,
                     verification_code VARCHAR(20) NOT NULL,
                     expires_at DATETIME NOT NULL,

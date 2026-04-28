@@ -2,6 +2,7 @@ package org.java.spring_04.post;
 
 import jakarta.servlet.http.HttpServletRequest;
 import org.java.spring_04.board.BoardService;
+import org.java.spring_04.feature.FeatureService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -18,6 +19,9 @@ public class PostController {
 
     @Autowired
     private BoardService boardService;
+
+    @Autowired
+    private FeatureService featureService;
 
     @GetMapping("/list")
     public List<Map<String, Object>> getPostList(@RequestParam("gid") String gallId) {
@@ -42,12 +46,16 @@ public class PostController {
             @PathVariable("gid") String gid,
             @PathVariable("postNo") Long postNo,
             HttpServletRequest request,
-            @SessionAttribute(name = "uid", required = false) String uid) {
+            @SessionAttribute(name = "uid", required = false) String uid,
+            @SessionAttribute(name = "memberDivision", required = false) String memberDivision) {
         System.out.println("[" + LocalDateTime.now() + "] API /api/posts/get/" + gid + "/" + postNo);
         Map<String, Object> post = postService.getPostDetail(gid, postNo);
 
         if (post == null) {
             return Map.of("success", false, "message", "게시글을 찾을 수 없습니다.");
+        }
+        if (!featureService.canViewPost(post, uid, memberDivision)) {
+            return Map.of("success", false, "message", "게시글을 열람할 권한이 없습니다.");
         }
 
         return Map.of(
@@ -62,7 +70,8 @@ public class PostController {
     public Map<String, Object> writePost(@RequestBody Map<String, String> payload,
                                          HttpServletRequest request,
                                          @SessionAttribute(name = "uid", required = false) String uid,
-                                         @SessionAttribute(name = "nick", required = false) String nick) {
+                                         @SessionAttribute(name = "nick", required = false) String nick,
+                                         @SessionAttribute(name = "memberDivision", required = false) String memberDivision) {
         String actor = uid == null || uid.isBlank() ? "guest" : uid;
         String clientIp = extractClientIp(request);
         System.out.println("[" + LocalDateTime.now() + "] API /api/posts/write gid=" + payload.get("gid") + " actor=" + actor + " ip=" + clientIp + " titleLength=" + lengthOf(payload.get("title")));
@@ -75,7 +84,7 @@ public class PostController {
         }
 
         try {
-            Map<String, Object> result = postService.insertPost(payload, uid, nick, clientIp);
+            Map<String, Object> result = postService.insertPost(payload, uid, nick, clientIp, memberDivision);
             System.out.println("[" + LocalDateTime.now() + "] API RESULT /api/posts/write success=" + result.get("success") + " postNo=" + result.get("postNo"));
             return result;
         } catch (Exception e) {
@@ -88,7 +97,8 @@ public class PostController {
     public Map<String, Object> writeComment(@RequestBody Map<String, String> payload,
                                             HttpServletRequest request,
                                             @SessionAttribute(name = "uid", required = false) String uid,
-                                            @SessionAttribute(name = "nick", required = false) String nick) {
+                                            @SessionAttribute(name = "nick", required = false) String nick,
+                                            @SessionAttribute(name = "memberDivision", required = false) String memberDivision) {
         String actor = uid == null || uid.isBlank() ? "guest" : uid;
         String clientIp = extractClientIp(request);
         System.out.println("[" + LocalDateTime.now() + "] API /api/posts/comment gid=" + payload.get("gid") + " postNo=" + payload.get("postNo") + " actor=" + actor + " ip=" + clientIp + " contentLength=" + lengthOf(payload.get("content")));
@@ -101,7 +111,7 @@ public class PostController {
         }
 
         try {
-            Map<String, Object> result = postService.insertComment(payload, uid, nick, clientIp);
+            Map<String, Object> result = postService.insertComment(payload, uid, nick, clientIp, memberDivision);
             System.out.println("[" + LocalDateTime.now() + "] API RESULT /api/posts/comment success=" + result.get("success"));
             return result;
         } catch (Exception e) {

@@ -138,7 +138,10 @@ class BoardRouter(
     private fun canDelete(row: Map<String, *>, session: HttpSession): Boolean {
         val writerUid = row["writer_uid"]?.toString()?.trim().orEmpty()
         val currentUid = sessionUid(session)?.trim().orEmpty()
-        val admin = sessionDivision(session) == "1" || sessionDivision(session).equals("admin", ignoreCase = true)
+        val division = sessionDivision(session)
+        val admin = division == "1"
+                || division.equals("admin", ignoreCase = true)
+                || division.equals("operator", ignoreCase = true)
         if (admin) return true
         if (writerUid.isNotBlank()) return currentUid.isNotBlank() && writerUid == currentUid
         return currentUid.isBlank()

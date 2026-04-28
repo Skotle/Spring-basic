@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>蹂대뱶</title>
+  <title>보드</title>
   <link rel="stylesheet" href="/css/boardsheet.css">
 </head>
 <body>
@@ -13,22 +13,21 @@
     <span>irisen</span>
   </a>
   <div class="nav-right">
-    <a class="btn btn-ghost" href="/">??/a>
-    <a class="btn btn-primary" href="/signin">濡쒓렇??/a>
+    <a class="btn btn-ghost" href="/">홈</a>
+    <a class="btn btn-primary" href="/signin">로그인</a>
   </div>
 </nav>
 
 <main class="page-shell section-shell">
   <section class="panel">
     <div class="eyebrow">BOARD</div>
-    <h1 class="title-md" style="margin-top: 14px;">蹂대뱶 紐⑸줉</h1>
+    <h1 class="title-md" style="margin-top: 14px;">보드 목록</h1>
     <div class="search-row">
-      <input id="boardSearchInput" type="text" placeholder="蹂대뱶 寃?? oninput="filterBoards(this.value)">
+      <input id="boardSearchInput" type="text" placeholder="보드 검색" oninput="filterBoards(this.value)">
     </div>
   </section>
 
-  <section id="boardList" class="board-grid">
-  </section>
+  <section id="boardList" class="board-grid"></section>
 </main>
 
 <script src="/js/common.js"></script>

@@ -9,8 +9,8 @@
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
     <groupId>org.java</groupId>
-    <artifactId>Spring_04</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
+    <artifactId>irisen</artifactId>
+    <version>26.0.3-SNAPSHOT-1</version>
     <name>Spring_04</name>
     <description>Spring_04</description>
     <url/>

@@ -145,7 +145,7 @@ public class BulkGuestContentSeedRunner implements CommandLineRunner {
         List<String> missing = new ArrayList<>();
         for (String gallId : TARGET_GALLERIES) {
             Integer count = jdbcTemplate.queryForObject(
-                    "SELECT COUNT(*) FROM gallery WHERE gall_id = ?",
+                    "SELECT COUNT(*) FROM board WHERE gall_id = ?",
                     Integer.class,
                     gallId
             );
@@ -173,7 +173,7 @@ public class BulkGuestContentSeedRunner implements CommandLineRunner {
         jdbcTemplate.update("DELETE FROM comment");
         jdbcTemplate.update("DELETE FROM post");
         jdbcTemplate.update("UPDATE gallery_counter SET last_post_no = 0");
-        jdbcTemplate.update("UPDATE gallery SET post_count = 0");
+        jdbcTemplate.update("UPDATE board SET post_count = 0");
     }
 
     private void batchInsertPosts(List<PostSeedRow> rows) {
@@ -211,7 +211,7 @@ public class BulkGuestContentSeedRunner implements CommandLineRunner {
         jdbcTemplate.batchUpdate("""
                 INSERT INTO comment (
                     gall_id, post_no, writer_uid, name, ip, password,
-                    content, parent_id, reply_depth, sort_key, writed_at
+                    content, parent_id, reply_depth, sort_key, created_at
                 )
                 VALUES (?, ?, NULL, ?, ?, ?, ?, NULL, 0, '', ?)
                 """, new BatchPreparedStatementSetter() {
@@ -264,7 +264,7 @@ public class BulkGuestContentSeedRunner implements CommandLineRunner {
         String placeholders = String.join(", ", TARGET_GALLERIES.stream().map(g -> "?").toList());
         List<Object> params = new ArrayList<>(TARGET_GALLERIES);
         jdbcTemplate.update("""
-                UPDATE gallery g
+                UPDATE board g
                 SET post_count = (
                     SELECT COUNT(*)
                     FROM post p
@@ -297,22 +297,22 @@ public class BulkGuestContentSeedRunner implements CommandLineRunner {
 
     private String postTitle(String gallId, int localIndex) {
         return switch (gallId) {
-            case "alpha" -> "[알파] 순번 글 " + localIndex;
-            case "beta" -> "[베타] 순번 글 " + localIndex;
-            case "marine" -> "[마린] 순번 글 " + localIndex;
-            case "stockus" -> "[미국주식] 순번 글 " + localIndex;
-            case "uspolitics" -> "[미국정치] 순번 글 " + localIndex;
-            default -> "[테스트] 순번 글 " + localIndex;
+            case "alpha" -> "[알파] 테스트 글 " + localIndex;
+            case "beta" -> "[베타] 테스트 글 " + localIndex;
+            case "marine" -> "[해병대] 테스트 글 " + localIndex;
+            case "stockus" -> "[미국주식] 테스트 글 " + localIndex;
+            case "uspolitics" -> "[미국정치] 테스트 글 " + localIndex;
+            default -> "[일반] 테스트 글 " + localIndex;
         };
     }
 
     private String postContent(String gallId, int localIndex) {
         return """
-                <p>자동 생성된 비회원 테스트 게시글입니다.</p>
+                <p>서버 실행 시 1회 삽입되는 비회원 더미 게시글입니다.</p>
                 <p><strong>보드:</strong> %s</p>
-                <p><strong>포스트 번호:</strong> %d</p>
+                <p><strong>글 번호:</strong> %d</p>
                 <p><strong>표시 순서:</strong> 날짜와 포스트 번호가 함께 오름차순으로 맞춰져 있습니다.</p>
-                <p>목록에서 오래된 글부터 최신 글까지 시간과 번호가 같은 흐름으로 보이도록 재생성한 데이터입니다.</p>
+                <p>목록에서 오래된 글부터 최신 글까지 시간과 번호가 같은 흐름으로 보이도록 생성한 데이터입니다.</p>
                 <p>본문은 HTML 형식으로 저장됩니다.</p>
                 """.formatted(gallId, localIndex);
     }

@@ -124,6 +124,73 @@ button {
   font-size: 0.9rem;
 }
 
+.permission-matrix {
+  background: linear-gradient(180deg, #ffffff 0%, #fff9fb 100%);
+}
+
+.permission-title {
+  margin: 8px 0 14px;
+  font-size: 1.12rem;
+}
+
+.permission-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.permission-item {
+  position: relative;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.74);
+}
+
+.permission-action {
+  font-weight: 800;
+  color: var(--text);
+}
+
+.permission-required {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.permission-note {
+  margin-top: 8px;
+  font-size: 0.84rem;
+}
+
+.permission-state {
+  display: inline-flex;
+  margin-top: 10px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.permission-state.is-allowed {
+  background: rgba(47, 158, 68, 0.12);
+  color: var(--ok);
+}
+
+.permission-state.is-blocked {
+  background: rgba(231, 76, 60, 0.11);
+  color: var(--danger);
+}
+
+.action-permission {
+  padding: 10px 12px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 12px;
+  background: #fffafc;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
 .topbar .chip {
   border-color: rgba(255, 255, 255, 0.24);
   background: rgba(255, 255, 255, 0.14);
@@ -611,6 +678,49 @@ button {
   color: #617096;
   font-size: 0.92rem;
   font-weight: 700;
+}
+
+.dc-category-strip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  overflow-x: auto;
+  margin: -4px 12px 0;
+  padding: 0 0 10px;
+  border-bottom: 1px solid #d8def0;
+  scrollbar-width: thin;
+}
+
+.dc-category-strip button {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 0 13px;
+  border: 1px solid #cfd6ea;
+  border-radius: 999px;
+  background: #fff;
+  color: #334064;
+  font-size: 0.86rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.dc-category-strip button:hover {
+  border-color: var(--board-accent);
+  color: var(--board-accent);
+}
+
+.dc-category-strip button.is-active {
+  border-color: var(--board-accent);
+  background: var(--board-accent);
+  color: #fff;
+}
+
+.dc-filter-count {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: #617096;
+  font-size: 0.82rem;
+  font-weight: 800;
 }
 
 .dc-post-table-wrap {
@@ -1362,6 +1472,10 @@ textarea#comment-content {
     width: 100%;
     margin-left: 0;
     justify-content: space-between;
+  }
+
+  .dc-filter-count {
+    margin-left: 0;
   }
 
   .comment-identity-row {
