@@ -3,6 +3,7 @@ package org.java.spring_04
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpSession
 import org.java.spring_04.board.BoardService
+import org.java.spring_04.common.RequestIpResolver
 import org.java.spring_04.post.PostService
 import org.springframework.stereotype.Controller
 import org.springframework.ui.Model
@@ -15,7 +16,8 @@ import java.util.LinkedHashMap
 @Controller
 class BoardRouter(
     private val postService: PostService,
-    private val boardService: BoardService
+    private val boardService: BoardService,
+    private val requestIpResolver: RequestIpResolver
 ) {
 
     private fun logRequest(pageName: String, detail: String? = null) {
@@ -60,14 +62,20 @@ class BoardRouter(
     }
 
     @GetMapping("/board/{gid}/settings")
-    fun boardSettings(@PathVariable gid: String): String {
+    fun boardSettings(@PathVariable gid: String, session: HttpSession): String {
         logRequest("BOARD SETTINGS $gid")
+        if (!boardService.canManageBoard(gid, sessionUid(session), sessionDivision(session))) {
+            return "redirect:/board/$gid"
+        }
         return "index"
     }
 
     @GetMapping("/board/{gid}/manage")
-    fun boardManage(@PathVariable gid: String): String {
+    fun boardManage(@PathVariable gid: String, session: HttpSession): String {
         logRequest("BOARD MANAGE $gid")
+        if (!boardService.canManageBoard(gid, sessionUid(session), sessionDivision(session))) {
+            return "redirect:/board/$gid"
+        }
         return "index"
     }
 
@@ -148,14 +156,6 @@ class BoardRouter(
     }
 
     private fun extractClientIp(request: HttpServletRequest): String {
-        val forwarded = request.getHeader("X-Forwarded-For")
-        if (!forwarded.isNullOrBlank()) {
-            return forwarded.split(",")[0].trim()
-        }
-        val realIp = request.getHeader("X-Real-IP")
-        if (!realIp.isNullOrBlank()) {
-            return realIp.trim()
-        }
-        return request.remoteAddr
+        return requestIpResolver.resolve(request)
     }
 }

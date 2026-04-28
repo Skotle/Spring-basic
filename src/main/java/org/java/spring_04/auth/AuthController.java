@@ -23,6 +23,7 @@ public class AuthController {
             return Map.of("success", false, "message", "아이디 또는 비밀번호가 올바르지 않습니다.");
         }
 
+        clearSession(request);
         HttpSession session = request.getSession(true);
         session.setAttribute("uid", user.getUid());
         session.setAttribute("nick", user.getNick());

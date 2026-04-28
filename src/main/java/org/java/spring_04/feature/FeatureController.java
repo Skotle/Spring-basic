@@ -1,6 +1,7 @@
 package org.java.spring_04.feature;
 
 import jakarta.servlet.http.HttpServletRequest;
+import org.java.spring_04.common.RequestIpResolver;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -10,9 +11,11 @@ import java.util.Map;
 @RequestMapping("/api/features")
 public class FeatureController {
     private final FeatureService featureService;
+    private final RequestIpResolver requestIpResolver;
 
-    public FeatureController(FeatureService featureService) {
+    public FeatureController(FeatureService featureService, RequestIpResolver requestIpResolver) {
         this.featureService = featureService;
+        this.requestIpResolver = requestIpResolver;
     }
 
     @GetMapping("/search")
@@ -197,10 +200,6 @@ public class FeatureController {
     }
 
     private String extractClientIp(HttpServletRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) return forwarded.split(",")[0].trim();
-        String realIp = request.getHeader("X-Real-IP");
-        if (realIp != null && !realIp.isBlank()) return realIp.trim();
-        return request.getRemoteAddr();
+        return requestIpResolver.resolve(request);
     }
 }

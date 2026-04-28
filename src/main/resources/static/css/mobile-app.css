@@ -469,6 +469,8 @@ button {
   border-top: 1px solid #eee;
   line-height: 1.8;
   word-break: break-word;
+  overflow-wrap: anywhere;
+  min-width: 0;
 }
 
 .m-preview-box {
@@ -477,6 +479,40 @@ button {
   border-radius: 12px;
   border: 1px solid var(--line);
   background: #fafbfe;
+}
+
+.m-post-body img,
+.m-preview-box img {
+  display: block;
+  max-width: 100% !important;
+  width: auto !important;
+  height: auto !important;
+  margin: 12px 0;
+  border-radius: 12px;
+  object-fit: contain;
+  box-sizing: border-box;
+}
+
+.m-board-cover-image {
+  width: 72px;
+  height: 72px;
+  border-radius: 18px;
+  object-fit: cover;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.m-vote-panel {
+  margin-top: 14px;
+}
+
+.m-vote-summary,
+.m-vote-actions {
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.m-vote-actions .m-btn {
+  flex: 1 1 0;
 }
 
 .m-mono {

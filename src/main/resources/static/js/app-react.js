@@ -27,6 +27,22 @@
     return payload;
   };
 
+  async function uploadImageFile(file) {
+    if (!file) {
+      throw new Error("업로드할 파일이 없습니다.");
+    }
+    if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
+      throw new Error("이미지는 최대 50MB까지 업로드할 수 있습니다.");
+    }
+    const formData = new FormData();
+    formData.append("file", file);
+    const result = await api("/api/upload/image", { method: "POST", body: formData });
+    if (!result?.success || !result?.url) {
+      throw new Error(result?.message || "이미지 업로드에 실패했습니다.");
+    }
+    return result.url;
+  }
+
   const appHref = (href) => {
     if (!isMobilePath || !href.startsWith("/") || href.startsWith("/m")) return href;
     return href === "/" ? "/m" : `/m${href}`;
@@ -61,6 +77,13 @@
     if (item.writer_uid) return item.name || item.writer_uid;
     return item.name || "익명";
   };
+
+  const displayCategory = (item) => item?.display_category || item?.category || "일반";
+
+  function ProfileInlineLink({ item }) {
+    if (!item?.writer_uid) return null;
+    return h(Link, { href: `/profile/${encodeURIComponent(item.writer_uid)}`, className: "profile-inline-link" }, "○");
+  }
 
   const flagEnabled = (value) => {
     if (value instanceof Boolean) return value.valueOf();
@@ -301,7 +324,7 @@
               ? h("div", { className: "stack" }, feed.map((post) =>
                   h(Link, { href: `/board/${encodeURIComponent(post.gall_id)}/${post.post_no}`, className: "card quick-card", key: `${post.gall_id}-${post.post_no}`, reload: true },
                     h("div", { className: "board-title" }, post.title || "제목 없음"),
-                    h("div", { className: "muted" }, `${post.gall_name || post.gall_id} · ${authorLabel(post)}`)
+                  h("div", { className: "muted" }, `${post.gall_name || post.gall_id} · ${authorLabel(post)}`, h(ProfileInlineLink, { item: post }))
                   )))
               : h("div", { className: "empty-box" }, "추천 글이 없습니다."),
             h("div", { className: "muted" }, `전체 보드 ${boards.length}개`)
@@ -471,7 +494,9 @@
                   )
                 )
               ),
-              null
+              settings?.cover_image_url
+                ? h("div", { className: "dc-board-cover" }, h("img", { src: settings.cover_image_url, alt: `${boardInfo?.gall_name || gid} cover` }))
+                : null
             ),
             h("div", { className: "dc-board-tabs" },
               h("button", { type: "button", className: listMode === "all" ? "dc-tab is-active" : "dc-tab", onClick: () => setListMode("all") }, "전체글"),
@@ -505,7 +530,7 @@
                       h("span", { className: "dc-post-no" }, post.post_no ?? "-"),
                       h("span", { className: "dc-post-kind" }, post.category || (post.notice ? "공지" : Number(post.recommend_count || 0) >= conceptThreshold ? "개념글" : "일반")),
                       h("span", { className: "dc-post-subject" }, h("strong", null, post.title || "제목 없음"), Number(post.comment_count || 0) > 0 ? h("em", null, `[${post.comment_count}]`) : null),
-                      h("span", { className: "dc-post-author" }, authorLabel(post)),
+                      h("span", { className: "dc-post-author" }, authorLabel(post), h(ProfileInlineLink, { item: post })),
                       h("span", { className: "dc-post-date" }, formatDate(post.writed_at || post.created_at)),
                       h("span", { className: "dc-post-view" }, post.view_count ?? 0),
                       h("span", { className: "dc-post-rec" }, post.recommend_count ?? 0)
@@ -528,6 +553,7 @@
   function BoardSettingsPanel({ settings, feedback, onSave }) {
     const [boardNotice, setBoardNotice] = useState(settings?.board_notice || "");
     const [welcomeMessage, setWelcomeMessage] = useState(settings?.welcome_message || "");
+    const [coverImageUrl, setCoverImageUrl] = useState(settings?.cover_image_url || "");
     const [themeColor, setThemeColor] = useState(settings?.theme_color || "#ff8fab");
     const [categoryOptions, setCategoryOptions] = useState(settings?.category_options || "일반");
     const [conceptRecommendThreshold, setConceptRecommendThreshold] = useState(String(settings?.concept_recommend_threshold || 10));
@@ -542,6 +568,7 @@
     useEffect(() => {
       setBoardNotice(settings?.board_notice || "");
       setWelcomeMessage(settings?.welcome_message || "");
+      setCoverImageUrl(settings?.cover_image_url || "");
       setThemeColor(settings?.theme_color || "#ff8fab");
       setCategoryOptions(settings?.category_options || "일반");
       setConceptRecommendThreshold(String(settings?.concept_recommend_threshold || 10));
@@ -569,13 +596,149 @@
         h("div", { className: "field" }, h("label", { htmlFor: "board-setting-attachment-size" }, "첨부 최대 용량(bytes)"), h("input", { id: "board-setting-attachment-size", type: "number", min: 0, step: 1, value: attachmentMaxBytes, onChange: (event) => setAttachmentMaxBytes(event.target.value) })),
         h("label", { className: "check-row" }, h("input", { type: "checkbox", checked: allowGuestPost, onChange: (event) => setAllowGuestPost(event.target.checked) }), h("span", null, "비회원 글쓰기 허용")),
         h("label", { className: "check-row" }, h("input", { type: "checkbox", checked: allowGuestComment, onChange: (event) => setAllowGuestComment(event.target.checked) }), h("span", null, "비회원 댓글 허용")),
+        h("div", { className: "field" }, h("label", { htmlFor: "board-setting-cover-image" }, "Cover image URL"), h("input", { id: "board-setting-cover-image", type: "text", value: coverImageUrl, onChange: (event) => setCoverImageUrl(event.target.value), placeholder: "https://..." })),
         h(Feedback, { feedback }),
         h("div", { className: "inline-actions" },
           h("button", {
             type: "button",
             className: "btn btn-primary",
             onClick() {
-              onSave({ boardNotice, welcomeMessage, categoryOptions, themeColor, conceptRecommendThreshold, allowGuestPost, allowGuestComment, joinPolicy, visibility, pinnedNoticeCount, allowedAttachmentTypes, attachmentMaxBytes });
+              onSave({ boardNotice, welcomeMessage, coverImageUrl, categoryOptions, themeColor, conceptRecommendThreshold, allowGuestPost, allowGuestComment, joinPolicy, visibility, pinnedNoticeCount, allowedAttachmentTypes, attachmentMaxBytes });
+            }
+          }, "설정 저장")
+        )
+      )
+    );
+  }
+
+  function BoardSettingsPanel({ settings, feedback, onSave }) {
+    const fileInputRef = useRef(null);
+    const [boardNotice, setBoardNotice] = useState(settings?.board_notice || "");
+    const [welcomeMessage, setWelcomeMessage] = useState(settings?.welcome_message || "");
+    const [coverImageUrl, setCoverImageUrl] = useState(settings?.cover_image_url || "");
+    const [themeColor, setThemeColor] = useState(settings?.theme_color || "#ff8fab");
+    const [categoryOptions, setCategoryOptions] = useState(settings?.category_options || "일반");
+    const [conceptRecommendThreshold, setConceptRecommendThreshold] = useState(String(settings?.concept_recommend_threshold || 10));
+    const [allowGuestPost, setAllowGuestPost] = useState(settings?.allow_guest_post !== false);
+    const [allowGuestComment, setAllowGuestComment] = useState(settings?.allow_guest_comment !== false);
+    const [joinPolicy, setJoinPolicy] = useState(settings?.join_policy || "free");
+    const [visibility, setVisibility] = useState(settings?.visibility || "public");
+    const [pinnedNoticeCount, setPinnedNoticeCount] = useState(String(settings?.pinned_notice_count ?? 3));
+    const [allowedAttachmentTypes, setAllowedAttachmentTypes] = useState(settings?.allowed_attachment_types || "");
+    const [attachmentMaxBytes, setAttachmentMaxBytes] = useState(String(settings?.attachment_max_bytes || 10485760));
+    const [coverUploadFeedback, setCoverUploadFeedback] = useState(null);
+    const [coverUploading, setCoverUploading] = useState(false);
+
+    useEffect(() => {
+      setBoardNotice(settings?.board_notice || "");
+      setWelcomeMessage(settings?.welcome_message || "");
+      setCoverImageUrl(settings?.cover_image_url || "");
+      setThemeColor(settings?.theme_color || "#ff8fab");
+      setCategoryOptions(settings?.category_options || "일반");
+      setConceptRecommendThreshold(String(settings?.concept_recommend_threshold || 10));
+      setAllowGuestPost(settings?.allow_guest_post !== false);
+      setAllowGuestComment(settings?.allow_guest_comment !== false);
+      setJoinPolicy(settings?.join_policy || "free");
+      setVisibility(settings?.visibility || "public");
+      setPinnedNoticeCount(String(settings?.pinned_notice_count ?? 3));
+      setAllowedAttachmentTypes(settings?.allowed_attachment_types || "");
+      setAttachmentMaxBytes(String(settings?.attachment_max_bytes || 10485760));
+      setCoverUploadFeedback(null);
+      setCoverUploading(false);
+    }, [settings]);
+
+    async function handleCoverFileChange(event) {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      setCoverUploadFeedback(null);
+      setCoverUploading(true);
+      try {
+        const url = await uploadImageFile(file);
+        setCoverImageUrl(url);
+        setCoverUploadFeedback({ type: "success", message: "대문 이미지를 업로드했습니다." });
+      } catch (error) {
+        setCoverUploadFeedback({ type: "error", message: error.message || "대문 이미지 업로드에 실패했습니다." });
+      } finally {
+        setCoverUploading(false);
+        event.target.value = "";
+      }
+    }
+
+    return h("article", { className: "card board-settings-card" },
+      h(SectionHead, { eyebrow: "Manager", title: "보드 설정" }),
+      h("div", { className: "stack" },
+        h("div", { className: "field" },
+          h("label", { htmlFor: "board-setting-notice-v2" }, "공지"),
+          h("textarea", { id: "board-setting-notice-v2", rows: 3, value: boardNotice, onChange: (event) => setBoardNotice(event.target.value) })
+        ),
+        h("div", { className: "field" },
+          h("label", { htmlFor: "board-setting-welcome-v2" }, "환영 문구"),
+          h("textarea", { id: "board-setting-welcome-v2", rows: 4, value: welcomeMessage, onChange: (event) => setWelcomeMessage(event.target.value) })
+        ),
+        h("div", { className: "field" },
+          h("label", { htmlFor: "board-setting-categories-v2" }, "말머리 목록"),
+          h("textarea", { id: "board-setting-categories-v2", rows: 4, value: categoryOptions, onChange: (event) => setCategoryOptions(event.target.value), placeholder: "한 줄에 하나씩 입력하거나 쉼표로 구분" })
+        ),
+        h("div", { className: "field" },
+          h("label", { htmlFor: "board-setting-color-v2" }, "테마 색상"),
+          h("input", { id: "board-setting-color-v2", type: "color", value: themeColor, onChange: (event) => setThemeColor(event.target.value || "#ff8fab") })
+        ),
+        h("div", { className: "field" },
+          h("label", { htmlFor: "board-setting-concept-threshold-v2" }, "개념글 추천 기준"),
+          h("input", { id: "board-setting-concept-threshold-v2", type: "number", min: 1, step: 1, value: conceptRecommendThreshold, onChange: (event) => setConceptRecommendThreshold(event.target.value) })
+        ),
+        h("div", { className: "field" },
+          h("label", { htmlFor: "board-setting-join-v2" }, "가입 방식"),
+          h("select", { id: "board-setting-join-v2", value: joinPolicy, onChange: (event) => setJoinPolicy(event.target.value) },
+            h("option", { value: "free" }, "자유 가입"),
+            h("option", { value: "approval" }, "승인 가입")
+          )
+        ),
+        h("div", { className: "field" },
+          h("label", { htmlFor: "board-setting-visibility-v2" }, "공개 범위"),
+          h("select", { id: "board-setting-visibility-v2", value: visibility, onChange: (event) => setVisibility(event.target.value) },
+            h("option", { value: "public" }, "공개"),
+            h("option", { value: "private" }, "비공개"),
+            h("option", { value: "members" }, "멤버 전용")
+          )
+        ),
+        h("div", { className: "field" },
+          h("label", { htmlFor: "board-setting-pin-count-v2" }, "상단 고정 공지 수"),
+          h("input", { id: "board-setting-pin-count-v2", type: "number", min: 0, step: 1, value: pinnedNoticeCount, onChange: (event) => setPinnedNoticeCount(event.target.value) })
+        ),
+        h("div", { className: "field" },
+          h("label", { htmlFor: "board-setting-attachment-types-v2" }, "허용 첨부 형식"),
+          h("input", { id: "board-setting-attachment-types-v2", type: "text", value: allowedAttachmentTypes, onChange: (event) => setAllowedAttachmentTypes(event.target.value), placeholder: "예: image/png,image/jpeg" })
+        ),
+        h("div", { className: "field" },
+          h("label", { htmlFor: "board-setting-attachment-size-v2" }, "첨부 최대 용량(bytes)"),
+          h("input", { id: "board-setting-attachment-size-v2", type: "number", min: 0, step: 1, value: attachmentMaxBytes, onChange: (event) => setAttachmentMaxBytes(event.target.value) })
+        ),
+        h("label", { className: "check-row" },
+          h("input", { type: "checkbox", checked: allowGuestPost, onChange: (event) => setAllowGuestPost(event.target.checked) }),
+          h("span", null, "비회원 글쓰기 허용")
+        ),
+        h("label", { className: "check-row" },
+          h("input", { type: "checkbox", checked: allowGuestComment, onChange: (event) => setAllowGuestComment(event.target.checked) }),
+          h("span", null, "비회원 댓글 허용")
+        ),
+        h("div", { className: "field" },
+          h("label", null, "대문 이미지"),
+          h("input", { ref: fileInputRef, type: "file", accept: "image/*", hidden: true, onChange: handleCoverFileChange }),
+          h("div", { className: "inline-actions" },
+            h("button", { type: "button", className: "btn btn-secondary", onClick: () => fileInputRef.current?.click(), disabled: coverUploading }, coverUploading ? "업로드 중..." : "이미지 선택"),
+            coverImageUrl ? h("button", { type: "button", className: "btn btn-ghost", onClick: () => setCoverImageUrl("") }, "대문 제거") : null
+          ),
+          coverImageUrl ? h("div", { className: "dc-board-cover" }, h("img", { src: coverImageUrl, alt: "Board cover preview" })) : null,
+          h(Feedback, { feedback: coverUploadFeedback })
+        ),
+        h(Feedback, { feedback }),
+        h("div", { className: "inline-actions" },
+          h("button", {
+            type: "button",
+            className: "btn btn-primary",
+            onClick() {
+              onSave({ boardNotice, welcomeMessage, coverImageUrl, categoryOptions, themeColor, conceptRecommendThreshold, allowGuestPost, allowGuestComment, joinPolicy, visibility, pinnedNoticeCount, allowedAttachmentTypes, attachmentMaxBytes });
             }
           }, "설정 저장")
         )
@@ -610,13 +773,13 @@
     );
   }
 
-  function PopupDeleteControl({ session, buttonLabel, passwordLabel = "비밀번호", onDelete }) {
+  function PopupDeleteControl({ session, buttonLabel, passwordLabel = "비밀번호", requirePassword = false, onDelete }) {
     return h("div", { className: "inline-actions delete-control" },
       h("button", {
         type: "button",
         className: "btn btn-secondary btn-danger",
         onClick() {
-          if (!session?.loggedIn) {
+          if (requirePassword || !session?.loggedIn) {
             const password = window.prompt(passwordLabel);
             if (password === null) return;
             onDelete(password, () => {});
@@ -678,7 +841,7 @@
                 post.category ? h("span", { className: "chip" }, `[${post.category}]`) : null,
                 h("h1", { className: "post-heading" }, post.title || "제목 없음"),
                 h("div", { className: "post-info-row" },
-                  h("span", null, authorLabel(post)),
+                  h("span", null, authorLabel(post), h(ProfileInlineLink, { item: post })),
                   h("span", { className: "post-info-sep" }, "|"),
                   h("span", null, formatDate(post.writed_at || post.created_at)),
                   h("span", { className: "post-info-sep" }, "|"),
@@ -699,7 +862,7 @@
                 h("button", { type: "button", className: "btn btn-secondary btn-compact", onClick: () => onReportPost(post) }, "신고"),
                 (permissions.canManage || isAdmin) && Number(post.is_concept || 0) === 1 ? h("button", { type: "button", className: "btn btn-ghost btn-compact", onClick: () => onCancelConcept(post) }, "개념글 취소") : null
               ),
-              canRenderDelete(post) ? h(PopupDeleteControl, { session, buttonLabel: "게시글 삭제", onDelete: (password, reset) => onDeletePost({ gid, postNo: post.post_no, password }, reset) }) : null,
+              canRenderDelete(post) ? h(PopupDeleteControl, { session, buttonLabel: "게시글 삭제", requirePassword: !post.writer_uid, onDelete: (password, reset) => onDeletePost({ gid, postNo: post.post_no, password }, reset) }) : null,
               h(Feedback, { feedback: deleteFeedback })
             )
           ),
@@ -708,13 +871,13 @@
             comments.length
               ? h("div", { className: "stack" }, comments.map((comment) =>
                   h("article", { className: "card", key: comment.id || comment.comment_id || `${comment.created_at}-${comment.name}` },
-                    h("div", { className: "muted" }, `${authorLabel(comment)} · ${formatDate(comment.writed_at || comment.created_at)}`),
+                    h("div", { className: "muted" }, authorLabel(comment), h(ProfileInlineLink, { item: comment }), ` · ${formatDate(comment.writed_at || comment.created_at)}`),
                     h("div", { className: "preview", dangerouslySetInnerHTML: { __html: comment.content || "" } }),
                     h("div", { className: "inline-actions" },
                       h("button", { type: "button", className: "btn btn-secondary btn-compact", onClick: () => onLikeComment(comment) }, `공감 ${comment.like_count ?? 0}`),
                       h("button", { type: "button", className: "btn btn-ghost btn-compact", onClick: () => onReportComment(comment) }, "신고")
                     ),
-                    canRenderDelete(comment) ? h(PopupDeleteControl, { session, buttonLabel: "댓글 삭제", onDelete: (password, reset) => onDeleteComment({ commentId: comment.id || comment.comment_id, password }, reset) }) : null
+                    canRenderDelete(comment) ? h(PopupDeleteControl, { session, buttonLabel: "댓글 삭제", requirePassword: !comment.writer_uid, onDelete: (password, reset) => onDeleteComment({ commentId: comment.id || comment.comment_id, password }, reset) }) : null
                   )))
               : h("div", { className: "empty-box" }, "아직 댓글이 없습니다."),
             h("article", { className: "card" },
@@ -1153,7 +1316,24 @@
     }
 
     function refreshBoardManage(gid) {
-      return api(`/api/board/manage/${encodeURIComponent(gid)}`).then((result) => setBoardManageData(result?.success ? result.data : null)).catch(() => setBoardManageData(null));
+      return api(`/api/board/manage/${encodeURIComponent(gid)}`)
+        .then((result) => {
+          const data = result?.success ? result.data : null;
+          if (route.name === "boardManage" && (!data || !data?.permissions?.canManage)) {
+            setSettingsFeedback({ type: "error", message: result?.message || "보드 관리 권한이 없습니다." });
+            navigate(`/board/${encodeURIComponent(gid)}`, true);
+            setBoardManageData(null);
+            return;
+          }
+          setBoardManageData(data);
+        })
+        .catch(() => {
+          if (route.name === "boardManage") {
+            setSettingsFeedback({ type: "error", message: "보드 관리 권한이 없습니다." });
+            navigate(`/board/${encodeURIComponent(gid)}`, true);
+          }
+          setBoardManageData(null);
+        });
     }
 
     function refreshProfile(uid) {

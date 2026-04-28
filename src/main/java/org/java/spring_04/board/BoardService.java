@@ -1,6 +1,7 @@
 package org.java.spring_04.board;
 
 import jakarta.annotation.PostConstruct;
+import org.java.spring_04.common.HtmlSanitizerService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -33,6 +34,9 @@ public class BoardService {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private HtmlSanitizerService htmlSanitizerService;
 
     @PostConstruct
     public void initializeBoardManagementSchema() {
@@ -134,6 +138,9 @@ public class BoardService {
         if (!columnExists("gallery_setting", "concept_recommend_threshold")) {
             jdbcTemplate.execute("ALTER TABLE gallery_setting ADD COLUMN concept_recommend_threshold INT NOT NULL DEFAULT 10");
         }
+        if (!columnExists("gallery_setting", "cover_image_url")) {
+            jdbcTemplate.execute("ALTER TABLE gallery_setting ADD COLUMN cover_image_url VARCHAR(500) NULL");
+        }
         if (!columnExists("gallery_setting", "category_options")) {
             jdbcTemplate.execute("ALTER TABLE gallery_setting ADD COLUMN category_options TEXT NULL");
         }
@@ -200,7 +207,7 @@ public class BoardService {
                 ORDER BY p.writed_at DESC, p.id DESC, p.post_no DESC
                 LIMIT ? OFFSET ?
                 """;
-        return jdbcTemplate.queryForList(sql, gallId, size, offset);
+        return decorateListRows(sanitizeRowsContent(jdbcTemplate.queryForList(sql, gallId, size, offset)));
     }
 
     public Map<String, Object> getPostDetail(String gallId, Long postNo) {
@@ -223,7 +230,7 @@ public class BoardService {
                 """;
 
         try {
-            return jdbcTemplate.queryForMap(sql, gallId, postNo);
+            return sanitizeRowContent(jdbcTemplate.queryForMap(sql, gallId, postNo));
         } catch (EmptyResultDataAccessException e) {
             return null;
         }
@@ -265,6 +272,7 @@ public class BoardService {
                     SELECT gall_id,
                            board_notice,
                            welcome_message,
+                           cover_image_url,
                            category_options,
                            theme_color,
                            concept_recommend_threshold,
@@ -315,6 +323,7 @@ public class BoardService {
 
         String boardNotice = nullableTrim(payload.get("boardNotice"));
         String welcomeMessage = nullableTrim(payload.get("welcomeMessage"));
+        String coverImageUrl = nullableTrim(payload.get("coverImageUrl"));
         String categoryOptions = normalizeCategoryOptions(payload.get("categoryOptions"));
         String themeColor = normalizeThemeColor(payload.get("themeColor"));
         int conceptRecommendThreshold = normalizeConceptThreshold(payload.get("conceptRecommendThreshold"));
@@ -330,16 +339,17 @@ public class BoardService {
 
         jdbcTemplate.update("""
                 INSERT INTO gallery_setting (
-                    gall_id, board_notice, welcome_message, theme_color, concept_recommend_threshold,
+                    gall_id, board_notice, welcome_message, cover_image_url, theme_color, concept_recommend_threshold,
                     allow_guest_post, allow_guest_comment, category_options,
                     join_policy, visibility, pinned_notice_count, allowed_attachment_types,
                     attachment_max_bytes, side_board_approval_policy, dormant_after_days,
                     updated_by, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
                 ON DUPLICATE KEY UPDATE
                     board_notice = VALUES(board_notice),
                     welcome_message = VALUES(welcome_message),
+                    cover_image_url = VALUES(cover_image_url),
                     theme_color = VALUES(theme_color),
                     concept_recommend_threshold = VALUES(concept_recommend_threshold),
                     allow_guest_post = VALUES(allow_guest_post),
@@ -358,6 +368,7 @@ public class BoardService {
                 boardId,
                 boardNotice,
                 welcomeMessage,
+                coverImageUrl,
                 themeColor,
                 conceptRecommendThreshold,
                 allowGuestPost,
@@ -1392,12 +1403,8 @@ public class BoardService {
             throw new RuntimeException(message);
         }
 
-        String normalized = value.trim();
-        String plainText = normalized
-                .replaceAll("(?i)<br\\s*/?>", " ")
-                .replaceAll("<[^>]+>", " ")
-                .replace("&nbsp;", " ")
-                .trim();
+        String normalized = htmlSanitizerService.sanitize(value);
+        String plainText = htmlSanitizerService.extractPlainText(normalized);
 
         if (plainText.isEmpty()) {
             throw new RuntimeException(message);
@@ -1421,11 +1428,16 @@ public class BoardService {
         return normalized;
     }
 
-    private String firstNonBlank(String first, String second) {
-        if (first != null && !first.isBlank()) {
-            return first;
+    private String firstNonBlank(String... values) {
+        if (values == null) {
+            return null;
         }
-        return second;
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return null;
     }
 
     private String nullableText(Object value) {
@@ -1434,6 +1446,68 @@ public class BoardService {
         }
         String text = String.valueOf(value).trim();
         return text.isEmpty() ? null : text;
+    }
+
+    private List<Map<String, Object>> sanitizeRowsContent(List<Map<String, Object>> rows) {
+        rows.forEach(this::sanitizeRowContent);
+        return rows;
+    }
+
+    private Map<String, Object> sanitizeRowContent(Map<String, Object> row) {
+        if (row == null) {
+            return null;
+        }
+        Object rawContent = row.get("content");
+        if (rawContent != null) {
+            String sanitized = htmlSanitizerService.sanitize(String.valueOf(rawContent));
+            row.put("content", sanitized);
+            row.put("has_image", sanitized.toLowerCase().contains("<img"));
+        }
+        row.put("name", formatDisplayName(nullableText(row.get("name")), nullableText(row.get("writer_uid")), nullableText(row.get("ip"))));
+        String displayCategory = normalizeDisplayCategory(nullableText(row.get("gall_id")), nullableText(row.get("category")));
+        row.put("display_category", displayCategory);
+        row.put("category", displayCategory);
+        return row;
+    }
+
+    private List<Map<String, Object>> decorateListRows(List<Map<String, Object>> rows) {
+        rows.forEach((row) -> {
+            if (Boolean.TRUE.equals(row.get("has_image")) || "1".equals(String.valueOf(row.get("has_image")))) {
+                String title = nullableText(row.get("title"));
+                if (title != null && !title.startsWith("[IMG] ")) {
+                    row.put("title", "[IMG] " + title);
+                }
+            }
+        });
+        return rows;
+    }
+
+    private String formatDisplayName(String name, String writerUid, String ip) {
+        String resolved = firstNonBlank(name, writerUid, "익명");
+        if (writerUid != null && !writerUid.isBlank()) {
+            return resolved;
+        }
+        return resolved + "(" + guestIpPrefix(ip) + ")";
+    }
+
+    private String guestIpPrefix(String ip) {
+        String normalized = nullableText(ip);
+        if (normalized == null || normalized.isBlank()) {
+            return "ip";
+        }
+        String[] parts = normalized.split("\\.");
+        if (parts.length >= 2) {
+            return parts[0] + "." + parts[1];
+        }
+        return normalized.length() <= 7 ? normalized : normalized.substring(0, 7);
+    }
+
+    private String normalizeDisplayCategory(String gallId, String category) {
+        List<String> options = parseCategoryOptions(getBoardSettings(gallId).get("category_options"));
+        if (category != null && !category.isBlank() && (options.isEmpty() || options.contains(category))) {
+            return category;
+        }
+        return options.isEmpty() ? "일반" : options.get(0);
     }
 
     private String nullableTrim(String value) {
@@ -1449,6 +1523,7 @@ public class BoardService {
         settings.put("gall_id", gallId);
         settings.put("board_notice", null);
         settings.put("welcome_message", null);
+        settings.put("cover_image_url", null);
         settings.put("category_options", "일반");
         settings.put("category_options_list", List.of("일반"));
         settings.put("theme_color", "#ff8fab");

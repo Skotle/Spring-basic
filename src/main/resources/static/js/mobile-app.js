@@ -283,7 +283,9 @@
         h(
           "section",
           { className: "m-board-notice-card" },
-          h("div", { className: "m-board-notice-logo" }, boardInitial),
+          settings?.cover_image_url
+            ? h("img", { className: "m-board-cover-image", src: settings.cover_image_url, alt: `${board ? board.gall_name : gid} cover` })
+            : h("div", { className: "m-board-notice-logo" }, boardInitial),
           h("div", null,
             h("strong", null, settings?.board_notice || settings?.welcome_message || `${board ? board.gall_name : gid} 모바일 게시판입니다.`),
             h("span", null, settings?.welcome_message && settings?.board_notice ? settings.welcome_message : "말머리를 선택해서 원하는 글만 빠르게 볼 수 있습니다.")
@@ -343,10 +345,19 @@
     );
   }
 
-  function PostView({ session, gid, postNo, post, comments, feedback, onSubmitComment, onLogout }) {
+  function PostView({ session, gid, postNo, post, comments, feedback, voteFeedback, voteState, onSubmitComment, onVote, onLogout }) {
     const [content, setContent] = useState("");
     const [guestName, setGuestName] = useState("");
     const [guestPassword, setGuestPassword] = useState("");
+    const canUpvote = voteState?.canUpvote !== false;
+    const canDownvote = voteState?.canDownvote !== false;
+    const voteStatus = !canUpvote && !canDownvote
+      ? "오늘 추천과 비추천을 모두 사용했습니다."
+      : !canUpvote
+        ? "오늘 추천은 이미 사용했습니다. 비추천은 가능합니다."
+        : !canDownvote
+          ? "오늘 비추천은 이미 사용했습니다. 추천은 가능합니다."
+          : "추천과 비추천은 각각 하루 1회 가능합니다.";
 
     return h(
       React.Fragment,
@@ -364,6 +375,20 @@
                 h("h1", { className: "m-post-heading", key: "title" }, post.title || "제목 없음"),
                 h("div", { className: "m-post-meta m-muted", key: "author" }, h("span", null, post.name || "익명"), h("span", null, `${post.comment_count ?? comments.length} comments`)),
                 h("div", { className: "m-post-body", key: "body", dangerouslySetInnerHTML: { __html: post.content || "" } }),
+                h(
+                  "section",
+                  { className: "m-panel m-stack m-vote-panel", key: "votes" },
+                  h("div", { className: "m-inline m-vote-summary" },
+                    h("span", { className: "m-chip" }, `추천 ${post.recommend_count ?? 0}`),
+                    h("span", { className: "m-chip" }, `비추천 ${post.unrecommend_count ?? 0}`)
+                  ),
+                  h("div", { className: "m-inline m-vote-actions" },
+                    h("button", { type: "button", className: "m-btn m-btn-primary", disabled: !canUpvote, onClick: () => onVote({ gid, postNo, voteType: "up" }) }, "추천"),
+                    h("button", { type: "button", className: "m-btn m-btn-secondary", disabled: !canDownvote, onClick: () => onVote({ gid, postNo, voteType: "down" }) }, "비추천")
+                  ),
+                  h("div", { className: "m-muted" }, voteStatus),
+                  h(MFeedback, { feedback: voteFeedback })
+                ),
                 h("div", { className: "m-inline", style: { marginTop: "14px" }, key: "actions" }, h(MLink, { href: `/m/board/${encodeURIComponent(gid)}`, className: "m-btn m-btn-secondary" }, "목록"), h(MLink, { href: `/m/board/${encodeURIComponent(gid)}/write`, className: "m-btn m-btn-primary" }, "글쓰기")),
                 h(
                   "section",
@@ -520,7 +545,7 @@
     const [page, setPage] = useState(1);
     const [boardPosts, setBoardPosts] = useState([]);
     const [boardSettings, setBoardSettings] = useState(null);
-    const [postData, setPostData] = useState({ post: null, comments: [] });
+    const [postData, setPostData] = useState({ post: null, comments: [], voteState: { canUpvote: true, canDownvote: true } });
     const [authFeedback, setAuthFeedback] = useState(null);
     const [writeFeedback, setWriteFeedback] = useState(null);
     const [commentFeedback, setCommentFeedback] = useState(null);
@@ -555,9 +580,10 @@
         api(`/api/posts/get/${encodeURIComponent(route.params.gid)}/${encodeURIComponent(route.params.postNo)}`).then((result) => {
           setPostData({
             post: result && result.success ? result.post : null,
-            comments: result && result.success && Array.isArray(result.comments) ? result.comments : []
+            comments: result && result.success && Array.isArray(result.comments) ? result.comments : [],
+            voteState: result && result.success && result.voteState ? result.voteState : { canUpvote: true, canDownvote: true }
           });
-        }).catch(() => setPostData({ post: null, comments: [] }));
+        }).catch(() => setPostData({ post: null, comments: [], voteState: { canUpvote: true, canDownvote: true } }));
       }
       if (route.name === "board" || route.name === "write") {
         api(`/api/board/manage/${encodeURIComponent(route.params.gid)}/settings`).then((result) => {
@@ -681,16 +707,38 @@
         api(`/api/posts/get/${encodeURIComponent(payload.gid)}/${encodeURIComponent(payload.postNo)}`).then((next) => {
           setPostData({
             post: next && next.success ? next.post : null,
-            comments: next && next.success && Array.isArray(next.comments) ? next.comments : []
+            comments: next && next.success && Array.isArray(next.comments) ? next.comments : [],
+            voteState: next && next.success && next.voteState ? next.voteState : { canUpvote: true, canDownvote: true }
           });
         });
       }).catch(() => setCommentFeedback({ type: "error", message: "댓글 등록 중 오류가 발생했습니다." }));
     }
 
+    function submitVote(payload) {
+      api("/api/posts/vote", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      }).then((result) => {
+        if (!result?.success) {
+          setCommentFeedback({ type: "error", message: result?.message || "투표 처리에 실패했습니다." });
+          if (result?.voteState) {
+            setPostData((current) => ({ ...current, voteState: result.voteState }));
+          }
+          return;
+        }
+        setCommentFeedback({ type: "success", message: result?.message || "투표를 반영했습니다." });
+        setPostData((current) => ({
+          ...current,
+          post: current.post ? { ...current.post, ...(result.post || {}) } : current.post,
+          voteState: result.voteState || current.voteState
+        }));
+      }).catch(() => setCommentFeedback({ type: "error", message: "투표 처리 중 오류가 발생했습니다." }));
+    }
+
     if (route.name === "home") return h(HomeView, { session, boards, feed, onLogout: handleLogout });
     if (route.name === "boards") return h(BoardsView, { session, boards, query, onChangeQuery: setQuery, onLogout: handleLogout });
     if (route.name === "board") return h(BoardView, { session, gid: route.params.gid, board: currentBoard, posts: boardPosts, page, settings: boardSettings, onPrev: () => setPage((value) => Math.max(1, value - 1)), onNext: () => setPage((value) => value + 1), onLogout: handleLogout });
-    if (route.name === "post") return h(PostView, { session, gid: route.params.gid, postNo: route.params.postNo, post: postData.post, comments: postData.comments, feedback: commentFeedback, onSubmitComment: submitComment, onLogout: handleLogout });
+    if (route.name === "post") return h(PostView, { session, gid: route.params.gid, postNo: route.params.postNo, post: postData.post, comments: postData.comments, feedback: commentFeedback, voteFeedback: commentFeedback, voteState: postData.voteState, onSubmitComment: submitComment, onVote: submitVote, onLogout: handleLogout });
     if (route.name === "write") return h(WriteView, { session, gid: route.params.gid, feedback: writeFeedback, settings: boardSettings, onSubmitPost: submitPost, onLogout: handleLogout });
     if (route.name === "login") return h(AuthView, { mode: "login", feedback: authFeedback, onSubmitAuth: submitAuth, session, onLogout: handleLogout });
     if (route.name === "signup") return h(AuthView, { mode: "signup", feedback: authFeedback, onSubmitAuth: submitAuth, session, onLogout: handleLogout });

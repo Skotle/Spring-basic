@@ -1,6 +1,7 @@
 package org.java.spring_04.post;
 
 import jakarta.servlet.http.HttpServletRequest;
+import org.java.spring_04.common.RequestIpResolver;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -16,9 +17,11 @@ import java.util.Map;
 public class PostPageController {
 
     private final PostService postService;
+    private final RequestIpResolver requestIpResolver;
 
-    public PostPageController(PostService postService) {
+    public PostPageController(PostService postService, RequestIpResolver requestIpResolver) {
         this.postService = postService;
+        this.requestIpResolver = requestIpResolver;
     }
 
     @PostMapping("/board/{gid}/{postNo}/vote")
@@ -134,15 +137,7 @@ public class PostPageController {
     }
 
     private String extractClientIp(HttpServletRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
-        }
-        String realIp = request.getHeader("X-Real-IP");
-        if (realIp != null && !realIp.isBlank()) {
-            return realIp.trim();
-        }
-        return request.getRemoteAddr();
+        return requestIpResolver.resolve(request);
     }
 
     private int normalizePage(int page) {

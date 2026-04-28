@@ -1,6 +1,7 @@
 package org.java.spring_04.feature;
 
 import jakarta.annotation.PostConstruct;
+import org.java.spring_04.common.HtmlSanitizerService;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -15,9 +16,11 @@ import java.util.Map;
 @Service
 public class FeatureService {
     private final JdbcTemplate jdbcTemplate;
+    private final HtmlSanitizerService htmlSanitizerService;
 
-    public FeatureService(JdbcTemplate jdbcTemplate) {
+    public FeatureService(JdbcTemplate jdbcTemplate, HtmlSanitizerService htmlSanitizerService) {
         this.jdbcTemplate = jdbcTemplate;
+        this.htmlSanitizerService = htmlSanitizerService;
     }
 
     @PostConstruct
@@ -442,7 +445,9 @@ public class FeatureService {
             args.add(dateTo);
         }
         sql.append(" ORDER BY p.writed_at DESC, p.id DESC LIMIT 100");
-        return jdbcTemplate.queryForList(sql.toString(), args.toArray());
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql.toString(), args.toArray());
+        rows.forEach(this::sanitizeRowContent);
+        return rows;
     }
 
     @Transactional
@@ -813,6 +818,16 @@ public class FeatureService {
     private String text(Object value, String fallback) {
         String normalized = nullable(value);
         return normalized == null ? fallback : normalized;
+    }
+
+    private void sanitizeRowContent(Map<String, Object> row) {
+        if (row == null) {
+            return;
+        }
+        Object rawContent = row.get("content");
+        if (rawContent != null) {
+            row.put("content", htmlSanitizerService.sanitize(String.valueOf(rawContent)));
+        }
     }
 
     private int number(Object value, int fallback) {

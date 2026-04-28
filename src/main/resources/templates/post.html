@@ -43,6 +43,9 @@
                         <h1 class="post-heading" th:text="${post.title}">Post title</h1>
                         <div class="post-info-row">
                             <span th:text="${post.name}">author</span>
+                            <a th:if="${post.writer_uid != null}"
+                               class="profile-inline-link"
+                               th:href="@{/profile/{uid}(uid=${post.writer_uid})}">○</a>
                             <span class="post-info-sep">|</span>
                             <span th:text="${post.writed_at}">date</span>
                             <span class="post-info-sep">|</span>
@@ -59,27 +62,32 @@
                 </div>
 
                 <div class="post-card-footer">
-                    <div class="post-vote-panel">
+                    <div class="post-vote-panel"
+                         th:attr="data-gid=${gid},data-post-no=${post.post_no}">
                         <div class="post-vote-summary">
-                            <span class="chip" th:text="${'추천 ' + post.recommend_count}">추천 0</span>
-                            <span class="chip" th:text="${'비추천 ' + post.unrecommend_count}">비추천 0</span>
+                            <span class="chip vote-count-up" th:text="${'추천 ' + post.recommend_count}">추천 0</span>
+                            <span class="chip vote-count-down" th:text="${'비추천 ' + post.unrecommend_count}">비추천 0</span>
                         </div>
                         <div class="post-vote-actions">
                             <form th:action="@{/board/{gid}/{postNo}/vote(gid=${gid},postNo=${post.post_no})}" method="post">
                                 <input type="hidden" name="voteType" value="up">
                                 <input type="hidden" name="page" th:value="${currentPage}">
-                                <button class="btn btn-primary btn-compact" type="submit"
-                                        th:disabled="${voteState != null and voteState.canVote == false}">추천</button>
+                                <button class="btn btn-primary btn-compact"
+                                        type="submit"
+                                        data-vote-type="up"
+                                        th:disabled="${voteState != null and voteState.canUpvote == false}">추천</button>
                             </form>
                             <form th:action="@{/board/{gid}/{postNo}/vote(gid=${gid},postNo=${post.post_no})}" method="post">
                                 <input type="hidden" name="voteType" value="down">
                                 <input type="hidden" name="page" th:value="${currentPage}">
-                                <button class="btn btn-secondary btn-compact" type="submit"
-                                        th:disabled="${voteState != null and voteState.canVote == false}">비추천</button>
+                                <button class="btn btn-secondary btn-compact"
+                                        type="submit"
+                                        data-vote-type="down"
+                                        th:disabled="${voteState != null and voteState.canDownvote == false}">비추천</button>
                             </form>
                         </div>
-                        <div class="muted"
-                             th:text="${voteState != null and voteState.canVote == false ? '오늘은 이미 참여했습니다.' : '추천과 비추천은 에이전트별로 하루 1회만 가능합니다.'}">
+                        <div class="muted vote-status"
+                             th:text="${voteState != null and voteState.canUpvote == false and voteState.canDownvote == false ? '오늘 추천과 비추천을 모두 사용했습니다.' : voteState != null and voteState.canUpvote == false ? '오늘 추천은 이미 사용했습니다. 비추천은 가능합니다.' : voteState != null and voteState.canDownvote == false ? '오늘 비추천은 이미 사용했습니다. 추천은 가능합니다.' : '추천과 비추천은 각각 에이전트별로 하루 1회 가능합니다.'}">
                             vote help
                         </div>
                     </div>
@@ -90,7 +98,7 @@
                           method="post"
                           onsubmit="return confirm('게시글을 삭제할까요?');">
                         <input type="hidden" name="page" th:value="${currentPage}">
-                        <input class="delete-password-input" th:if="${!loggedIn}" type="password" name="password" placeholder="비밀번호">
+                        <input class="delete-password-input" th:if="${post.writer_uid == null}" type="password" name="password" placeholder="비밀번호">
                         <button class="btn btn-secondary btn-danger" type="submit">글 삭제</button>
                     </form>
                 </div>
@@ -120,7 +128,7 @@
                         </div>
                         <div class="field">
                             <label for="comment-content">댓글 내용</label>
-                            <textarea id="comment-content" name="content" rows="4" placeholder="댓글을 입력하세요"></textarea>
+                            <textarea id="comment-content" name="content" rows="4" placeholder="댓글을 입력하세요."></textarea>
                         </div>
                         <div class="inline-actions comment-submit-row">
                             <button class="btn btn-primary btn-compact" type="submit">댓글 등록</button>
@@ -135,7 +143,13 @@
                              class="card comment-card"
                              th:classappend="' depth-' + ${comment.reply_depth}">
                         <div class="comment-card-head">
-                            <div class="muted" th:text="${comment.name + ' · ' + comment.writed_at}">comment meta</div>
+                            <div class="muted">
+                                <span th:text="${comment.name}">comment author</span>
+                                <a th:if="${comment.writer_uid != null}"
+                                   class="profile-inline-link"
+                                   th:href="@{/profile/{uid}(uid=${comment.writer_uid})}">○</a>
+                                <span th:text="${' · ' + comment.writed_at}">comment meta</span>
+                            </div>
                             <div class="comment-card-tools">
                                 <button th:if="${comment.reply_depth < 2}"
                                         class="comment-action-button reply-toggle-button"
@@ -145,7 +159,7 @@
                                       th:action="@{/board/{gid}/{postNo}/comment/{commentId}/delete(gid=${gid},postNo=${post.post_no},commentId=${comment.id})}"
                                       method="post"
                                       class="comment-delete-form"
-                                      th:attr="data-require-password=${!loggedIn}">
+                                      th:attr="data-require-password=${comment.writer_uid == null}">
                                     <input type="hidden" name="page" th:value="${currentPage}">
                                     <button class="comment-delete-button" type="submit">삭제</button>
                                 </form>
@@ -171,7 +185,7 @@
                             </div>
                             <div class="field">
                                 <label th:for="'reply-content-' + ${comment.id}">답글 내용</label>
-                                <textarea th:id="'reply-content-' + ${comment.id}" name="content" rows="3" placeholder="답글을 입력하세요"></textarea>
+                                <textarea th:id="'reply-content-' + ${comment.id}" name="content" rows="3" placeholder="답글을 입력하세요."></textarea>
                             </div>
                             <div class="inline-actions comment-submit-row">
                                 <button class="btn btn-secondary btn-compact" type="submit">답글 등록</button>
@@ -190,7 +204,7 @@
                     <a class="btn btn-ghost" th:href="@{/board/{gid}(gid=${gid})}">보드로</a>
                 </div>
 
-                <div th:if="${#lists.isEmpty(pagePosts)}" class="empty-box">이 페이지의 게시글이 없습니다.</div>
+                <div th:if="${#lists.isEmpty(pagePosts)}" class="empty-box">이 페이지에 게시글이 없습니다.</div>
 
                 <div th:if="${not #lists.isEmpty(pagePosts)}" class="stack">
                     <a th:each="pagePost : ${pagePosts}"
@@ -198,7 +212,7 @@
                        th:href="@{/board/{gid}/{itemPostNo}(gid=${gid},itemPostNo=${pagePost.post_no},page=${currentPage})}">
                         <div class="board-title" th:text="${pagePost.title ?: '제목 없음'}">제목</div>
                         <div class="muted"
-                             th:text="${'#' + pagePost.post_no + ' · ' + pagePost.name + ' · 조회수 ' + pagePost.view_count}">
+                             th:text="${'#' + pagePost.post_no + ' · ' + pagePost.name + ' · 조회 ' + pagePost.view_count}">
                             meta
                         </div>
                     </a>
@@ -209,6 +223,62 @@
 </main>
 <script>
 (() => {
+  const votePanel = document.querySelector('.post-vote-panel');
+  if (votePanel) {
+    const gid = votePanel.dataset.gid;
+    const postNo = votePanel.dataset.postNo;
+    const upCount = votePanel.querySelector('.vote-count-up');
+    const downCount = votePanel.querySelector('.vote-count-down');
+    const voteStatus = votePanel.querySelector('.vote-status');
+
+    const applyVoteState = (voteState) => {
+      const upButton = votePanel.querySelector('[data-vote-type="up"]');
+      const downButton = votePanel.querySelector('[data-vote-type="down"]');
+      if (upButton) upButton.disabled = voteState?.canUpvote === false;
+      if (downButton) downButton.disabled = voteState?.canDownvote === false;
+      if (!voteStatus) return;
+      if (voteState?.canUpvote === false && voteState?.canDownvote === false) {
+        voteStatus.textContent = '오늘 추천과 비추천을 모두 사용했습니다.';
+      } else if (voteState?.canUpvote === false) {
+        voteStatus.textContent = '오늘 추천은 이미 사용했습니다. 비추천은 가능합니다.';
+      } else if (voteState?.canDownvote === false) {
+        voteStatus.textContent = '오늘 비추천은 이미 사용했습니다. 추천은 가능합니다.';
+      } else {
+        voteStatus.textContent = '추천과 비추천은 각각 에이전트별로 하루 1회 가능합니다.';
+      }
+    };
+
+    votePanel.querySelectorAll('.post-vote-actions form').forEach((form) => {
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const voteType = form.querySelector('input[name="voteType"]')?.value;
+        if (!gid || !postNo || !voteType) return;
+
+        try {
+          const response = await fetch('/api/posts/vote', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ gid, postNo, voteType })
+          });
+          const result = await response.json();
+          if (result?.post?.recommend_count != null && upCount) {
+            upCount.textContent = `추천 ${result.post.recommend_count}`;
+          }
+          if (result?.post?.unrecommend_count != null && downCount) {
+            downCount.textContent = `비추천 ${result.post.unrecommend_count}`;
+          }
+          applyVoteState(result?.voteState);
+          if (!result?.success && voteStatus) {
+            voteStatus.textContent = result?.message || '투표 처리 중 오류가 발생했습니다.';
+          }
+        } catch (error) {
+          if (voteStatus) voteStatus.textContent = '투표 처리 중 오류가 발생했습니다.';
+        }
+      });
+    });
+  }
+
   document.querySelectorAll('.reply-toggle-button').forEach((button) => {
     button.addEventListener('click', () => {
       const targetId = button.dataset.target;
@@ -227,7 +297,7 @@
       const requirePassword = form.dataset.requirePassword === 'true';
       if (requirePassword) {
         event.preventDefault();
-        const password = window.prompt('비밀번호를 입력하세요');
+        const password = window.prompt('비밀번호를 입력하세요.');
         if (password === null) return;
         const trimmed = password.trim();
         if (!trimmed) return;

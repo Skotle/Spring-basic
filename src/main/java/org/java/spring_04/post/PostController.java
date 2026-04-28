@@ -2,6 +2,7 @@ package org.java.spring_04.post;
 
 import jakarta.servlet.http.HttpServletRequest;
 import org.java.spring_04.board.BoardService;
+import org.java.spring_04.common.RequestIpResolver;
 import org.java.spring_04.feature.FeatureService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -22,6 +23,9 @@ public class PostController {
 
     @Autowired
     private FeatureService featureService;
+
+    @Autowired
+    private RequestIpResolver requestIpResolver;
 
     @GetMapping("/list")
     public List<Map<String, Object>> getPostList(@RequestParam("gid") String gallId) {
@@ -170,17 +174,7 @@ public class PostController {
     }
 
     private String extractClientIp(HttpServletRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
-        }
-
-        String realIp = request.getHeader("X-Real-IP");
-        if (realIp != null && !realIp.isBlank()) {
-            return realIp.trim();
-        }
-
-        return request.getRemoteAddr();
+        return requestIpResolver.resolve(request);
     }
 
     private int lengthOf(String value) {

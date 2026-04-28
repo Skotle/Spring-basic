@@ -2,6 +2,7 @@ package org.java.spring_04.board;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
+import org.java.spring_04.common.RequestIpResolver;
 import org.java.spring_04.feature.FeatureService;
 import org.java.spring_04.post.PostService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,6 +25,9 @@ public class BoardController {
 
     @Autowired
     private FeatureService featureService;
+
+    @Autowired
+    private RequestIpResolver requestIpResolver;
 
     @GetMapping("/list")
     public List<Map<String, Object>> getBoardList() {
@@ -74,9 +78,14 @@ public class BoardController {
     }
 
     @GetMapping("/manage/{gid}/settings")
-    public Map<String, Object> getBoardSettings(@PathVariable("gid") String gid) {
+    public Map<String, Object> getBoardSettings(@PathVariable("gid") String gid,
+                                                @SessionAttribute(name = "uid", required = false) String uid,
+                                                @SessionAttribute(name = "memberDivision", required = false) String memberDivision) {
         System.out.println("[" + LocalDateTime.now() + "] API /api/board/manage/" + gid + "/settings");
         try {
+            if (!boardService.canManageBoard(gid, uid, memberDivision)) {
+                return Map.of("success", false, "message", "보드 설정을 조회할 권한이 없습니다.");
+            }
             return Map.of("success", true, "data", boardService.getBoardSettings(gid));
         } catch (Exception e) {
             return Map.of("success", false, "message", e.getMessage());
@@ -182,17 +191,7 @@ public class BoardController {
         }
     }
     private String extractClientIp(HttpServletRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
-        }
-
-        String realIp = request.getHeader("X-Real-IP");
-        if (realIp != null && !realIp.isBlank()) {
-            return realIp.trim();
-        }
-
-        return request.getRemoteAddr();
+        return requestIpResolver.resolve(request);
     }
 
     private boolean flagEnabled(Object value) {

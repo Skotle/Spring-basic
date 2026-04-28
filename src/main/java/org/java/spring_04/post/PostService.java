@@ -2,6 +2,7 @@ package org.java.spring_04.post;
 
 import jakarta.annotation.PostConstruct;
 import org.java.spring_04.board.BoardService;
+import org.java.spring_04.common.HtmlSanitizerService;
 import org.java.spring_04.feature.FeatureService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.EmptyResultDataAccessException;
@@ -31,6 +32,9 @@ public class PostService {
 
     @Autowired
     private FeatureService featureService;
+
+    @Autowired
+    private HtmlSanitizerService htmlSanitizerService;
 
     @PostConstruct
     public void initializePostSchema() {
@@ -65,10 +69,19 @@ public class PostService {
                     vote_date DATE NOT NULL,
                     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY (id),
-                    UNIQUE KEY uq_post_vote_daily (gall_id, post_no, actor_key, vote_date),
+                    UNIQUE KEY uq_post_vote_daily_type (gall_id, post_no, actor_key, vote_type, vote_date),
                     INDEX idx_post_vote_post_date (gall_id, post_no, vote_date)
                 )
                 """);
+        if (indexExists("post_vote", "uq_post_vote_daily")) {
+            jdbcTemplate.execute("ALTER TABLE post_vote DROP INDEX uq_post_vote_daily");
+        }
+        if (!indexExists("post_vote", "uq_post_vote_daily_type")) {
+            jdbcTemplate.execute("""
+                    ALTER TABLE post_vote
+                    ADD UNIQUE INDEX uq_post_vote_daily_type (gall_id, post_no, actor_key, vote_type, vote_date)
+                    """);
+        }
         jdbcTemplate.execute("""
                 CREATE TABLE IF NOT EXISTS gallery_counter (
                     gall_id VARCHAR(50) NOT NULL,
@@ -100,7 +113,7 @@ public class PostService {
                 ORDER BY p.writed_at DESC, p.id DESC, p.post_no DESC
                 LIMIT 20
                 """;
-        return jdbcTemplate.queryForList(sql, gallId);
+        return decorateListRows(sanitizeRowsContent(jdbcTemplate.queryForList(sql, gallId)));
     }
 
     public List<Map<String, Object>> getTopRecommendedPosts() {
@@ -124,7 +137,7 @@ public class PostService {
                 ORDER BY p.recommend_count DESC, p.view_count DESC, p.id DESC
                 LIMIT 5
                 """;
-        return jdbcTemplate.queryForList(sql);
+        return decorateListRows(sanitizeRowsContent(jdbcTemplate.queryForList(sql)));
     }
 
     public Map<String, Object> getPostDetail(Long postId) {
@@ -155,7 +168,7 @@ public class PostService {
         try {
             int updated = jdbcTemplate.update(updateSql, postId);
             if (updated == 0) return null;
-            return jdbcTemplate.queryForMap(selectSql, postId);
+            return sanitizeRowContent(jdbcTemplate.queryForMap(selectSql, postId));
         } catch (EmptyResultDataAccessException e) {
             return null;
         }
@@ -191,7 +204,7 @@ public class PostService {
         try {
             int updated = jdbcTemplate.update(updateSql, gallId, postNo);
             if (updated == 0) return null;
-            return jdbcTemplate.queryForMap(selectSql, gallId, postNo);
+            return sanitizeRowContent(jdbcTemplate.queryForMap(selectSql, gallId, postNo));
         } catch (EmptyResultDataAccessException e) {
             return null;
         }
@@ -212,7 +225,7 @@ public class PostService {
                   AND p.is_deleted = 0
                 ORDER BY COALESCE(c.sort_key, LPAD(c.id, 10, '0')) ASC, c.id ASC
         """;
-        return jdbcTemplate.queryForList(sql, gallId, postNo);
+        return sanitizeRowsContent(jdbcTemplate.queryForList(sql, gallId, postNo));
     }
 
     @Transactional
@@ -226,15 +239,6 @@ public class PostService {
             return Map.of("success", false, "message", "Post not found.");
         }
 
-        String writerUid = nullableText(post.get("writer_uid"));
-        String writerIp = nullableText(post.get("ip"));
-        if (writerUid != null && uid != null && writerUid.equals(uid.trim())) {
-            return Map.of("success", false, "message", "본인 글에는 공감할 수 없습니다.");
-        }
-        if (writerUid == null && writerIp != null && writerIp.equals(normalizedIp(clientIp))) {
-            return Map.of("success", false, "message", "본인 글에는 공감할 수 없습니다.");
-        }
-
         String actorKey = resolveVoteActorKey(uid, clientIp);
         LocalDate today = LocalDate.now(SEOUL_ZONE);
         Integer alreadyVoted = jdbcTemplate.queryForObject("""
@@ -243,13 +247,14 @@ public class PostService {
                 WHERE gall_id = ?
                   AND post_no = ?
                   AND actor_key = ?
+                  AND vote_type = ?
                   AND vote_date = ?
-                """, Integer.class, gallId, postNo, actorKey, today);
+                """, Integer.class, gallId, postNo, actorKey, voteType, today);
 
         if (alreadyVoted != null && alreadyVoted > 0) {
             return Map.of(
                     "success", false,
-                    "message", "You can only vote once per post each day.",
+                    "message", "You can only cast the same vote once per post each day.",
                     "post", getPostVoteMetrics(gallId, postNo),
                     "voteState", getVoteState(gallId, postNo, uid, clientIp)
             );
@@ -279,27 +284,25 @@ public class PostService {
     public Map<String, Object> getVoteState(String gallId, Long postNo, String uid, String clientIp) {
         String actorKey = resolveVoteActorKey(uid, clientIp);
         LocalDate today = LocalDate.now(SEOUL_ZONE);
-        try {
-            Map<String, Object> row = jdbcTemplate.queryForMap("""
-                    SELECT vote_type, vote_date
-                    FROM post_vote
-                    WHERE gall_id = ?
-                      AND post_no = ?
-                      AND actor_key = ?
-                      AND vote_date = ?
-                    """, gallId, postNo, actorKey, today);
-            return Map.of(
-                    "canVote", false,
-                    "voteType", String.valueOf(row.get("vote_type")),
-                    "voteDate", String.valueOf(row.get("vote_date"))
-            );
-        } catch (EmptyResultDataAccessException e) {
-            return Map.of(
-                    "canVote", true,
-                    "voteType", "",
-                    "voteDate", today.toString()
-            );
-        }
+        List<String> voteTypes = jdbcTemplate.query("""
+                SELECT vote_type
+                FROM post_vote
+                WHERE gall_id = ?
+                  AND post_no = ?
+                  AND actor_key = ?
+                  AND vote_date = ?
+                """, (rs, rowNum) -> rs.getString("vote_type"), gallId, postNo, actorKey, today);
+        boolean upVoted = voteTypes.stream().anyMatch("up"::equals);
+        boolean downVoted = voteTypes.stream().anyMatch("down"::equals);
+        return Map.of(
+                "canVote", !(upVoted && downVoted),
+                "canUpvote", !upVoted,
+                "canDownvote", !downVoted,
+                "upVoted", upVoted,
+                "downVoted", downVoted,
+                "voteType", upVoted && downVoted ? "both" : upVoted ? "up" : downVoted ? "down" : "",
+                "voteDate", today.toString()
+        );
     }
 
     @Transactional
@@ -367,7 +370,7 @@ public class PostService {
     @Transactional
     public Map<String, Object> insertComment(Map<String, String> payload, String uid, String nick, String clientIp, String memberDivision) {
         String gallId = required(payload.get("gid"), "갤러리 ID가 필요합니다.");
-        String content = required(payload.get("content"), "댓글 내용을 입력해주세요.");
+        String content = requiredHtml(payload.get("content"), "댓글 내용을 입력해주세요.");
         Long postNo = parseLong(payload.get("postNo"), "게시글 번호가 필요합니다.");
         Long parentId = parseOptionalLong(payload.get("parentId"));
 
@@ -609,12 +612,8 @@ public class PostService {
             throw new RuntimeException(message);
         }
 
-        String normalized = value.trim();
-        String plainText = normalized
-                .replaceAll("(?i)<br\\s*/?>", " ")
-                .replaceAll("<[^>]+>", " ")
-                .replace("&nbsp;", " ")
-                .trim();
+        String normalized = htmlSanitizerService.sanitize(value);
+        String plainText = htmlSanitizerService.extractPlainText(normalized);
 
         if (plainText.isEmpty()) {
             throw new RuntimeException(message);
@@ -695,6 +694,17 @@ public class PostService {
         return count != null && count > 0;
     }
 
+    private boolean indexExists(String tableName, String indexName) {
+        Integer count = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM information_schema.statistics
+                WHERE table_schema = DATABASE()
+                  AND table_name = ?
+                  AND index_name = ?
+                """, Integer.class, tableName, indexName);
+        return count != null && count > 0;
+    }
+
     private Long parseLong(String value, String message) {
         if (value == null || value.isBlank()) {
             throw new RuntimeException(message);
@@ -732,11 +742,16 @@ public class PostService {
         return Integer.parseInt(String.valueOf(value));
     }
 
-    private String firstNonBlank(String first, String second) {
-        if (first != null && !first.isBlank()) {
-            return first;
+    private String firstNonBlank(String... values) {
+        if (values == null) {
+            return null;
         }
-        return second;
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return null;
     }
 
     private String nullableTrim(String value) {
@@ -757,6 +772,71 @@ public class PostService {
 
     private String padCommentId(long commentId) {
         return String.format("%010d", commentId);
+    }
+
+    private List<Map<String, Object>> sanitizeRowsContent(List<Map<String, Object>> rows) {
+        rows.forEach(this::sanitizeRowContent);
+        return rows;
+    }
+
+    private Map<String, Object> sanitizeRowContent(Map<String, Object> row) {
+        if (row == null) {
+            return null;
+        }
+        Object rawContent = row.get("content");
+        if (rawContent != null) {
+            String sanitized = htmlSanitizerService.sanitize(String.valueOf(rawContent));
+            row.put("content", sanitized);
+            row.put("has_image", sanitized.toLowerCase().contains("<img"));
+        }
+        row.put("name", formatDisplayName(nullableText(row.get("name")), nullableText(row.get("writer_uid")), nullableText(row.get("ip"))));
+        String gallId = nullableText(row.get("gall_id"));
+        if (gallId != null) {
+            String displayCategory = normalizeDisplayCategory(gallId, nullableText(row.get("category")));
+            row.put("display_category", displayCategory);
+            row.put("category", displayCategory);
+        }
+        return row;
+    }
+
+    private List<Map<String, Object>> decorateListRows(List<Map<String, Object>> rows) {
+        rows.forEach((row) -> {
+            if (Boolean.TRUE.equals(row.get("has_image")) || "1".equals(String.valueOf(row.get("has_image")))) {
+                String title = nullableText(row.get("title"));
+                if (title != null && !title.startsWith("[IMG] ")) {
+                    row.put("title", "[IMG] " + title);
+                }
+            }
+        });
+        return rows;
+    }
+
+    private String formatDisplayName(String name, String writerUid, String ip) {
+        String resolved = firstNonBlank(name, writerUid, "익명");
+        if (writerUid != null && !writerUid.isBlank()) {
+            return resolved;
+        }
+        return resolved + "(" + guestIpPrefix(ip) + ")";
+    }
+
+    private String guestIpPrefix(String ip) {
+        String normalized = nullableText(ip);
+        if (normalized == null || normalized.isBlank()) {
+            return "ip";
+        }
+        String[] parts = normalized.split("\\.");
+        if (parts.length >= 2) {
+            return parts[0] + "." + parts[1];
+        }
+        return normalized.length() <= 7 ? normalized : normalized.substring(0, 7);
+    }
+
+    private String normalizeDisplayCategory(String gallId, String category) {
+        List<String> options = parseCategoryOptions(boardService.getBoardSettings(gallId).get("category_options"));
+        if (category != null && !category.isBlank() && (options.isEmpty() || options.contains(category))) {
+            return category;
+        }
+        return options.isEmpty() ? "일반" : options.get(0);
     }
 
     private record WriterInfo(String uid, String name, String ip, String passwordHash) {
