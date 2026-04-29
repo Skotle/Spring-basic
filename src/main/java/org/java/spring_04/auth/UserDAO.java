@@ -1,5 +1,6 @@
 package org.java.spring_04.auth;
 
+import jakarta.annotation.PostConstruct;
 import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -13,9 +14,17 @@ public class UserDAO {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @PostConstruct
+    public void initializeUserSchema() {
+        try {
+            jdbcTemplate.execute("ALTER TABLE user ADD COLUMN nick_type VARCHAR(20) NOT NULL DEFAULT 'variable'");
+        } catch (Exception ignored) {
+        }
+    }
+
     public Optional<UserEntity> findByIdentifier(String identifier) {
         String sql = """
-                SELECT uid, nick, nick_icon_type, password_hash, email, member_division
+                SELECT uid, nick, nick_type, nick_icon_type, password_hash, email, member_division
                 FROM user
                 WHERE uid = ? OR email = ?
                 """;
@@ -61,8 +70,8 @@ public class UserDAO {
 
     public void save(UserEntity user) {
         String sql = """
-                INSERT INTO user (uid, nick, password_hash, email, nick_icon_type, member_division)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO user (uid, nick, password_hash, email, nick_type, nick_icon_type, member_division)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """;
 
         jdbcTemplate.update(
@@ -71,6 +80,7 @@ public class UserDAO {
                 user.getNick(),
                 user.getPasswordHash(),
                 user.getEmail(),
+                user.getNickType() == null || user.getNickType().isBlank() ? "variable" : user.getNickType(),
                 "default",
                 "user"
         );

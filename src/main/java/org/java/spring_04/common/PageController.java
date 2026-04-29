@@ -42,6 +42,12 @@ public class PageController {
         return "index";
     }
 
+    @GetMapping("/board-requests")
+    public String boardRequests() {
+        logRequest("BOARD REQUESTS");
+        return "index";
+    }
+
     @GetMapping("/profile")
     public String profile() {
         logRequest("PROFILE");
@@ -64,6 +70,18 @@ public class PageController {
     public String mobileSignup() {
         logRequest("MOBILE SIGNUP");
         return "mobile";
+    }
+
+    @GetMapping("/m/board-request")
+    public String mobileBoardRequest() {
+        logRequest("MOBILE BOARD REQUEST");
+        return "mobile";
+    }
+
+    @GetMapping("/policy.html")
+    public String policy() {
+        logRequest("POLICY");
+        return "policy";
     }
 
     @GetMapping("/test")

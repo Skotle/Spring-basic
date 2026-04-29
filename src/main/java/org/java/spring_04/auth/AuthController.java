@@ -27,6 +27,7 @@ public class AuthController {
         HttpSession session = request.getSession(true);
         session.setAttribute("uid", user.getUid());
         session.setAttribute("nick", user.getNick());
+        session.setAttribute("nickType", user.getNickType());
         session.setAttribute("nickIconType", user.getNickIconType());
         session.setAttribute("memberDivision", user.getMemberDivision());
 
@@ -62,9 +63,10 @@ public class AuthController {
 
     @GetMapping("/api/signup/validate")
     public Map<String, Object> validateSignupField(@RequestParam("field") String field,
-                                                   @RequestParam("value") String value) {
+                                                   @RequestParam("value") String value,
+                                                   @RequestParam(value = "nickType", required = false) String nickType) {
         try {
-            return Map.of("success", true, "data", authService.validateSignupField(field, value));
+            return Map.of("success", true, "data", authService.validateSignupField(field, value, nickType));
         } catch (Exception e) {
             return Map.of(
                     "success", true,
@@ -86,6 +88,7 @@ public class AuthController {
 
         Object nick = session.getAttribute("nick");
         Object uid = session.getAttribute("uid");
+        Object nickType = session.getAttribute("nickType");
         Object nickIconType = session.getAttribute("nickIconType");
         Object memberDivision = session.getAttribute("memberDivision");
 
@@ -93,6 +96,7 @@ public class AuthController {
                 "loggedIn", true,
                 "nick", nick == null ? "" : nick,
                 "uid", uid == null ? "" : uid,
+                "nickType", nickType == null ? "variable" : nickType,
                 "nickIconType", nickIconType == null ? "default" : nickIconType,
                 "memberDivision", memberDivision == null ? "user" : memberDivision
         );

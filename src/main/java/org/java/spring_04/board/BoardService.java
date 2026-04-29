@@ -188,6 +188,7 @@ public class BoardService {
 
         String sql = """
                 SELECT p.*, g.gall_name, g.manager_uid,
+                       author.nick_type,
                        author.nick_icon_type,
                        (
                            SELECT COUNT(*)
@@ -213,6 +214,7 @@ public class BoardService {
     public Map<String, Object> getPostDetail(String gallId, Long postNo) {
         String sql = """
                 SELECT p.*, g.gall_name, g.manager_uid,
+                       author.nick_type,
                        author.nick_icon_type,
                        (
                            SELECT COUNT(*)

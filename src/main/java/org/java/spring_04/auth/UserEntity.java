@@ -5,6 +5,7 @@ public class UserEntity {
     private String nick;
     private String passwordHash;
     private String email;
+    private String nickType;
     private String nickIconType;
     private String memberDivision;
 
@@ -17,6 +18,8 @@ public class UserEntity {
     public void setPasswordHash(String passwordHash) { this.passwordHash = passwordHash; }
     public String getEmail() { return email; }
     public void setEmail(String email) { this.email = email; }
+    public String getNickType() { return nickType; }
+    public void setNickType(String nickType) { this.nickType = nickType; }
     public String getNickIconType() { return nickIconType; }
     public void setNickIconType(String nickIconType) { this.nickIconType = nickIconType; }
     public String getMemberDivision() { return memberDivision; }

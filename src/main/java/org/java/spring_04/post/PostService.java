@@ -94,6 +94,7 @@ public class PostService {
     public List<Map<String, Object>> getPostsByGallery(String gallId) {
         String sql = """
                 SELECT p.*, g.gall_name,
+                       author.nick_type,
                        author.nick_icon_type,
                        (
                            SELECT COUNT(*)
@@ -119,6 +120,7 @@ public class PostService {
     public List<Map<String, Object>> getTopRecommendedPosts() {
         String sql = """
                 SELECT p.*, g.gall_name,
+                       author.nick_type,
                        author.nick_icon_type,
                        (
                            SELECT COUNT(*)
@@ -150,6 +152,7 @@ public class PostService {
 
         String selectSql = """
             SELECT p.*, g.gall_name,
+                   author.nick_type,
                    author.nick_icon_type,
                    (
                        SELECT COUNT(*)
@@ -185,6 +188,7 @@ public class PostService {
 
         String selectSql = """
             SELECT p.*, g.gall_name,
+                   author.nick_type,
                    author.nick_icon_type,
                    (
                        SELECT COUNT(*)
@@ -214,7 +218,7 @@ public class PostService {
         String sql = """
                 SELECT c.id, c.writer_uid, c.name, c.ip, c.content, c.created_at AS writed_at,
                        c.parent_id, c.reply_depth, c.sort_key, c.like_count, c.report_count, c.review_status,
-                       author.nick_icon_type
+                       author.nick_type, author.nick_icon_type
                 FROM comment c
                 JOIN post p ON p.gall_id = c.gall_id AND p.post_no = c.post_no
                 LEFT JOIN user author ON author.uid = c.writer_uid

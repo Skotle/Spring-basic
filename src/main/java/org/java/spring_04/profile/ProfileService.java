@@ -60,6 +60,7 @@ public class ProfileService {
         Map<String, Object> profile = new LinkedHashMap<>();
         profile.put("uid", user.get("uid"));
         profile.put("nick", user.get("nick"));
+        profile.put("nickType", user.get("nick_type"));
         profile.put("nickIconType", user.get("nick_icon_type"));
         profile.put("memberDivision", user.get("member_division"));
         profile.put("roleLabels", resolveRoleLabels(
@@ -196,7 +197,7 @@ public class ProfileService {
     private Map<String, Object> getUserRow(String uid) {
         try {
             return jdbcTemplate.queryForMap("""
-                    SELECT uid, nick, email, nick_icon_type, member_division
+                    SELECT uid, nick, email, nick_type, nick_icon_type, member_division
                     FROM user
                     WHERE uid = ?
                     """, uid);
@@ -307,7 +308,7 @@ public class ProfileService {
 
     private List<Map<String, Object>> getFollowers(String uid) {
         return jdbcTemplate.queryForList("""
-                SELECT u.uid, u.nick, u.nick_icon_type, f.created_at
+                SELECT u.uid, u.nick, u.nick_type, u.nick_icon_type, f.created_at
                 FROM user_follow f
                 JOIN user u ON u.uid = f.follower_uid
                 WHERE f.following_uid = ?
@@ -318,7 +319,7 @@ public class ProfileService {
 
     private List<Map<String, Object>> getFollowing(String uid) {
         return jdbcTemplate.queryForList("""
-                SELECT u.uid, u.nick, u.nick_icon_type, f.created_at
+                SELECT u.uid, u.nick, u.nick_type, u.nick_icon_type, f.created_at
                 FROM user_follow f
                 JOIN user u ON u.uid = f.following_uid
                 WHERE f.follower_uid = ?
@@ -333,6 +334,7 @@ public class ProfileService {
                        g.gall_name,
                        p.post_no,
                        p.title,
+                       author.nick_type,
                        author.nick_icon_type,
                        p.writed_at,
                        p.view_count,
@@ -361,6 +363,7 @@ public class ProfileService {
                        g.gall_name,
                        c.post_no,
                        c.content,
+                       author.nick_type,
                        author.nick_icon_type,
                        c.created_at AS writed_at,
                        p.title AS post_title

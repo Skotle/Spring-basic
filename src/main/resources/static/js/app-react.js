@@ -78,7 +78,25 @@
     return item.name || "익명";
   };
 
+  const normalizeNickType = (value) => String(value || "").trim().toLowerCase() === "fixed" ? "fixed" : "variable";
+  const nickTypeLabel = (value) => normalizeNickType(value) === "fixed" ? "고정닉" : "비고정닉";
+
   const displayCategory = (item) => item?.display_category || item?.category || "일반";
+
+  function NickTypeBadge({ nickType }) {
+    const normalized = normalizeNickType(nickType);
+    return h("span", { className: `nick-type-badge ${normalized === "fixed" ? "is-fixed" : "is-variable"}` }, nickTypeLabel(normalized));
+  }
+
+  function MemberIdentity({ item, name, uid, nickType, className = "member-identity" }) {
+    const resolvedName = name || authorLabel(item) || uid || "익명";
+    const resolvedUid = uid || item?.writer_uid || "";
+    const resolvedNickType = nickType || item?.nick_type || item?.nickType || "variable";
+    return h("span", { className },
+      h("span", { className: "member-name" }, resolvedName),
+      resolvedUid ? h(NickTypeBadge, { nickType: resolvedNickType }) : null
+    );
+  }
 
   function ProfileInlineLink({ item }) {
     if (!item?.writer_uid) return null;
@@ -104,12 +122,38 @@
       .filter(Boolean);
   };
 
+  const SIGNUP_REQUIRED_TERMS = [
+    "서비스 이용 약관과 커뮤니티 운영 원칙을 확인했습니다.",
+    "개인정보 수집 및 이용에 동의합니다. 수집 항목: 아이디, 닉네임, 이메일, 비밀번호 해시.",
+    "이메일 인증, 계정 보호, 비회원 식별 보조 목적의 정보 처리 안내를 확인했습니다."
+  ];
+
+  const BOARD_REQUEST_TERMS = [
+    "중복되거나 목적이 불명확한 개설 신청은 반려될 수 있음을 확인했습니다.",
+    "신청 내용은 운영 검토 후 승인 시에만 실제 보드 생성으로 이어짐을 확인했습니다."
+  ];
+
+  const WRITE_TERMS = [
+    "작성 내용의 책임은 작성자에게 있으며 운영 정책과 보드 규칙을 따르겠습니다.",
+    "입력 내용은 HTML 형식으로 저장되고 다른 이용자에게 공개될 수 있음을 확인했습니다."
+  ];
+
+  const COMMENT_TERMS = [
+    "댓글 내용의 책임은 작성자에게 있으며 신고 또는 삭제 요청의 대상이 될 수 있음을 확인했습니다.",
+    "비회원 댓글은 이름, 비밀번호, 접속 정보가 작성자 식별 보조 수단으로 사용될 수 있음을 확인했습니다."
+  ];
+
+  const importantActionConfirm = (title, lines) => window.confirm(`${title}\n\n${lines.map((line, index) => `${index + 1}. ${line}`).join("\n")}`);
+
+  const generateCaptchaCode = () => Math.random().toString(36).slice(2, 7);
+
   function matchRoute(pathname) {
     const path = normalizePathname(pathname);
     if (path === "/") return { name: "home", params: {} };
     if (path === "/signin") return { name: "login", params: {} };
     if (path === "/nid") return { name: "signup", params: {} };
     if (path === "/alarms") return { name: "alarms", params: {} };
+    if (path === "/board-requests") return { name: "boardRequests", params: {} };
     if (path === "/profile") return { name: "profile", params: {} };
     if (path === "/boards" || path === "/board_main") return { name: "boards", params: {} };
     let match = path.match(/^\/profile\/([^/]+)$/);
@@ -162,25 +206,57 @@
     return null;
   }
 
+  function ConsentChecklist({ title = "사전 동의", items = [], checked = false, onToggle, requiredLabel = "모든 항목을 확인하고 동의합니다." }) {
+    return h("div", { className: "consent-box" },
+      h("div", { className: "consent-title" }, title),
+      h("div", { className: "consent-list" },
+        items.map((item, index) => h("div", { className: "consent-item", key: `${title}-${index}` }, item))
+      ),
+      h("label", { className: "check-row consent-check" },
+        h("input", { type: "checkbox", checked, onChange: (event) => onToggle?.(event.target.checked) }),
+        h("span", null, requiredLabel)
+      )
+    );
+  }
+
   function Topbar({ session, onLogout, alarmCount = 0 }) {
+    const navItems = [
+      { label: "홈", href: "/" },
+      { label: "보드", href: "/boards" },
+      { label: "개설 신청", href: "/board-requests" },
+      { label: "피드", href: "/" },
+      { label: "내정보", href: "/profile", auth: true },
+      { label: alarmCount > 0 ? `알림 ${alarmCount}` : "알림", href: "/alarms", auth: true }
+    ];
     return h("header", { className: "topbar" },
       h("div", { className: "frame" },
         h("div", { className: "topbar-inner" },
-          h(Link, { href: "/", className: "brand" }, h("span", { className: "brand-mark" }), h("span", null, "irisen web")),
-          h("div", { className: "nav-actions" },
-            h(Link, { href: "/", className: "btn btn-ghost" }, "홈"),
-            h(Link, { href: "/boards", className: "btn btn-ghost" }, "보드"),
-            session?.loggedIn
-              ? [
-                  h(Link, { href: "/profile", className: "btn btn-ghost", key: "profile" }, "프로필"),
-                  h(Link, { href: "/alarms", className: "btn btn-ghost", key: "alarms" }, alarmCount > 0 ? `알림 ${alarmCount}` : "알림"),
-                  h("span", { className: "chip", key: "nick" }, session.nick || session.uid),
-                  h("button", { type: "button", className: "btn btn-secondary", key: "logout", onClick: onLogout }, "로그아웃")
-                ]
-              : [
-                  h(Link, { href: "/signin", className: "btn btn-ghost", key: "login" }, "로그인"),
-                  h(Link, { href: "/nid", className: "btn btn-primary", key: "signup" }, "회원가입")
-                ]
+          h("div", { className: "topbar-main" },
+            h(Link, { href: "/", className: "brand" }, h("span", { className: "brand-mark" }, "I"), h("span", null, "Irisen")),
+            h("div", { className: "topbar-search" },
+              h("button", { type: "button", className: "topbar-menu", "aria-label": "메뉴" }, h("span"), h("span"), h("span")),
+              h("span", { className: "topbar-search-placeholder" }, "보드 & 게시글 검색"),
+              h("span", { className: "topbar-search-icon", "aria-hidden": "true" })
+            ),
+            h("div", { className: "topbar-account" },
+              session?.loggedIn
+                ? [
+                    h("span", { className: "chip", key: "nick" }, h(MemberIdentity, { name: session.nick || session.uid, uid: session.uid, nickType: session.nickType, className: "member-identity inline" })),
+                    h("button", { type: "button", className: "btn btn-secondary btn-compact", key: "logout", onClick: onLogout }, "로그아웃")
+                  ]
+                : [
+                    h(Link, { href: "/signin", className: "btn btn-secondary btn-compact", key: "login" }, "로그인"),
+                    h(Link, { href: "/nid", className: "btn btn-primary btn-compact", key: "signup" }, "가입")
+                  ]
+            )
+          ),
+          h("nav", { className: "topbar-nav", "aria-label": "주요 메뉴" },
+            navItems.map((item) =>
+              !item.auth || session?.loggedIn
+                ? h(Link, { key: item.href + item.label, href: item.href, className: item.label === "보드" ? "is-active" : "" }, item.label)
+                : null
+            ),
+            session?.loggedIn ? null : h(Link, { href: "/signin", className: "topbar-nav-auth" }, "로그인")
           )
         )
       )
@@ -324,7 +400,7 @@
               ? h("div", { className: "stack" }, feed.map((post) =>
                   h(Link, { href: `/board/${encodeURIComponent(post.gall_id)}/${post.post_no}`, className: "card quick-card", key: `${post.gall_id}-${post.post_no}`, reload: true },
                     h("div", { className: "board-title" }, post.title || "제목 없음"),
-                  h("div", { className: "muted" }, `${post.gall_name || post.gall_id} · ${authorLabel(post)}`, h(ProfileInlineLink, { item: post }))
+                  h("div", { className: "muted" }, h("span", null, `${post.gall_name || post.gall_id} · `), h(MemberIdentity, { item: post, className: "member-identity inline" }), h(ProfileInlineLink, { item: post }))
                   )))
               : h("div", { className: "empty-box" }, "추천 글이 없습니다."),
             h("div", { className: "muted" }, `전체 보드 ${boards.length}개`)
@@ -340,12 +416,14 @@
     const [requestReason, setRequestReason] = useState("");
     const q = query.trim().toLowerCase();
     const filtered = boards.filter((board) => !q || String(board.gall_id || "").toLowerCase().includes(q) || String(board.gall_name || "").toLowerCase().includes(q));
+    const half = Math.ceil(filtered.length / 2);
+    const columns = [filtered.slice(0, half), filtered.slice(half)];
 
     return h(React.Fragment, null,
       h(Topbar, { session, onLogout, alarmCount }),
       h("main", { className: "shell" },
         h("div", { className: "frame" },
-          h("section", { className: "section-stack" },
+          h("section", { className: "section-stack board-directory-page" },
             h(PermissionNotice, {
               label: "보드 목록은 누구나 볼 수 있습니다.",
               detail: "사이드 보드 개설 요청은 로그인한 사용자만 보낼 수 있습니다."
@@ -354,19 +432,46 @@
               { action: "보드 목록 보기", required: "비회원 포함 전체 사용자", available: true },
               { action: "사이드 보드 개설 요청", required: "로그인 사용자", available: !!session?.loggedIn, note: "요청은 관리자 또는 운영자가 알림에서 승인해야 반영됩니다." }
             ] }),
-            h(SectionHead, { eyebrow: "Boards", title: "보드 목록" }),
-            h("div", { className: "field" },
-              h("label", { htmlFor: "board-search" }, "검색"),
-              h("input", { id: "board-search", type: "text", value: query, onChange: (event) => onQueryChange(event.target.value) })
+            h("article", { className: "card board-directory-hero" },
+              h("span", { className: "eyebrow" }, "Boards"),
+              h("div", { className: "board-directory-hero-head" },
+                h("div", null,
+                  h("h1", { className: "section-title" }, "보드 디렉토리"),
+                  h("p", { className: "muted board-directory-copy" }, "메인 보드와 사이드 보드를 한 번에 훑어보고, 원하는 보드가 없으면 개설 요청까지 이어서 보낼 수 있습니다.")
+                ),
+                h("div", { className: "board-directory-search" },
+                  h("label", { htmlFor: "board-search", className: "hidden" }, "검색"),
+                  h("input", { id: "board-search", type: "text", value: query, placeholder: "보드 이름 또는 ID", onChange: (event) => onQueryChange(event.target.value) })
+                )
+              ),
+              h("div", { className: "board-directory-actions" },
+                h(Link, { href: "/board-requests", className: "btn btn-primary" }, "보드 개설 신청"),
+                h("span", { className: "chip" }, `전체 ${boards.length}개`)
+              )
             ),
-            filtered.length
-              ? h("div", { className: "stack" }, filtered.map((board) =>
-                  h(Link, { href: `/board/${encodeURIComponent(board.gall_id)}`, className: "card quick-card", key: board.gall_id },
-                    h("div", { className: "board-title" }, board.gall_name || board.gall_id),
-                    h("div", { className: "muted" }, `${board.gall_id} · ${board.post_count ?? 0} posts`)
-                  )))
-              : h("div", { className: "empty-box" }, "검색 결과가 없습니다."),
-            h("article", { className: "card" },
+            h("div", { className: "board-directory-layout" },
+              filtered.length
+                ? h("article", { className: "card board-directory-card" },
+                    h("div", { className: "board-directory-meta" },
+                      h("strong", null, "전체 보드"),
+                      h("span", { className: "chip" }, `${filtered.length}개`)
+                    ),
+                    h("div", { className: "board-directory-columns" },
+                      columns.map((items, columnIndex) =>
+                        h("div", { className: "board-directory-column", key: `column-${columnIndex}` },
+                          items.map((board, index) =>
+                            h(Link, { href: `/board/${encodeURIComponent(board.gall_id)}`, className: "board-directory-entry", key: board.gall_id },
+                              h("span", { className: "board-directory-rank" }, `${columnIndex === 0 ? index + 1 : half + index + 1}.`),
+                              h("strong", { className: "board-directory-name" }, board.gall_name || board.gall_id),
+                              h("span", { className: "board-directory-sub" }, `${board.gall_id} · ${board.post_count ?? 0} posts`)
+                            )
+                          )
+                        )
+                      )
+                    )
+                  )
+                : h("div", { className: "empty-box" }, "검색 결과가 없습니다."),
+            h("article", { className: "card board-request-card" },
               h("span", { className: "eyebrow" }, "Request"),
               h("h3", { className: "section-title", style: { fontSize: "1.3rem" } }, "사이드 보드 개설 요청"),
               h("div", { className: "muted" }, "원하는 사이드 보드가 없으면 운영진에게 개설 요청을 보낼 수 있습니다."),
@@ -401,6 +506,95 @@
                       }, "요청 보내기")
                     )
                   )
+              )
+            )
+          )
+        )
+      )
+    );
+  }
+
+  function BoardRequestsView({ session, feedback, onSubmitSideBoardRequest, onLogout, alarmCount }) {
+    const [requestGid, setRequestGid] = useState("");
+    const [requestName, setRequestName] = useState("");
+    const [requestReason, setRequestReason] = useState("");
+    const [requestAgreed, setRequestAgreed] = useState(false);
+    const normalizedGid = requestGid.trim().toLowerCase();
+    const gidValid = /^[a-z0-9_-]{3,50}$/.test(normalizedGid);
+    const nameValid = requestName.trim().length >= 2 && requestName.trim().length <= 100;
+    const reasonValid = requestReason.trim().length >= 10;
+
+    return h(React.Fragment, null,
+      h(Topbar, { session, onLogout, alarmCount }),
+      h("main", { className: "shell" },
+        h("div", { className: "frame" },
+          h("section", { className: "section-stack board-request-page" },
+            h("article", { className: "card board-request-hero" },
+              h("span", { className: "eyebrow" }, "Application"),
+              h("h1", { className: "section-title" }, "사이드 보드 개설 신청"),
+              h("p", { className: "muted board-request-hero-copy" }, "현재 운영 중인 목록에 없는 주제를 별도 보드로 열고 싶다면, 아래 규격과 심사 기준에 맞춰 개설 신청을 제출할 수 있습니다.")
+            ),
+            h("div", { className: "board-request-layout" },
+              h("article", { className: "card board-request-guide" },
+                h("h3", { className: "board-request-title" }, "신청 규격"),
+                h("div", { className: "board-request-rule-list" },
+                  h("div", { className: "board-request-rule" }, h("strong", null, "보드 ID"), h("span", null, "3~50자, 영소문자/숫자/_/-만 허용되며 실제 보드 주소로 사용됩니다.")),
+                  h("div", { className: "board-request-rule" }, h("strong", null, "보드 이름"), h("span", null, "2~100자 범위로 작성하며, 기존 보드와 구분될 수 있도록 주제를 명확히 적어야 합니다.")),
+                  h("div", { className: "board-request-rule" }, h("strong", null, "신청 사유"), h("span", null, "최소 10자 이상. 개설 목적, 예상 이용층, 기존 보드와의 차이점을 포함해 주세요.")),
+                  h("div", { className: "board-request-rule" }, h("strong", null, "신청 자격"), h("span", null, "로그인 사용자만 제출할 수 있으며, 허위·중복 신청은 반려될 수 있습니다.")),
+                  h("div", { className: "board-request-rule" }, h("strong", null, "처리 방식"), h("span", null, "관리자 또는 운영자가 알림에서 검토하고 승인하면 실제 보드가 생성됩니다."))
+                ),
+                h("div", { className: "board-request-note" }, "중복 주제, 목적 불명확, 운영 취지와 맞지 않는 신청은 반려될 수 있습니다."),
+                h("h3", { className: "board-request-title" }, "심사 시 확인하는 내용"),
+                h("div", { className: "board-request-rule-list" },
+                  h("div", { className: "board-request-rule" }, h("strong", null, "주제 독립성"), h("span", null, "기존 메인 보드나 사이드 보드와 주제가 겹치지 않는지 확인합니다.")),
+                  h("div", { className: "board-request-rule" }, h("strong", null, "지속 가능성"), h("span", null, "일회성 이슈가 아닌지, 꾸준한 이용 수요가 예상되는지 검토합니다.")),
+                  h("div", { className: "board-request-rule" }, h("strong", null, "운영 적합성"), h("span", null, "분쟁 유발 목적, 광고성, 규정 위반 가능성이 높은 주제는 승인되지 않습니다.")),
+                  h("div", { className: "board-request-rule" }, h("strong", null, "처리 결과"), h("span", null, "승인 시 보드가 생성되고, 반려 시 사유는 관리자 알림 처리 흐름에 따라 확인됩니다."))
+                )
+              ),
+              h("article", { className: "card board-request-form-card" },
+                h("h3", { className: "board-request-title" }, "개설 신청서 작성"),
+                h("p", { className: "muted board-request-form-copy" }, "아래 항목은 모두 필수입니다. 제출 전 보드 ID와 이름을 다시 확인해 주세요."),
+                !session?.loggedIn
+                  ? h("div", { className: "empty-box" }, "로그인 후 개설 신청을 진행할 수 있습니다.")
+                  : h("div", { className: "stack" },
+                      h("div", { className: "field" },
+                        h("label", { htmlFor: "board-request-gid" }, "보드 ID"),
+                        h("input", { id: "board-request-gid", type: "text", value: requestGid, placeholder: "예: apple_stock", onChange: (event) => setRequestGid(event.target.value.toLowerCase()) }),
+                        h("div", { className: gidValid || !requestGid ? "request-rule-hint" : "request-rule-hint is-error" }, "영소문자, 숫자, _, - 조합으로 3~50자")
+                      ),
+                      h("div", { className: "field" },
+                        h("label", { htmlFor: "board-request-name" }, "보드 이름"),
+                        h("input", { id: "board-request-name", type: "text", value: requestName, placeholder: "예: 미국 주식", onChange: (event) => setRequestName(event.target.value) }),
+                        h("div", { className: nameValid || !requestName ? "request-rule-hint" : "request-rule-hint is-error" }, "2~100자")
+                      ),
+                      h("div", { className: "field" },
+                        h("label", { htmlFor: "board-request-reason" }, "신청 사유"),
+                        h("textarea", { id: "board-request-reason", rows: 8, value: requestReason, placeholder: "개설 목적, 예상 이용자, 기존 보드와의 차이점, 운영 방향을 적어주세요.", onChange: (event) => setRequestReason(event.target.value) }),
+                        h("div", { className: reasonValid || !requestReason ? "request-rule-hint" : "request-rule-hint is-error" }, `${requestReason.trim().length}/10자 이상`)
+                      ),
+                      h(ConsentChecklist, { title: "개설 신청 전 확인", items: BOARD_REQUEST_TERMS, checked: requestAgreed, onToggle: setRequestAgreed }),
+                      h("div", { className: "board-request-note" }, "제출된 신청은 운영 검토 후 승인 또는 반려됩니다. 승인 전까지는 실제 보드가 생성되지 않습니다."),
+                      h(Feedback, { feedback }),
+                      h("div", { className: "inline-actions" },
+                        h("button", {
+                          type: "button",
+                          className: "btn btn-primary",
+                          disabled: !gidValid || !nameValid || !reasonValid || !requestAgreed,
+                          onClick() {
+                            onSubmitSideBoardRequest({ gallId: normalizedGid, gallName: requestName.trim(), reason: requestReason.trim() }, () => {
+                              setRequestGid("");
+                              setRequestName("");
+                              setRequestReason("");
+                              setRequestAgreed(false);
+                            });
+                          }
+                        }, "개설 신청 보내기"),
+                        h(Link, { href: "/boards", className: "btn btn-secondary" }, "보드 목록")
+                      )
+                    )
+              )
             )
           )
         )
@@ -480,7 +674,7 @@
                         h("span", { className: "home-feed-rank" }, String(index + 1).padStart(2, "0")),
                         h("div", { className: "home-feed-copy" },
                           h("div", { className: "home-feed-title" }, post.title || "제목 없음"),
-                          h("div", { className: "home-feed-meta" }, `${post.gall_name || post.gall_id} · ${authorLabel(post)}`)
+                          h("div", { className: "home-feed-meta" }, h("span", null, `${post.gall_name || post.gall_id} · `), h(MemberIdentity, { item: post, className: "member-identity inline" }))
                         )
                       )
                     ))
@@ -490,7 +684,7 @@
             h("aside", { className: "home-portal-side" },
               h("article", { className: "card home-side-card" },
                 h("span", { className: "eyebrow" }, "Status"),
-                h("h3", { className: "home-side-title" }, session?.loggedIn ? `${session.nick || session.uid} 님` : "게스트 모드"),
+                h("h3", { className: "home-side-title" }, session?.loggedIn ? h(MemberIdentity, { name: session.nick || session.uid, uid: session.uid, nickType: session.nickType, className: "member-identity" }) : "게스트 모드"),
                 h("p", { className: "home-side-copy" }, session?.loggedIn ? "프로필, 알림, 작성 기능을 바로 사용할 수 있습니다." : "로그인 없이도 보드와 인기 글을 둘러볼 수 있습니다."),
                 h(PermissionMatrix, { items: [
                   { action: "보드 열람", required: "전체 사용자", available: true },
@@ -640,7 +834,7 @@
                       h("span", { className: "dc-post-no" }, post.post_no ?? "-"),
                       h("span", { className: "dc-post-kind" }, post.category || (post.notice ? "공지" : Number(post.recommend_count || 0) >= conceptThreshold ? "개념글" : "일반")),
                       h("span", { className: "dc-post-subject" }, h("strong", null, post.title || "제목 없음"), Number(post.comment_count || 0) > 0 ? h("em", null, `[${post.comment_count}]`) : null),
-                      h("span", { className: "dc-post-author" }, authorLabel(post), h(ProfileInlineLink, { item: post })),
+                      h("span", { className: "dc-post-author" }, h(MemberIdentity, { item: post, className: "member-identity inline" }), h(ProfileInlineLink, { item: post })),
                       h("span", { className: "dc-post-date" }, formatDate(post.writed_at || post.created_at)),
                       h("span", { className: "dc-post-view" }, post.view_count ?? 0),
                       h("span", { className: "dc-post-rec" }, post.recommend_count ?? 0)
@@ -889,6 +1083,10 @@
         type: "button",
         className: "btn btn-secondary btn-danger",
         onClick() {
+          if (!importantActionConfirm(buttonLabel, [
+            "삭제 후에는 복구가 어려울 수 있습니다.",
+            "작성자 본인 또는 관리 권한이 있는 경우에만 삭제해야 합니다."
+          ])) return;
           if (requirePassword || !session?.loggedIn) {
             const password = window.prompt(passwordLabel);
             if (password === null) return;
@@ -922,6 +1120,7 @@
     const [content, setContent] = useState("");
     const [guestName, setGuestName] = useState("");
     const [guestPassword, setGuestPassword] = useState("");
+    const [commentAgreed, setCommentAgreed] = useState(false);
     const isAdmin = ["1", 1, "admin", "operator"].includes(session?.memberDivision);
     const permissions = manageData?.permissions || {};
     const settings = manageData?.settings || null;
@@ -951,7 +1150,7 @@
                 post.category ? h("span", { className: "chip" }, `[${post.category}]`) : null,
                 h("h1", { className: "post-heading" }, post.title || "제목 없음"),
                 h("div", { className: "post-info-row" },
-                  h("span", null, authorLabel(post), h(ProfileInlineLink, { item: post })),
+                  h("span", null, h(MemberIdentity, { item: post, className: "member-identity inline" }), h(ProfileInlineLink, { item: post })),
                   h("span", { className: "post-info-sep" }, "|"),
                   h("span", null, formatDate(post.writed_at || post.created_at)),
                   h("span", { className: "post-info-sep" }, "|"),
@@ -981,7 +1180,7 @@
             comments.length
               ? h("div", { className: "stack" }, comments.map((comment) =>
                   h("article", { className: "card", key: comment.id || comment.comment_id || `${comment.created_at}-${comment.name}` },
-                    h("div", { className: "muted" }, authorLabel(comment), h(ProfileInlineLink, { item: comment }), ` · ${formatDate(comment.writed_at || comment.created_at)}`),
+                    h("div", { className: "muted" }, h(MemberIdentity, { item: comment, className: "member-identity inline" }), h(ProfileInlineLink, { item: comment }), ` · ${formatDate(comment.writed_at || comment.created_at)}`),
                     h("div", { className: "preview", dangerouslySetInnerHTML: { __html: comment.content || "" } }),
                     h("div", { className: "inline-actions" },
                       h("button", { type: "button", className: "btn btn-secondary btn-compact", onClick: () => onLikeComment(comment) }, `공감 ${comment.like_count ?? 0}`),
@@ -996,6 +1195,7 @@
                 h("textarea", { id: "comment-content", rows: 5, value: content, onChange: (event) => setContent(event.target.value) })
               ),
               session?.loggedIn ? null : h(GuestFields, { name: guestName, password: guestPassword, setName: setGuestName, setPassword: setGuestPassword, prefix: "comment" }),
+              h(ConsentChecklist, { title: "댓글 작성 전 확인", items: COMMENT_TERMS, checked: commentAgreed, onToggle: setCommentAgreed }),
               canComment ? null : h("div", { className: "error-box" }, "이 보드는 로그인 사용자만 댓글을 작성할 수 있습니다."),
               h(Feedback, { feedback }),
               h(ActionPermission, null, "필요 권한: 댓글 작성이 허용된 보드의 로그인 사용자 또는 비회원(이름/비밀번호 필수)"),
@@ -1003,13 +1203,14 @@
                 h("button", {
                   type: "button",
                   className: "btn btn-primary",
-                  disabled: !canComment,
+                  disabled: !canComment || !commentAgreed,
                   onClick() {
                     if (!canComment) return;
                     onSubmitComment({ gid, postNo: post.post_no, content, name: guestName.trim(), password: guestPassword }, () => {
                       setContent("");
                       setGuestName("");
                       setGuestPassword("");
+                      setCommentAgreed(false);
                     });
                   }
                 }, "댓글 등록")
@@ -1030,6 +1231,7 @@
     const [attachments, setAttachments] = useState("");
     const [guestName, setGuestName] = useState("");
     const [guestPassword, setGuestPassword] = useState("");
+    const [writeAgreed, setWriteAgreed] = useState(false);
     const settings = manageData?.settings || null;
     const canWritePost = !!session?.loggedIn || flagEnabled(settings?.allow_guest_post);
     const categoryOptions = categoryOptionsFromSettings(settings);
@@ -1071,6 +1273,7 @@
               h("label", { className: "check-row" }, h("input", { type: "checkbox", checked: isDraft, onChange: (event) => setIsDraft(event.target.checked) }), h("span", null, "임시저장")),
               h("label", { className: "check-row" }, h("input", { type: "checkbox", checked: isSecret, onChange: (event) => setIsSecret(event.target.checked) }), h("span", null, "비밀글")),
               session?.loggedIn ? null : h(GuestFields, { name: guestName, password: guestPassword, setName: setGuestName, setPassword: setGuestPassword, prefix: "write" }),
+              h(ConsentChecklist, { title: "게시글 작성 전 확인", items: WRITE_TERMS, checked: writeAgreed, onToggle: setWriteAgreed }),
               canWritePost ? null : h("div", { className: "error-box" }, "이 보드는 로그인 사용자만 글을 작성할 수 있습니다."),
               h(Feedback, { feedback }),
               h(ActionPermission, null, session?.loggedIn ? "필요 권한: 로그인 사용자" : "필요 권한: 비회원 이름과 비밀번호 입력"),
@@ -1078,7 +1281,7 @@
                 h("button", {
                   type: "button",
                   className: "btn btn-primary",
-                  disabled: !canWritePost,
+                  disabled: !canWritePost || !writeAgreed,
                   onClick() {
                     if (!canWritePost) return;
                     onSubmitPost({ gid, category: category || categoryOptions[0] || "", title: title.trim(), content, name: guestName.trim(), password: guestPassword, isDraft, isSecret, attachments }, () => {
@@ -1090,6 +1293,7 @@
                       setAttachments("");
                       setGuestName("");
                       setGuestPassword("");
+                      setWriteAgreed(false);
                     });
                   }
                 }, "글 등록"),
@@ -1112,34 +1316,105 @@
     const [nick, setNick] = useState("");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
+    const [passwordConfirm, setPasswordConfirm] = useState("");
     const [code, setCode] = useState("");
+    const [nicknameMode, setNicknameMode] = useState("비고정");
+    const [captchaCode, setCaptchaCode] = useState(() => generateCaptchaCode());
+    const [captchaValue, setCaptchaValue] = useState("");
+    const [signupTermsAgreed, setSignupTermsAgreed] = useState(false);
     const [verificationSent, setVerificationSent] = useState(false);
-    const [signupStep, setSignupStep] = useState(0);
     const [stepFeedback, setStepFeedback] = useState(null);
+    const [uidFeedback, setUidFeedback] = useState(null);
+    const [nickFeedback, setNickFeedback] = useState(null);
+    const [uidChecked, setUidChecked] = useState({ value: "", ok: false });
+    const [nickChecked, setNickChecked] = useState({ value: "", type: "variable", ok: false });
     const isLogin = mode === "login";
+    const requiresFixedNickCheck = nicknameMode === "고정";
+    const trimmedUid = uid.trim();
+    const trimmedNick = nick.trim();
+    const uidCheckPassed = uidChecked.ok && uidChecked.value === trimmedUid;
+    const nickCheckPassed = !requiresFixedNickCheck || (nickChecked.ok && nickChecked.value === trimmedNick && nickChecked.type === "fixed");
+    const passwordChecks = {
+      combo: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/.test(password),
+      length: password.length >= 8 && password.length <= 20,
+      special: /[^A-Za-z0-9]/.test(password)
+    };
+    const passwordStrength = [passwordChecks.combo, passwordChecks.length, passwordChecks.special].filter(Boolean).length;
+    const passwordStrengthPercent = (passwordStrength / 3) * 100;
+    const passwordMatched = password.length > 0 && password === passwordConfirm;
 
-    const signupSteps = [
-      { eyebrow: "Step 1", title: "아이디 입력", field: "uid", value: uid, canNext: uid.trim().length > 0, render: h("div", { className: "field" }, h("label", { htmlFor: "auth-uid" }, "아이디"), h("input", { id: "auth-uid", type: "text", value: uid, onChange: (event) => setUid(event.target.value), placeholder: "4-20자 영문, 숫자, 밑줄" })) },
-      { eyebrow: "Step 2", title: "닉네임 입력", field: "nick", value: nick, canNext: nick.trim().length > 0, render: h("div", { className: "field" }, h("label", { htmlFor: "auth-nick" }, "닉네임"), h("input", { id: "auth-nick", type: "text", value: nick, onChange: (event) => setNick(event.target.value), placeholder: "2-20자 문자/숫자" })) },
-      { eyebrow: "Step 3", title: "이메일 입력", field: "email", value: email, canNext: email.trim().length > 0, render: h("div", { className: "field" }, h("label", { htmlFor: "auth-email" }, "이메일"), h("input", { id: "auth-email", type: "email", value: email, onChange: (event) => setEmail(event.target.value), placeholder: "인증 메일을 받을 주소" })) },
-      { eyebrow: "Step 4", title: "비밀번호 입력", field: "password", value: password, canNext: password.length >= 8, render: h("div", { className: "stack" }, h("div", { className: "field" }, h("label", { htmlFor: "auth-pw" }, "비밀번호"), h("input", { id: "auth-pw", type: "password", value: password, onChange: (event) => setPassword(event.target.value), placeholder: "8자 이상 강한 비밀번호" })), h("div", { className: "muted" }, "대문자, 소문자, 숫자, 특수문자를 각각 1개 이상 포함해야 합니다.")) },
-      { eyebrow: "Step 5", title: verificationSent ? "인증 코드 입력" : "이메일 인증", canNext: verificationSent ? code.trim().length > 0 : true, render: verificationSent ? h("div", { className: "field" }, h("label", { htmlFor: "auth-code" }, "인증 코드"), h("input", { id: "auth-code", type: "text", value: code, onChange: (event) => setCode(event.target.value), placeholder: "메일로 받은 6자리 코드" })) : h("div", { className: "muted" }, `${email || "입력한 이메일"} 주소로 인증 메일을 보냅니다.`) }
-    ];
-    const currentSignupStep = signupSteps[Math.min(signupStep, signupSteps.length - 1)];
+    async function validateSignupFieldRequest(field, value, nickType) {
+      const params = new URLSearchParams({
+        field: String(field || ""),
+        value: String(value || "")
+      });
+      if (nickType) params.set("nickType", nickType);
+      const result = await api(`/api/signup/validate?${params.toString()}`);
+      if (!result?.success || !result?.data?.valid) {
+        throw new Error(result?.data?.message || "입력값을 확인해주세요.");
+      }
+      return result;
+    }
 
-    async function validateCurrentStep() {
-      if (!currentSignupStep.field) return true;
+    async function validateSignupForm() {
+      if (!signupTermsAgreed) throw new Error("약관 및 개인정보 수집 동의가 필요합니다.");
+      if (!passwordMatched) throw new Error("비밀번호 확인이 일치하지 않습니다.");
+      if ((captchaValue || "").trim().toLowerCase() !== captchaCode.toLowerCase()) throw new Error("자동 입력 방지 코드가 일치하지 않습니다.");
+      if (!uidCheckPassed) throw new Error("아이디 중복확인을 완료해 주세요.");
+      if (!nickCheckPassed) throw new Error("고정 닉네임은 중복확인을 완료해 주세요.");
+      await validateSignupFieldRequest("uid", trimmedUid);
+      await validateSignupFieldRequest("nick", trimmedNick, requiresFixedNickCheck ? "fixed" : "variable");
+      await validateSignupFieldRequest("email", email.trim());
+      await validateSignupFieldRequest("password", password);
+    }
+
+    async function checkUidDuplicate() {
       try {
-        const result = await api(`/api/signup/validate?field=${encodeURIComponent(currentSignupStep.field)}&value=${encodeURIComponent(currentSignupStep.value || "")}`);
-        if (!result?.success || !result?.data?.valid) {
-          setStepFeedback({ type: "error", message: result?.data?.message || "입력값을 확인해주세요." });
-          return false;
-        }
-        setStepFeedback({ type: "success", message: "사용 가능한 값입니다." });
-        return true;
+        setStepFeedback(null);
+        await validateSignupFieldRequest("uid", trimmedUid);
+        setUidChecked({ value: trimmedUid, ok: true });
+        setStepFeedback({ type: "success", message: "사용 가능한 아이디입니다." });
       } catch (error) {
-        setStepFeedback({ type: "error", message: error.message || "입력값 확인에 실패했습니다." });
-        return false;
+        setUidChecked({ value: "", ok: false });
+        setStepFeedback({ type: "error", message: error.message || "아이디를 다시 확인해 주세요." });
+      }
+    }
+
+    async function checkNickDuplicate() {
+      try {
+        setStepFeedback(null);
+        await validateSignupFieldRequest("nick", trimmedNick, "fixed");
+        setNickChecked({ value: trimmedNick, type: "fixed", ok: true });
+        setStepFeedback({ type: "success", message: "사용 가능한 고정 닉네임입니다." });
+      } catch (error) {
+        setNickChecked({ value: "", type: "fixed", ok: false });
+        setStepFeedback({ type: "error", message: error.message || "닉네임을 다시 확인해 주세요." });
+      }
+    }
+
+    async function requestVerificationMail() {
+      try {
+        setStepFeedback(null);
+        await validateSignupForm();
+        onSubmitAuth({ mode, uid, nick, email, password, nickType: requiresFixedNickCheck ? "fixed" : "variable", resendOnly: true, setVerificationSent, signupTermsAgreed });
+      } catch (error) {
+        setStepFeedback({ type: "error", message: error.message || "가입 정보를 다시 확인해주세요." });
+      }
+    }
+
+    async function completeSignup() {
+      try {
+        setStepFeedback(null);
+        await validateSignupForm();
+        if (!verificationSent) {
+          throw new Error("먼저 인증 메일을 보내고 코드를 받아주세요.");
+        }
+        if (!code.trim()) {
+          throw new Error("이메일 인증 코드를 입력해주세요.");
+        }
+        onSubmitAuth({ mode, uid, nick, email, password, nickType: requiresFixedNickCheck ? "fixed" : "variable", code, verificationSent, setVerificationSent, signupTermsAgreed });
+      } catch (error) {
+        setStepFeedback({ type: "error", message: error.message || "가입 정보를 다시 확인해주세요." });
       }
     }
 
@@ -1162,36 +1437,104 @@
                 { action: "이메일 인증 메일 발송", required: "아이디, 닉네임, 이메일, 비밀번호 정책 통과", available: true },
                 { action: "가입 완료", required: "이메일 인증 코드 확인", available: false, note: "인증 성공 후 계정이 생성됩니다." }
               ] }),
-              h("span", { className: "eyebrow" }, isLogin ? "Access" : currentSignupStep.eyebrow),
-              h("h1", { className: "section-title" }, isLogin ? "로그인" : currentSignupStep.title),
+              h("span", { className: "eyebrow" }, isLogin ? "Access" : "Join"),
+              h("h1", { className: "section-title" }, isLogin ? "로그인" : "회원가입"),
+              isLogin ? null : h(Feedback, { feedback: stepFeedback }),
               h("div", { className: "stack", style: { marginTop: "16px" } },
                 isLogin
                   ? h("div", { className: "stack" },
                       h("div", { className: "field" }, h("label", { htmlFor: "auth-login-id" }, "아이디 또는 이메일"), h("input", { id: "auth-login-id", type: "text", value: uid, onChange: (event) => setUid(event.target.value) })),
                       h("div", { className: "field" }, h("label", { htmlFor: "auth-login-pw" }, "비밀번호"), h("input", { id: "auth-login-pw", type: "password", value: password, onChange: (event) => setPassword(event.target.value) }))
                     )
-                  : h("div", { className: "stack" },
-                      h("div", { className: "chip" }, `${signupStep + 1} / ${signupSteps.length}`),
-                      currentSignupStep.render,
-                      verificationSent && signupStep === signupSteps.length - 1 ? h("div", { className: "success-box" }, "인증 메일을 보냈습니다. 코드를 입력해 가입을 완료해주세요.") : null
+                  : h("div", { className: "signup-sheet" },
+                      h("div", { className: "signup-sheet-head" },
+                        h("span", { className: "eyebrow" }, "Join"),
+                        h("h1", { className: "section-title" }, "회원가입"),
+                        h("p", { className: "muted" }, "아이디, 비밀번호, 닉네임, 자동 입력 방지 코드와 이메일 인증을 한 번에 진행합니다.")
+                      ),
+                      h("div", { className: "signup-grid" },
+                        h("div", { className: "signup-label" }, "아이디"),
+                        h("div", { className: "signup-control stack compact-stack" },
+                          h("div", { className: "signup-inline-value" }, uid || "사용할 아이디를 입력해 주세요."),
+                          h("div", { className: "signup-inline-row" },
+                            h("div", { className: "field", style: { flex: "1" } },
+                              h("input", { id: "auth-uid", type: "text", value: uid, onChange: (event) => setUid(event.target.value), placeholder: "4~20자 영문 소문자, 숫자, 밑줄" })
+                            ),
+                            h("button", { type: "button", className: "btn btn-secondary signup-mail-btn", onClick: checkUidDuplicate }, "중복확인")
+                          ),
+                          h("div", { className: "signup-help danger-text" }, "아이디, 비밀번호를 저장해 주세요."),
+                          h("div", { className: "signup-help danger-text" }, "첫 글자는 영문 소문자여야 하며, 가입 후에는 변경할 수 없습니다."),
+                          h("div", { className: "signup-help" }, uidCheckPassed ? "아이디 중복확인이 완료되었습니다." : "가입 전에 아이디 중복확인 버튼을 눌러 주세요.")
+                        ),
+                        h("div", { className: "signup-label" }, "비밀번호 입력"),
+                        h("div", { className: "signup-control stack compact-stack" },
+                          h("div", { className: "field" }, h("input", { id: "auth-pw", type: "password", value: password, onChange: (event) => setPassword(event.target.value), placeholder: "비밀번호를 입력해 주세요." })),
+                          h("div", { className: "field" }, h("input", { id: "auth-pw-confirm", type: "password", value: passwordConfirm, onChange: (event) => setPasswordConfirm(event.target.value), placeholder: "비밀번호를 재확인해 주세요." })),
+                          h("div", { className: "signup-policy-block" },
+                            h("strong", null, "비밀번호 필수 조건"),
+                            h("div", { className: passwordChecks.combo ? "signup-policy-ok" : "signup-policy-pending" }, "영문, 숫자, 특수문자 조합입니다."),
+                            h("div", { className: passwordChecks.length ? "signup-policy-ok" : "signup-policy-pending" }, "8~20자입니다."),
+                            h("div", { className: passwordMatched ? "signup-policy-ok" : "signup-policy-pending" }, "비밀번호 확인이 일치합니다.")
+                          ),
+                          h("div", { className: "signup-strength" },
+                            h("span", null, "안전 정도"),
+                            h("div", { className: "signup-strength-bar" },
+                              h("div", { className: `signup-strength-fill strength-${passwordStrength}` , style: { width: `${passwordStrengthPercent}%` } })
+                            )
+                          )
+                        ),
+                        h("div", { className: "signup-label" }, "닉네임 만들기"),
+                        h("div", { className: "signup-control stack compact-stack" },
+                          h("div", { className: "signup-inline-row" },
+                            h("div", { className: "field", style: { flex: "1" } }, h("input", { id: "auth-nick", type: "text", value: nick, onChange: (event) => setNick(event.target.value), placeholder: "닉네임을 입력해 주세요." })),
+                            h("div", { className: "field signup-select-field" },
+                              h("select", { value: nicknameMode, onChange: (event) => setNicknameMode(event.target.value) },
+                                h("option", { value: "비고정" }, "비고정"),
+                                h("option", { value: "고정" }, "고정")
+                              )
+                            ),
+                            requiresFixedNickCheck ? h("button", { type: "button", className: "btn btn-secondary signup-mail-btn", onClick: checkNickDuplicate }, "중복확인") : null
+                          ),
+                          h("div", { className: "signup-help" }, requiresFixedNickCheck
+                            ? (nickCheckPassed ? "고정 닉네임 중복확인이 완료되었습니다." : "1~20자 닉네임을 입력한 뒤 중복확인 버튼을 눌러 주세요.")
+                            : "1~20자 닉네임을 입력해 주세요. 비고정 닉네임은 중복확인이 필요하지 않습니다.")
+                        ),
+                        h("div", { className: "signup-label" }, "이메일 인증"),
+                        h("div", { className: "signup-control stack compact-stack" },
+                          h("div", { className: "signup-inline-row" },
+                            h("div", { className: "field", style: { flex: "1" } }, h("input", { id: "auth-email", type: "email", value: email, onChange: (event) => setEmail(event.target.value), placeholder: "인증 메일을 받을 주소를 입력해 주세요." })),
+                            h("button", { type: "button", className: "btn btn-secondary signup-mail-btn", onClick: requestVerificationMail }, verificationSent ? "인증 메일 재발송" : "인증 메일 발송")
+                          ),
+                          h("div", { className: "signup-inline-row" },
+                            h("div", { className: "field", style: { flex: "1" } }, h("input", { id: "auth-code", type: "text", value: code, onChange: (event) => setCode(event.target.value), placeholder: "메일로 받은 인증 코드를 입력해 주세요." })),
+                            verificationSent ? h("span", { className: "chip" }, "인증 메일 발송됨") : null
+                          )
+                        ),
+                        h("div", { className: "signup-label" }, "자동 입력 방지 코드"),
+                        h("div", { className: "signup-control stack compact-stack" },
+                          h("div", { className: "signup-inline-row" },
+                            h("button", { type: "button", className: "signup-captcha-box", onClick: () => { setCaptchaCode(generateCaptchaCode()); setCaptchaValue(""); } }, captchaCode),
+                            h("div", { className: "field", style: { flex: "1" } }, h("input", { value: captchaValue, onChange: (event) => setCaptchaValue(event.target.value), placeholder: "코드 입력" })),
+                            h("button", { type: "button", className: "btn btn-secondary signup-refresh-btn", onClick: () => { setCaptchaCode(generateCaptchaCode()); setCaptchaValue(""); } }, "새 코드")
+                          ),
+                          h("div", { className: "signup-help" }, "코드 박스나 새 코드 버튼을 눌러 제한 없이 계속 변경할 수 있습니다.")
+                        )
+                      ),
+                      h("div", { className: "signup-policy-link-row" },
+                        h("a", { href: "/policy.html", className: "signup-policy-link", target: "_blank", rel: "noreferrer" }, "약관 전문 보기")
+                      ),
+                      h(ConsentChecklist, { title: "회원가입 필수 동의", items: SIGNUP_REQUIRED_TERMS, checked: signupTermsAgreed, onToggle: setSignupTermsAgreed, requiredLabel: "위 약관과 개인정보 수집 및 이용에 동의합니다." }),
+                      verificationSent ? h("div", { className: "success-box" }, "인증 메일을 보냈습니다. 코드를 입력해 가입을 완료해주세요.") : null
                     ),
                 h(Feedback, { feedback }),
-                isLogin ? null : h(Feedback, { feedback: stepFeedback }),
+                isLogin ? null : null,
                 h("div", { className: "inline-actions" },
                   isLogin
                     ? h("button", { type: "button", className: "btn btn-primary", onClick: () => onSubmitAuth({ mode, uid, password }) }, "로그인")
-                    : signupStep < signupSteps.length - 1
-                      ? [
-                          signupStep > 0 ? h("button", { type: "button", className: "btn btn-ghost", key: "prev", onClick: () => setSignupStep((v) => Math.max(0, v - 1)) }, "이전") : null,
-                          h("button", { type: "button", className: "btn btn-primary", key: "next", disabled: !currentSignupStep.canNext, async onClick() {
-                            if (await validateCurrentStep()) setSignupStep((v) => Math.min(signupSteps.length - 1, v + 1));
-                          } }, "다음")
-                        ]
-                      : [
-                          h("button", { type: "button", className: "btn btn-ghost", key: "prev", onClick: () => setSignupStep((v) => Math.max(0, v - 1)) }, "이전"),
-                          h("button", { type: "button", className: "btn btn-secondary", key: "send", onClick: () => onSubmitAuth({ mode, uid, nick, email, password, resendOnly: true, setVerificationSent }) }, verificationSent ? "인증 메일 다시 보내기" : "인증 메일 보내기"),
-                          verificationSent ? h("button", { type: "button", className: "btn btn-primary", key: "verify", disabled: !currentSignupStep.canNext, onClick: () => onSubmitAuth({ mode, uid, nick, email, password, code, verificationSent, setVerificationSent }) }, "인증 완료하고 가입") : null
-                        ],
+                    : [
+                        h("button", { type: "button", className: "btn btn-secondary", key: "send", onClick: requestVerificationMail }, verificationSent ? "인증 메일 다시 보내기" : "인증 메일 보내기"),
+                        h("button", { type: "button", className: "btn btn-primary", key: "verify", disabled: !verificationSent, onClick: completeSignup }, "인증 완료하고 가입")
+                      ],
                   h(Link, { href: isLogin ? "/nid" : "/signin", className: "btn btn-secondary" }, isLogin ? "회원가입" : "로그인으로")
                 )
               )
@@ -1285,7 +1628,7 @@
               h("div", { className: "profile-hero-head" },
                 h("div", { className: "stack", style: { gap: "8px" } },
                   h("span", { className: "eyebrow" }, profileData.ownerView ? "My Profile" : "Profile"),
-                  h("h1", { className: "section-title", style: { margin: 0 } }, profileData.nick || profileData.uid),
+                  h("h1", { className: "section-title", style: { margin: 0 } }, h(MemberIdentity, { name: profileData.nick || profileData.uid, uid: profileData.uid, nickType: profileData.nickType, className: "member-identity profile" })),
                   h("div", { className: "muted" }, `@${profileData.uid}`),
                   profileData.statusMessage ? h("div", { className: "profile-status-text" }, profileData.statusMessage) : null
                 ),
@@ -1299,6 +1642,7 @@
               profileData.bio ? h("div", { className: "profile-bio-box" }, profileData.bio) : null,
               h("div", { className: "inline-actions" },
                 profileData.email ? h("span", { className: "chip" }, profileData.email) : null,
+                h("span", { className: "chip" }, nickTypeLabel(profileData.nickType)),
                 !profileData.ownerView && session?.loggedIn
                   ? profileData.follow?.isFollowing
                     ? h("button", { type: "button", className: "btn btn-secondary btn-compact", onClick: () => onUnfollowProfile(profileData.uid) }, "언팔로우")
@@ -1518,11 +1862,23 @@
         setAuthFeedback({ type: "error", message: "입력값을 확인해주세요." });
         return;
       }
+      if (!payload.signupTermsAgreed) {
+        setAuthFeedback({ type: "error", message: "회원가입 약관 및 개인정보 수집 동의가 필요합니다." });
+        return;
+      }
 
       if (!payload.verificationSent || payload.resendOnly) {
         api("/api/signup/request", {
           method: "POST",
-          body: JSON.stringify({ userID: payload.uid.trim(), username: payload.nick.trim(), email: payload.email.trim(), password: payload.password })
+          body: JSON.stringify({
+            userID: payload.uid.trim(),
+            username: payload.nick.trim(),
+            email: payload.email.trim(),
+            password: payload.password,
+            acceptedTerms: "true",
+            acceptedPrivacy: "true",
+            acceptedOperations: "true"
+          })
         }).then((result) => {
           if (!result.success) {
             setAuthFeedback({ type: "error", message: result.message || "인증 메일 발송에 실패했습니다." });
@@ -1681,6 +2037,10 @@
     }
 
     function reportPost(post) {
+      if (!importantActionConfirm("게시글 신고", [
+        "허위 또는 보복성 신고는 제한 대상이 될 수 있습니다.",
+        "신고 사유는 운영 검토 자료로 저장될 수 있습니다."
+      ])) return;
       const reason = window.prompt("신고 사유를 입력해주세요.") || "";
       api(`/api/features/posts/${encodeURIComponent(post.gall_id)}/${encodeURIComponent(post.post_no)}/report`, { method: "POST", body: JSON.stringify({ reason }) })
         .then((result) => setVoteFeedback({ type: result?.success ? "success" : "error", message: result?.message || "신고를 접수했습니다." }))
@@ -1699,6 +2059,10 @@
 
     function reportComment(comment) {
       const commentId = comment.id || comment.comment_id;
+      if (!importantActionConfirm("댓글 신고", [
+        "허위 또는 보복성 신고는 제한 대상이 될 수 있습니다.",
+        "신고 사유는 운영 검토 자료로 저장될 수 있습니다."
+      ])) return;
       const reason = window.prompt("댓글 신고 사유를 입력해주세요.") || "";
       api(`/api/features/comments/${encodeURIComponent(commentId)}/report`, { method: "POST", body: JSON.stringify({ reason }) })
         .then((result) => setCommentFeedback({ type: result?.success ? "success" : "error", message: result?.message || "댓글 신고를 접수했습니다." }))
@@ -1706,6 +2070,10 @@
     }
 
     function cancelConcept(post) {
+      if (!importantActionConfirm("개념글 취소", [
+        "개념글에서 제외되면 메인 노출 상태가 바뀔 수 있습니다.",
+        "보드 운영 기준에 따라 취소 사유를 스스로 설명할 책임이 있습니다."
+      ])) return;
       api(`/api/features/posts/${encodeURIComponent(post.gall_id)}/${encodeURIComponent(post.post_no)}/concept/cancel`, { method: "POST" })
         .then((result) => {
           setVoteFeedback({ type: result?.success ? "success" : "error", message: result?.message || "개념글을 취소했습니다." });
@@ -1806,6 +2174,10 @@
         setAlarmFeedback({ type: "error", message: "로그인 후 알림을 처리할 수 있습니다." });
         return;
       }
+      if (!importantActionConfirm("알림 수락", [
+        "권한 임명 또는 요청 수락은 즉시 반영될 수 있습니다.",
+        "수락 후에는 해당 권한 범위의 책임이 본인에게 부여됩니다."
+      ])) return;
       api(`/api/alarms/${encodeURIComponent(alarmId)}/accept`, { method: "POST" })
         .then((result) => {
           if (!result.success) {
@@ -1824,6 +2196,10 @@
         setAlarmFeedback({ type: "error", message: "로그인 후 알림을 처리할 수 있습니다." });
         return;
       }
+      if (!importantActionConfirm("알림 거절", [
+        "거절 후에는 같은 요청을 다시 받아야 진행할 수 있습니다.",
+        "잘못된 요청이 아니라면 요청자와 운영 흐름에 영향이 갈 수 있습니다."
+      ])) return;
       api(`/api/alarms/${encodeURIComponent(alarmId)}/reject`, { method: "POST" })
         .then((result) => {
           if (!result.success) {
@@ -1847,6 +2223,7 @@
 
     if (route.name === "home") return h(HomePortalView, { session, boards, feed, onLogout: handleLogout, alarmCount });
     if (route.name === "boards") return h(BoardsView, { session, boards, query, onQueryChange: setQuery, onSubmitSideBoardRequest: submitSideBoardRequest, requestFeedback: boardRequestFeedback, onLogout: handleLogout, alarmCount });
+    if (route.name === "boardRequests") return h(BoardRequestsView, { session, feedback: boardRequestFeedback, onSubmitSideBoardRequest: submitSideBoardRequest, onLogout: handleLogout, alarmCount });
     if (route.name === "board") return h(BoardView, { session, gid: route.params.gid, board: currentBoard, posts: boardPosts, page, manageData: boardManageData, settingsFeedback, onPrevPage: () => navigate(`/board/${encodeURIComponent(route.params.gid)}?page=${Math.max(1, page - 1)}`), onNextPage: () => navigate(`/board/${encodeURIComponent(route.params.gid)}?page=${page + 1}`), onLogout: handleLogout, alarmCount });
     if (route.name === "boardManage") return h(BoardManageView, { session, gid: route.params.gid, board: currentBoard, manageData: boardManageData, feedback: settingsFeedback, onSaveSettings: submitBoardSettings, onLogout: handleLogout, alarmCount });
     if (route.name === "post") return h(PostView, { session, gid: route.params.gid, post: postData.post, comments: postData.comments, feedback: commentFeedback, deleteFeedback, voteFeedback, voteState: postData.voteState, manageData: boardManageData, onSubmitComment: submitComment, onDeletePost: submitDeletePost, onDeleteComment: submitDeleteComment, onVote: submitVote, onScrapPost: scrapPost, onReportPost: reportPost, onLikeComment: likeComment, onReportComment: reportComment, onCancelConcept: cancelConcept, onLogout: handleLogout, alarmCount });

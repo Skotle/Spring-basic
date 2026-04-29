@@ -13,8 +13,8 @@ import java.util.regex.Pattern;
 @Service
 public class AuthService {
     private static final int VERIFICATION_EXPIRE_MINUTES = 10;
-    private static final Pattern UID_PATTERN = Pattern.compile("^[a-zA-Z0-9_]{4,20}$");
-    private static final Pattern NICK_PATTERN = Pattern.compile("^[\\p{L}\\p{N}_ ]{2,20}$");
+    private static final Pattern UID_PATTERN = Pattern.compile("^[a-z][a-z0-9_]{3,19}$");
+    private static final Pattern NICK_PATTERN = Pattern.compile("^[\\p{L}\\p{N}_ ]{1,20}$");
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
     private static final Pattern PASSWORD_UPPER = Pattern.compile("[A-Z]");
     private static final Pattern PASSWORD_LOWER = Pattern.compile("[a-z]");
@@ -36,9 +36,10 @@ public class AuthService {
                 .orElse(null);
     }
 
-    public Map<String, Object> validateSignupField(String field, String value) {
+    public Map<String, Object> validateSignupField(String field, String value, String nickType) {
         String normalizedField = field == null ? "" : field.trim().toLowerCase();
         String normalizedValue = value == null ? "" : value.trim();
+        String normalizedNickType = normalizeNickType(nickType);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("field", normalizedField);
         result.put("valid", true);
@@ -48,28 +49,28 @@ public class AuthService {
             case "uid" -> {
                 if (!UID_PATTERN.matcher(normalizedValue).matches()) {
                     result.put("valid", false);
-                    result.put("message", "아이디는 4-20자의 영문, 숫자, 밑줄만 사용할 수 있습니다.");
+                    result.put("message", "\uc544\uc774\ub514\ub294 4~20\uc790\uc758 \uc601\ubb38 \uc18c\ubb38\uc790, \uc22b\uc790, \ubc11\uc904\ub9cc \uc0ac\uc6a9\ud560 \uc218 \uc788\uc73c\uba70 \uccab \uae00\uc790\ub294 \uc601\ubb38 \uc18c\ubb38\uc790\uc5ec\uc57c \ud569\ub2c8\ub2e4.");
                 } else if (userDAO.existsByUid(normalizedValue)) {
                     result.put("valid", false);
-                    result.put("message", "이미 사용 중인 아이디입니다.");
+                    result.put("message", "\uc774\ubbf8 \uc0ac\uc6a9 \uc911\uc778 \uc544\uc774\ub514\uc785\ub2c8\ub2e4.");
                 }
             }
             case "nick" -> {
                 if (!NICK_PATTERN.matcher(normalizedValue).matches()) {
                     result.put("valid", false);
-                    result.put("message", "닉네임은 2-20자의 문자, 숫자, 밑줄, 공백만 사용할 수 있습니다.");
-                } else if (userDAO.existsByNick(normalizedValue)) {
+                    result.put("message", "\ub2c9\ub124\uc784\uc740 1~20\uc790\uc758 \ubb38\uc790, \uc22b\uc790, \ubc11\uc904, \uacf5\ubc31\ub9cc \uc0ac\uc6a9\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4.");
+                } else if ("fixed".equals(normalizedNickType) && userDAO.existsByNick(normalizedValue)) {
                     result.put("valid", false);
-                    result.put("message", "이미 사용 중인 닉네임입니다.");
+                    result.put("message", "\uc774\ubbf8 \uc0ac\uc6a9 \uc911\uc778 \uace0\uc815 \ub2c9\ub124\uc784\uc785\ub2c8\ub2e4.");
                 }
             }
             case "email" -> {
                 if (!EMAIL_PATTERN.matcher(normalizedValue).matches()) {
                     result.put("valid", false);
-                    result.put("message", "올바른 이메일 주소를 입력해 주세요.");
+                    result.put("message", "\uc62c\ubc14\ub978 \uc774\uba54\uc77c \uc8fc\uc18c\ub97c \uc785\ub825\ud574 \uc8fc\uc138\uc694.");
                 } else if (userDAO.existsByEmail(normalizedValue)) {
                     result.put("valid", false);
-                    result.put("message", "이미 가입된 이메일입니다.");
+                    result.put("message", "\uc774\ubbf8 \uac00\uc785\ud55c \uc774\uba54\uc77c\uc785\ub2c8\ub2e4.");
                 }
             }
             case "password" -> {
@@ -81,7 +82,7 @@ public class AuthService {
             }
             default -> {
                 result.put("valid", false);
-                result.put("message", "지원하지 않는 검증 항목입니다.");
+                result.put("message", "\uc9c0\uc6d0\ud558\uc9c0 \uc54a\ub294 \uac80\uc99d \ud56d\ubaa9\uc785\ub2c8\ub2e4.");
             }
         }
 
@@ -91,52 +92,59 @@ public class AuthService {
     public void requestSignupVerification(Map<String, String> data) {
         signupVerificationRepository.deleteExpired();
 
-        String uid = required(data.get("userID"), "아이디를 입력해 주세요.");
-        String nick = required(data.get("username"), "닉네임을 입력해 주세요.");
-        String email = required(data.get("email"), "이메일을 입력해 주세요.");
-        String password = required(data.get("password"), "비밀번호를 입력해 주세요.");
+        String uid = required(data.get("userID"), "\uc544\uc774\ub514\ub97c \uc785\ub825\ud574 \uc8fc\uc138\uc694.");
+        String nick = required(data.get("username"), "\ub2c9\ub124\uc784\uc744 \uc785\ub825\ud574 \uc8fc\uc138\uc694.");
+        String email = required(data.get("email"), "\uc774\uba54\uc77c\uc744 \uc785\ub825\ud574 \uc8fc\uc138\uc694.");
+        String password = required(data.get("password"), "\ube44\ubc00\ubc88\ud638\ub97c \uc785\ub825\ud574 \uc8fc\uc138\uc694.");
+        String nickType = normalizeNickType(data.get("nickType"));
+        ensureSignupConsents(data);
 
-        ensureFieldValid("uid", uid);
-        ensureFieldValid("nick", nick);
-        ensureFieldValid("email", email);
-        ensureFieldValid("password", password);
+        ensureFieldValid("uid", uid, nickType);
+        ensureFieldValid("nick", nick, nickType);
+        ensureFieldValid("email", email, nickType);
+        ensureFieldValid("password", password, nickType);
 
         String code = generateVerificationCode();
         String passwordHash = BCrypt.hashpw(password, BCrypt.gensalt());
         LocalDateTime expiresAt = LocalDateTime.now().plusMinutes(VERIFICATION_EXPIRE_MINUTES);
 
-        signupVerificationRepository.upsertPendingSignup(uid, nick, email, passwordHash, code, expiresAt);
+        signupVerificationRepository.upsertPendingSignup(uid, nick, email, passwordHash, nickType, code, expiresAt);
         emailVerificationService.sendSignupCode(email, uid, code);
     }
 
     public void confirmSignup(Map<String, String> data) {
         signupVerificationRepository.deleteExpired();
 
-        String uid = required(data.get("userID"), "아이디를 입력해 주세요.");
-        String email = required(data.get("email"), "이메일을 입력해 주세요.");
-        String code = required(data.get("code"), "인증 코드를 입력해 주세요.");
+        String uid = required(data.get("userID"), "\uc544\uc774\ub514\ub97c \uc785\ub825\ud574 \uc8fc\uc138\uc694.");
+        String email = required(data.get("email"), "\uc774\uba54\uc77c\uc744 \uc785\ub825\ud574 \uc8fc\uc138\uc694.");
+        String code = required(data.get("code"), "\uc778\uc99d \ucf54\ub4dc\ub97c \uc785\ub825\ud574 \uc8fc\uc138\uc694.");
 
         Map<String, Object> pending = signupVerificationRepository.findByUidAndEmail(uid, email);
         if (pending == null) {
-            throw new RuntimeException("대기 중인 이메일 인증 요청이 없습니다.");
+            throw new RuntimeException("\ub300\uae30 \uc911\uc778 \uc774\uba54\uc77c \uc778\uc99d \uc694\uccad\uc774 \uc5c6\uc2b5\ub2c8\ub2e4.");
         }
 
         String savedCode = String.valueOf(pending.get("verification_code"));
         LocalDateTime expiresAt = toLocalDateTime(pending.get("expires_at"));
         if (expiresAt == null || expiresAt.isBefore(LocalDateTime.now())) {
             signupVerificationRepository.deleteByUid(uid);
-            throw new RuntimeException("인증 코드가 만료되었습니다. 다시 요청해 주세요.");
+            throw new RuntimeException("\uc778\uc99d \ucf54\ub4dc\uac00 \ub9cc\ub8cc\ub418\uc5c8\uc2b5\ub2c8\ub2e4. \ub2e4\uc2dc \uc694\uccad\ud574 \uc8fc\uc138\uc694.");
         }
         if (!savedCode.equals(code.trim())) {
-            throw new RuntimeException("인증 코드가 올바르지 않습니다.");
+            throw new RuntimeException("\uc778\uc99d \ucf54\ub4dc\uac00 \uc62c\ubc14\ub974\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4.");
         }
         if (userDAO.existsByUid(uid)) {
             signupVerificationRepository.deleteByUid(uid);
-            throw new RuntimeException("이미 사용 중인 아이디입니다.");
+            throw new RuntimeException("\uc774\ubbf8 \uc0ac\uc6a9 \uc911\uc778 \uc544\uc774\ub514\uc785\ub2c8\ub2e4.");
         }
         if (userDAO.existsByEmail(email)) {
             signupVerificationRepository.deleteByUid(uid);
-            throw new RuntimeException("이미 가입된 이메일입니다.");
+            throw new RuntimeException("\uc774\ubbf8 \uac00\uc785\ud55c \uc774\uba54\uc77c\uc785\ub2c8\ub2e4.");
+        }
+        if ("fixed".equals(normalizeNickType(String.valueOf(pending.get("nick_type"))))
+                && userDAO.existsByNick(String.valueOf(pending.get("nick")))) {
+            signupVerificationRepository.deleteByUid(uid);
+            throw new RuntimeException("\uc774\ubbf8 \uc0ac\uc6a9 \uc911\uc778 \uace0\uc815 \ub2c9\ub124\uc784\uc785\ub2c8\ub2e4.");
         }
 
         UserEntity user = new UserEntity();
@@ -144,6 +152,7 @@ public class AuthService {
         user.setNick(String.valueOf(pending.get("nick")));
         user.setPasswordHash(String.valueOf(pending.get("password_hash")));
         user.setEmail(String.valueOf(pending.get("email")));
+        user.setNickType(normalizeNickType(String.valueOf(pending.get("nick_type"))));
         user.setNickIconType("default");
         user.setMemberDivision("user");
 
@@ -151,31 +160,43 @@ public class AuthService {
         signupVerificationRepository.deleteByUid(uid);
     }
 
-    private void ensureFieldValid(String field, String value) {
-        Map<String, Object> result = validateSignupField(field, value);
+    private void ensureFieldValid(String field, String value, String nickType) {
+        Map<String, Object> result = validateSignupField(field, value, nickType);
         if (!Boolean.TRUE.equals(result.get("valid"))) {
             throw new RuntimeException(String.valueOf(result.get("message")));
         }
     }
 
+    private void ensureSignupConsents(Map<String, String> data) {
+        if (!flag(data.get("acceptedTerms"))) {
+            throw new RuntimeException("\uc11c\ube44\uc2a4 \uc774\uc6a9 \uc57d\uad00 \ub3d9\uc758\uac00 \ud544\uc694\ud569\ub2c8\ub2e4.");
+        }
+        if (!flag(data.get("acceptedPrivacy"))) {
+            throw new RuntimeException("\uac1c\uc778\uc815\ubcf4 \uc218\uc9d1 \ubc0f \uc774\uc6a9 \ub3d9\uc758\uac00 \ud544\uc694\ud569\ub2c8\ub2e4.");
+        }
+        if (!flag(data.get("acceptedOperations"))) {
+            throw new RuntimeException("\uc774\uba54\uc77c \uc778\uc99d \ubc0f \uc6b4\uc601 \uc548\ub0b4 \ud655\uc778 \ub3d9\uc758\uac00 \ud544\uc694\ud569\ub2c8\ub2e4.");
+        }
+    }
+
     private String validatePasswordPolicy(String password) {
         if (password == null || password.isBlank()) {
-            return "비밀번호를 입력해 주세요.";
+            return "\ube44\ubc00\ubc88\ud638\ub97c \uc785\ub825\ud574 \uc8fc\uc138\uc694.";
         }
         if (password.length() < 8 || password.length() > 64) {
-            return "비밀번호는 8자 이상 64자 이하여야 합니다.";
+            return "\ube44\ubc00\ubc88\ud638\ub294 8\uc790 \uc774\uc0c1 64\uc790 \uc774\ud558\uc5ec\uc57c \ud569\ub2c8\ub2e4.";
         }
         if (!PASSWORD_UPPER.matcher(password).find()) {
-            return "비밀번호에 영문 대문자를 1자 이상 포함해 주세요.";
+            return "\ube44\ubc00\ubc88\ud638\uc5d0\ub294 \uc601\ubb38 \ub300\ubb38\uc790\ub97c 1\uc790 \uc774\uc0c1 \ud3ec\ud568\ud574 \uc8fc\uc138\uc694.";
         }
         if (!PASSWORD_LOWER.matcher(password).find()) {
-            return "비밀번호에 영문 소문자를 1자 이상 포함해 주세요.";
+            return "\ube44\ubc00\ubc88\ud638\uc5d0\ub294 \uc601\ubb38 \uc18c\ubb38\uc790\ub97c 1\uc790 \uc774\uc0c1 \ud3ec\ud568\ud574 \uc8fc\uc138\uc694.";
         }
         if (!PASSWORD_DIGIT.matcher(password).find()) {
-            return "비밀번호에 숫자를 1자 이상 포함해 주세요.";
+            return "\ube44\ubc00\ubc88\ud638\uc5d0\ub294 \uc22b\uc790\ub97c 1\uc790 \uc774\uc0c1 \ud3ec\ud568\ud574 \uc8fc\uc138\uc694.";
         }
         if (!PASSWORD_SPECIAL.matcher(password).find()) {
-            return "비밀번호에 특수문자를 1자 이상 포함해 주세요.";
+            return "\ube44\ubc00\ubc88\ud638\uc5d0\ub294 \ud2b9\uc218\ubb38\uc790\ub97c 1\uc790 \uc774\uc0c1 \ud3ec\ud568\ud574 \uc8fc\uc138\uc694.";
         }
         return null;
     }
@@ -183,6 +204,25 @@ public class AuthService {
     private String generateVerificationCode() {
         int value = ThreadLocalRandom.current().nextInt(100000, 1000000);
         return String.valueOf(value);
+    }
+
+    private boolean flag(String value) {
+        if (value == null) {
+            return false;
+        }
+        String normalized = value.trim().toLowerCase();
+        return normalized.equals("1") || normalized.equals("true") || normalized.equals("yes") || normalized.equals("on");
+    }
+
+    private String normalizeNickType(String value) {
+        if (value == null) {
+            return "variable";
+        }
+        String normalized = value.trim().toLowerCase();
+        if (normalized.equals("fixed") || normalized.equals("\uace0\uc815")) {
+            return "fixed";
+        }
+        return "variable";
     }
 
     private String required(String value, String message) {

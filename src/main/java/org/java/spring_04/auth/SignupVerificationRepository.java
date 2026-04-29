@@ -24,6 +24,7 @@ public class SignupVerificationRepository {
                     nick VARCHAR(100) NOT NULL,
                     email VARCHAR(191) NOT NULL,
                     password_hash VARCHAR(255) NOT NULL,
+                    nick_type VARCHAR(20) NOT NULL DEFAULT 'variable',
                     verification_code VARCHAR(20) NOT NULL,
                     expires_at DATETIME NOT NULL,
                     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -32,26 +33,31 @@ public class SignupVerificationRepository {
                     UNIQUE KEY uk_signup_verification_email (email)
                 )
                 """);
+        try {
+            jdbcTemplate.execute("ALTER TABLE signup_verification ADD COLUMN nick_type VARCHAR(20) NOT NULL DEFAULT 'variable'");
+        } catch (Exception ignored) {
+        }
     }
 
-    public void upsertPendingSignup(String uid, String nick, String email, String passwordHash, String code, LocalDateTime expiresAt) {
+    public void upsertPendingSignup(String uid, String nick, String email, String passwordHash, String nickType, String code, LocalDateTime expiresAt) {
         jdbcTemplate.update("""
-                INSERT INTO signup_verification (uid, nick, email, password_hash, verification_code, expires_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO signup_verification (uid, nick, email, password_hash, nick_type, verification_code, expires_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON DUPLICATE KEY UPDATE
                     nick = VALUES(nick),
                     email = VALUES(email),
                     password_hash = VALUES(password_hash),
+                    nick_type = VALUES(nick_type),
                     verification_code = VALUES(verification_code),
                     expires_at = VALUES(expires_at),
                     created_at = CURRENT_TIMESTAMP
-                """, uid, nick, email, passwordHash, code, expiresAt);
+                """, uid, nick, email, passwordHash, nickType, code, expiresAt);
     }
 
     public Map<String, Object> findByUidAndEmail(String uid, String email) {
         try {
             return jdbcTemplate.queryForMap("""
-                    SELECT request_id, uid, nick, email, password_hash, verification_code, expires_at
+                    SELECT request_id, uid, nick, email, password_hash, nick_type, verification_code, expires_at
                     FROM signup_verification
                     WHERE uid = ? AND email = ?
                     """, uid, email);
