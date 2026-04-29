@@ -666,6 +666,12 @@
     const [signupTermsAgreed, setSignupTermsAgreed] = useState(false);
     const [verificationSent, setVerificationSent] = useState(false);
     const [localFeedback, setLocalFeedback] = useState(null);
+    const [uidFeedback, setUidFeedback] = useState(null);
+    const [nickFeedback, setNickFeedback] = useState(null);
+    const [uidChecking, setUidChecking] = useState(false);
+    const [nickChecking, setNickChecking] = useState(false);
+    const [verificationLoading, setVerificationLoading] = useState(false);
+    const [signupLoading, setSignupLoading] = useState(false);
     const [uidChecked, setUidChecked] = useState({ value: "", ok: false });
     const [nickChecked, setNickChecked] = useState({ value: "", type: "variable", ok: false });
     const isLogin = mode === "login";
@@ -690,25 +696,31 @@
 
     async function checkUidDuplicate() {
       try {
-        setLocalFeedback(null);
+        setUidChecking(true);
+        setUidFeedback(null);
         await validateSignupFieldRequest("uid", trimmedUid);
         setUidChecked({ value: trimmedUid, ok: true });
-        setLocalFeedback({ type: "success", message: "사용 가능한 아이디입니다." });
+        setUidFeedback({ type: "success", message: "사용 가능한 아이디입니다." });
       } catch (error) {
         setUidChecked({ value: "", ok: false });
-        setLocalFeedback({ type: "error", message: error.message || "아이디를 다시 확인해 주세요." });
+        setUidFeedback({ type: "error", message: error.message || "아이디를 다시 확인해 주세요." });
+      } finally {
+        setUidChecking(false);
       }
     }
 
     async function checkNickDuplicate() {
       try {
-        setLocalFeedback(null);
+        setNickChecking(true);
+        setNickFeedback(null);
         await validateSignupFieldRequest("nick", trimmedNick, "fixed");
         setNickChecked({ value: trimmedNick, type: "fixed", ok: true });
-        setLocalFeedback({ type: "success", message: "사용 가능한 고정 닉네임입니다." });
+        setNickFeedback({ type: "success", message: "사용 가능한 고정 닉네임입니다." });
       } catch (error) {
         setNickChecked({ value: "", type: "fixed", ok: false });
-        setLocalFeedback({ type: "error", message: error.message || "닉네임을 다시 확인해 주세요." });
+        setNickFeedback({ type: "error", message: error.message || "닉네임을 다시 확인해 주세요." });
+      } finally {
+        setNickChecking(false);
       }
     }
 
@@ -725,11 +737,13 @@
           h("span", { className: "m-eyebrow" }, isLogin ? "Access" : "Join"),
           h("h1", { className: "m-section-title" }, isLogin ? "로그인" : "회원가입"),
           h("div", { className: "m-muted" }, "회원으로 쓰거나, 비회원으로도 참여할 수 있습니다."),
-          h("div", { className: "m-field" }, h("label", { htmlFor: "m-auth-uid" }, isLogin ? "아이디 또는 이메일" : "아이디"), h("input", { id: "m-auth-uid", type: "text", value: uid, onChange: (event) => setUid(event.target.value) })),
-          isLogin ? null : h("button", { type: "button", className: "m-btn m-btn-secondary", onClick: checkUidDuplicate }, uidCheckPassed ? "아이디 확인 완료" : "아이디 중복확인"),
-          isLogin ? null : h("div", { className: "m-field" }, h("label", { htmlFor: "m-auth-nick" }, "닉네임"), h("input", { id: "m-auth-nick", type: "text", value: nick, onChange: (event) => setNick(event.target.value) })),
-          isLogin ? null : h("div", { className: "m-field" }, h("label", { htmlFor: "m-auth-nick-type" }, "닉네임 유형"), h("select", { id: "m-auth-nick-type", value: nickType, onChange: (event) => setNickType(event.target.value) }, h("option", { value: "variable" }, "비고정"), h("option", { value: "fixed" }, "고정"))),
-          isLogin || !requiresFixedNickCheck ? null : h("button", { type: "button", className: "m-btn m-btn-secondary", onClick: checkNickDuplicate }, nickCheckPassed ? "고정 닉네임 확인 완료" : "고정 닉네임 중복확인"),
+          h("div", { className: "m-field" }, h("label", { htmlFor: "m-auth-uid" }, isLogin ? "아이디 또는 이메일" : "아이디"), h("input", { id: "m-auth-uid", type: "text", value: uid, onChange: (event) => { setUid(event.target.value); setUidChecked({ value: "", ok: false }); setUidFeedback(null); } })),
+          isLogin ? null : h("button", { type: "button", className: "m-btn m-btn-secondary", onClick: checkUidDuplicate, disabled: uidChecking }, uidChecking ? h(React.Fragment, null, h("span", { className: "m-loading-spinner", "aria-hidden": "true" }), "확인 중") : (uidCheckPassed ? "아이디 확인 완료" : "아이디 중복확인")),
+          isLogin ? null : h(MFeedback, { feedback: uidFeedback }),
+          isLogin ? null : h("div", { className: "m-field" }, h("label", { htmlFor: "m-auth-nick" }, "닉네임"), h("input", { id: "m-auth-nick", type: "text", value: nick, onChange: (event) => { setNick(event.target.value); setNickChecked({ value: "", type: requiresFixedNickCheck ? "fixed" : "variable", ok: false }); setNickFeedback(null); } })),
+          isLogin ? null : h("div", { className: "m-field" }, h("label", { htmlFor: "m-auth-nick-type" }, "닉네임 유형"), h("select", { id: "m-auth-nick-type", value: nickType, onChange: (event) => { const nextType = event.target.value; setNickType(nextType); setNickChecked({ value: "", type: nextType, ok: false }); setNickFeedback(null); } }, h("option", { value: "variable" }, "비고정"), h("option", { value: "fixed" }, "고정"))),
+          isLogin || !requiresFixedNickCheck ? null : h("button", { type: "button", className: "m-btn m-btn-secondary", onClick: checkNickDuplicate, disabled: nickChecking }, nickChecking ? h(React.Fragment, null, h("span", { className: "m-loading-spinner", "aria-hidden": "true" }), "확인 중") : (nickCheckPassed ? "고정 닉네임 확인 완료" : "고정 닉네임 중복확인")),
+          isLogin || !requiresFixedNickCheck ? null : h(MFeedback, { feedback: nickFeedback }),
           isLogin ? null : h("div", { className: "m-field" }, h("label", { htmlFor: "m-auth-email" }, "이메일"), h("input", { id: "m-auth-email", type: "email", value: email, onChange: (event) => setEmail(event.target.value) })),
           h("div", { className: "m-field" }, h("label", { htmlFor: "m-auth-pw" }, "비밀번호"), h("input", { id: "m-auth-pw", type: "password", value: password, onChange: (event) => setPassword(event.target.value) })),
           isLogin ? null : h("div", { className: "m-field" }, h("label", { htmlFor: "m-auth-code" }, "인증 코드"), h("input", { id: "m-auth-code", type: "text", value: code, onChange: (event) => setCode(event.target.value), placeholder: "메일로 받은 인증 코드" })),
@@ -741,7 +755,7 @@
           isLogin ? null : h(MFeedback, { feedback: localFeedback }),
           isLogin ? h("button", { type: "button", className: "m-btn m-btn-primary", onClick: () => onSubmitAuth({ uid, password }) }, "로그인")
             : h(React.Fragment, null,
-                h("button", { type: "button", className: "m-btn m-btn-secondary", onClick: () => {
+                h("button", { type: "button", className: "m-btn m-btn-secondary", disabled: verificationLoading, onClick: async () => {
                   if (!uidCheckPassed) {
                     setLocalFeedback({ type: "error", message: "아이디 중복확인을 완료해 주세요." });
                     return;
@@ -750,9 +764,14 @@
                     setLocalFeedback({ type: "error", message: "고정 닉네임은 중복확인을 완료해 주세요." });
                     return;
                   }
-                  onSubmitAuth({ uid, nick, email, password, nickType, signupTermsAgreed, resendOnly: true, setVerificationSent });
+                  try {
+                    setVerificationLoading(true);
+                    await onSubmitAuth({ uid, nick, email, password, nickType, signupTermsAgreed, resendOnly: true, setVerificationSent });
+                  } finally {
+                    setVerificationLoading(false);
+                  }
                 } }, verificationSent ? "인증 메일 다시 보내기" : "인증 메일 보내기"),
-                h("button", { type: "button", className: "m-btn m-btn-primary", disabled: !verificationSent, onClick: () => {
+                h("button", { type: "button", className: "m-btn m-btn-primary", disabled: !verificationSent || signupLoading, onClick: async () => {
                   if (!uidCheckPassed) {
                     setLocalFeedback({ type: "error", message: "아이디 중복확인을 완료해 주세요." });
                     return;
@@ -761,7 +780,12 @@
                     setLocalFeedback({ type: "error", message: "고정 닉네임은 중복확인을 완료해 주세요." });
                     return;
                   }
-                  onSubmitAuth({ uid, nick, email, password, nickType, code, signupTermsAgreed, verificationSent, setVerificationSent });
+                  try {
+                    setSignupLoading(true);
+                    await onSubmitAuth({ uid, nick, email, password, nickType, code, signupTermsAgreed, verificationSent, setVerificationSent });
+                  } finally {
+                    setSignupLoading(false);
+                  }
                 } }, "인증 완료하고 가입")
               ),
           h(MLink, { href: isLogin ? "/m/nid" : "/m/signin", className: "m-btn m-btn-secondary" }, isLogin ? "회원가입" : "로그인으로")

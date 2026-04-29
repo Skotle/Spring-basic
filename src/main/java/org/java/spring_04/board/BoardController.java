@@ -77,6 +77,16 @@ public class BoardController {
         }
     }
 
+    @GetMapping("/rankings")
+    public Map<String, Object> getBoardRankings() {
+        System.out.println("[" + LocalDateTime.now() + "] API /api/board/rankings");
+        try {
+            return Map.of("success", true, "data", boardService.getBoardRankingData());
+        } catch (Exception e) {
+            return Map.of("success", false, "message", e.getMessage());
+        }
+    }
+
     @GetMapping("/manage/{gid}/settings")
     public Map<String, Object> getBoardSettings(@PathVariable("gid") String gid,
                                                 @SessionAttribute(name = "uid", required = false) String uid,

@@ -4,19 +4,24 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>로그인</title>
+  <link rel="stylesheet" href="/css/app.css">
   <link rel="stylesheet" href="/css/global.css">
 </head>
 <body>
-<nav>
-  <a class="nav-logo" href="/">
-    <span class="dot"></span>
-    <span>irisen</span>
-  </a>
-  <div class="nav-right">
-    <a class="btn btn-ghost" href="/">홈</a>
-    <a class="btn btn-primary" href="/nid">가입</a>
+<header class="topbar">
+  <div class="frame">
+    <div class="topbar-inner">
+      <a class="brand" href="/">
+        <span class="brand-mark"></span>
+        <span>irisen web</span>
+      </a>
+      <div class="nav-actions">
+        <a class="btn btn-ghost" href="/">홈</a>
+        <a class="btn btn-primary" href="/nid">회원가입</a>
+      </div>
+    </div>
   </div>
-</nav>
+</header>
 
 <div class="page">
   <div class="card">
@@ -27,7 +32,7 @@
       <div id="errorMsg" class="error-msg"></div>
       <div class="field">
         <label for="uid">아이디 또는 이메일</label>
-        <input id="uid" type="text" placeholder="uid 입력" autocomplete="username"/>
+        <input id="uid" type="text" placeholder="아이디 입력" autocomplete="username"/>
       </div>
       <div class="field">
         <label for="pw">비밀번호</label>

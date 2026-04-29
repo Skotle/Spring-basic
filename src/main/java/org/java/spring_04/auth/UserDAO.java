@@ -68,6 +68,15 @@ public class UserDAO {
         return count != null && count > 0;
     }
 
+    public boolean existsByFixedNick(String nick) {
+        Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM user WHERE nick = ? AND COALESCE(nick_type, 'variable') = 'fixed'",
+                Integer.class,
+                nick
+        );
+        return count != null && count > 0;
+    }
+
     public void save(UserEntity user) {
         String sql = """
                 INSERT INTO user (uid, nick, password_hash, email, nick_type, nick_icon_type, member_division)

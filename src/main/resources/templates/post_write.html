@@ -4,19 +4,24 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>글쓰기</title>
+    <link rel="stylesheet" href="/css/app.css">
     <link rel="stylesheet" href="/css/boardsheet.css">
 </head>
 <body>
-<nav>
-    <a class="nav-logo" href="/boards">
-        <span class="dot"></span>
-        <span>irisen</span>
-    </a>
-    <div class="nav-right">
-        <span id="currentWriteGid" class="status-badge"></span>
-        <a class="btn btn-ghost" id="backToBoardLink" href="/boards">보드</a>
+<header class="topbar">
+    <div class="frame">
+        <div class="topbar-inner">
+            <a class="brand" href="/">
+                <span class="brand-mark"></span>
+                <span>irisen web</span>
+            </a>
+            <div class="nav-actions">
+                <span id="currentWriteGid" class="chip"></span>
+                <a class="btn btn-ghost" id="backToBoardLink" href="/boards">보드</a>
+            </div>
+        </div>
     </div>
-</nav>
+</header>
 
 <main class="page-shell">
     <section class="write-shell">
@@ -77,7 +82,7 @@
             <aside class="preview-card">
                 <div class="board-header">
                     <span class="board-name">미리보기</span>
-                    <span class="board-desc">html 저장</span>
+                    <span class="board-desc">html 변환</span>
                 </div>
                 <p class="write-help">작성 내용은 HTML로 저장됩니다.</p>
                 <div id="htmlPreview" class="preview-surface" style="margin-top: 14px;"></div>

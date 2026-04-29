@@ -59,7 +59,7 @@ public class AuthService {
                 if (!NICK_PATTERN.matcher(normalizedValue).matches()) {
                     result.put("valid", false);
                     result.put("message", "\ub2c9\ub124\uc784\uc740 1~20\uc790\uc758 \ubb38\uc790, \uc22b\uc790, \ubc11\uc904, \uacf5\ubc31\ub9cc \uc0ac\uc6a9\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4.");
-                } else if ("fixed".equals(normalizedNickType) && userDAO.existsByNick(normalizedValue)) {
+                } else if ("fixed".equals(normalizedNickType) && userDAO.existsByFixedNick(normalizedValue)) {
                     result.put("valid", false);
                     result.put("message", "\uc774\ubbf8 \uc0ac\uc6a9 \uc911\uc778 \uace0\uc815 \ub2c9\ub124\uc784\uc785\ub2c8\ub2e4.");
                 }
@@ -142,7 +142,7 @@ public class AuthService {
             throw new RuntimeException("\uc774\ubbf8 \uac00\uc785\ud55c \uc774\uba54\uc77c\uc785\ub2c8\ub2e4.");
         }
         if ("fixed".equals(normalizeNickType(String.valueOf(pending.get("nick_type"))))
-                && userDAO.existsByNick(String.valueOf(pending.get("nick")))) {
+                && userDAO.existsByFixedNick(String.valueOf(pending.get("nick")))) {
             signupVerificationRepository.deleteByUid(uid);
             throw new RuntimeException("\uc774\ubbf8 \uc0ac\uc6a9 \uc911\uc778 \uace0\uc815 \ub2c9\ub124\uc784\uc785\ub2c8\ub2e4.");
         }

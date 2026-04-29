@@ -72,6 +72,9 @@
     return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 1;
   };
 
+  const getSearchQueryFromLocation = () => (new URLSearchParams(window.location.search).get("q") || "").trim();
+  const getBoardTypeFromLocation = () => (new URLSearchParams(window.location.search).get("type") || "all").trim().toLowerCase();
+
   const authorLabel = (item) => {
     if (!item) return "익명";
     if (item.writer_uid) return item.name || item.writer_uid;
@@ -156,6 +159,8 @@
     if (path === "/board-requests") return { name: "boardRequests", params: {} };
     if (path === "/profile") return { name: "profile", params: {} };
     if (path === "/boards" || path === "/board_main") return { name: "boards", params: {} };
+    if (path === "/feed") return { name: "feed", params: {} };
+    if (path === "/search") return { name: "search", params: {} };
     let match = path.match(/^\/profile\/([^/]+)$/);
     if (match) return { name: "profile", params: { uid: decodeURIComponent(match[1]) } };
     match = path.match(/^\/board\/([^/]+)\/write$/);
@@ -257,6 +262,74 @@
                 : null
             ),
             session?.loggedIn ? null : h(Link, { href: "/signin", className: "topbar-nav-auth" }, "로그인")
+          )
+        )
+      )
+    );
+  }
+
+  function TopbarV2({ session, onLogout, alarmCount = 0 }) {
+    const [searchText, setSearchText] = useState(getSearchQueryFromLocation());
+    const currentPath = normalizePathname(window.location.pathname);
+    const boardType = getBoardTypeFromLocation();
+
+    useEffect(() => {
+      setSearchText(getSearchQueryFromLocation());
+    }, [window.location.pathname, window.location.search]);
+
+    const navItems = [
+      { label: "홈", href: "/", active: currentPath === "/" },
+      { label: "보드", href: "/boards?type=main", active: currentPath === "/boards" && boardType !== "side" },
+      { label: "사이드 보드", href: "/boards?type=side", active: currentPath === "/boards" && boardType === "side" },
+      { divider: true },
+      { label: "피드", href: "/feed", active: currentPath === "/feed" }
+    ];
+
+    const submitSearch = (event) => {
+      event.preventDefault();
+      const q = searchText.trim();
+      navigate(q ? `/search?q=${encodeURIComponent(q)}` : "/boards");
+    };
+
+    return h("header", { className: "topbar" },
+      h("div", { className: "frame" },
+        h("div", { className: "topbar-inner" },
+          h("div", { className: "topbar-main" },
+            h(Link, { href: "/", className: "brand" }, h("span", { className: "brand-mark" }, "/"), h("span", null, "Irisen")),
+            h("form", { className: "topbar-search", onSubmit: submitSearch },
+              h("button", { type: "button", className: "topbar-menu", "aria-label": "메뉴" }, h("span"), h("span"), h("span")),
+              h("input", {
+                type: "search",
+                className: "topbar-search-input",
+                placeholder: "보드 & 게시글 검색",
+                value: searchText,
+                onChange: (event) => setSearchText(event.target.value)
+              }),
+              h("button", { type: "submit", className: "topbar-search-submit", "aria-label": "검색" },
+                h("span", { className: "topbar-search-icon", "aria-hidden": "true" })
+              )
+            ),
+            h("div", { className: "topbar-account" },
+              session?.loggedIn
+                ? [
+                    h("span", { className: "chip", key: "nick" }, h(MemberIdentity, { name: session.nick || session.uid, uid: session.uid, nickType: session.nickType, className: "member-identity inline" })),
+                    h("button", { type: "button", className: "btn btn-secondary btn-compact", key: "logout", onClick: onLogout }, "로그아웃")
+                  ]
+                : [
+                    h(Link, { href: "/signin", className: "btn btn-secondary btn-compact", key: "login" }, "로그인"),
+                    h(Link, { href: "/nid", className: "btn btn-primary btn-compact", key: "signup" }, "가입")
+                  ]
+            )
+          ),
+          h("nav", { className: "topbar-nav", "aria-label": "주요 메뉴" },
+            navItems.map((item, index) =>
+              item.divider
+                ? h("span", { key: `divider-${index}`, className: "topbar-nav-divider", "aria-hidden": "true" }, "||")
+                : h(Link, { key: item.href + item.label, href: item.href, className: item.active ? "is-active" : "" }, item.label)
+            ),
+            session?.loggedIn
+              ? h(Link, { href: "/profile", className: "topbar-nav-auth" }, alarmCount > 0 ? `알림 ${alarmCount}` : "프로필")
+              : h(Link, { href: "/signin", className: "topbar-nav-auth" }, "로그인")
           )
         )
       )
@@ -376,7 +449,7 @@
 
   function HomeView({ session, boards, feed, onLogout, alarmCount }) {
     return h(React.Fragment, null,
-      h(Topbar, { session, onLogout, alarmCount }),
+      h(TopbarV2, { session, onLogout, alarmCount }),
       h("main", { className: "shell" },
         h("div", { className: "frame" },
           h("section", { className: "hero card" },
@@ -410,17 +483,28 @@
     );
   }
 
-  function BoardsView({ session, boards, query, onQueryChange, onSubmitSideBoardRequest, requestFeedback, onLogout, alarmCount }) {
+  function BoardsView({ session, boards, query, boardTypeFilter = "all", onQueryChange, onSubmitSideBoardRequest, requestFeedback, onLogout, alarmCount }) {
     const [requestGid, setRequestGid] = useState("");
     const [requestName, setRequestName] = useState("");
     const [requestReason, setRequestReason] = useState("");
     const q = query.trim().toLowerCase();
-    const filtered = boards.filter((board) => !q || String(board.gall_id || "").toLowerCase().includes(q) || String(board.gall_name || "").toLowerCase().includes(q));
+    const typed = boards.filter((board) => {
+      const type = String(board?.gall_type || "").toLowerCase();
+      if (boardTypeFilter === "side") {
+        return type === "m" || type === "side" || type === "minor" || type === "s";
+      }
+      if (boardTypeFilter === "main") {
+        return type === "main" || type === "";
+      }
+      return true;
+    });
+    const filtered = typed.filter((board) => !q || String(board.gall_id || "").toLowerCase().includes(q) || String(board.gall_name || "").toLowerCase().includes(q));
     const half = Math.ceil(filtered.length / 2);
     const columns = [filtered.slice(0, half), filtered.slice(half)];
+    const boardHeading = boardTypeFilter === "side" ? "사이드 보드" : boardTypeFilter === "main" ? "보드" : "전체 보드";
 
     return h(React.Fragment, null,
-      h(Topbar, { session, onLogout, alarmCount }),
+      h(TopbarV2, { session, onLogout, alarmCount }),
       h("main", { className: "shell" },
         h("div", { className: "frame" },
           h("section", { className: "section-stack board-directory-page" },
@@ -460,7 +544,7 @@
                       columns.map((items, columnIndex) =>
                         h("div", { className: "board-directory-column", key: `column-${columnIndex}` },
                           items.map((board, index) =>
-                            h(Link, { href: `/board/${encodeURIComponent(board.gall_id)}`, className: "board-directory-entry", key: board.gall_id },
+                            h(Link, { href: `/board/${encodeURIComponent(board.gall_id)}`, className: "board-directory-entry", key: board.gall_id, reload: true },
                               h("span", { className: "board-directory-rank" }, `${columnIndex === 0 ? index + 1 : half + index + 1}.`),
                               h("strong", { className: "board-directory-name" }, board.gall_name || board.gall_id),
                               h("span", { className: "board-directory-sub" }, `${board.gall_id} · ${board.post_count ?? 0} posts`)
@@ -525,7 +609,7 @@
     const reasonValid = requestReason.trim().length >= 10;
 
     return h(React.Fragment, null,
-      h(Topbar, { session, onLogout, alarmCount }),
+      h(TopbarV2, { session, onLogout, alarmCount }),
       h("main", { className: "shell" },
         h("div", { className: "frame" },
           h("section", { className: "section-stack board-request-page" },
@@ -602,9 +686,11 @@
     );
   }
 
-  function HomePortalView({ session, boards, feed, onLogout, alarmCount }) {
+  // 수정 후
+  function HomePortalView({ session, boards, feed, rankings, rankingFeedback, onRefreshRankings, onLogout, alarmCount }) {
     const normalizedBoards = Array.isArray(boards) ? boards : [];
     const normalizedFeed = Array.isArray(feed) ? feed.slice(0, 8) : [];
+    const rankingItems = Array.isArray(rankings?.items) ? rankings.items : [];
     const buckets = normalizedBoards.reduce((acc, board) => {
       const type = String(board?.gall_type || "").toLowerCase();
       if (type === "main") acc.main.push(board);
@@ -621,7 +707,7 @@
         ),
         items.length
           ? h("div", { className: "home-board-list" }, items.slice(0, 10).map((board) =>
-              h(Link, { href: `/board/${encodeURIComponent(board.gall_id)}`, className: "home-board-link", key: `${title}-${board.gall_id}` },
+              h(Link, { href: `/board/${encodeURIComponent(board.gall_id)}`, className: "home-board-link", key: `${title}-${board.gall_id}`, reload: true },
                 h("span", { className: "home-board-link-title" }, board.gall_name || board.gall_id),
                 h("span", { className: "home-board-link-meta" }, `${board.gall_id} · ${board.post_count ?? 0} posts`)
               )
@@ -630,7 +716,7 @@
       );
 
     return h(React.Fragment, null,
-      h(Topbar, { session, onLogout, alarmCount }),
+      h(TopbarV2, { session, onLogout, alarmCount }),
       h("main", { className: "shell" },
         h("div", { className: "frame" },
           h("section", { className: "home-portal" },
@@ -692,6 +778,39 @@
                   { action: "개인화 기능", required: "로그인 사용자", available: !!session?.loggedIn }
                 ] })
               ),
+              h("article", { className: "card home-side-card board-ranking-card" },
+                h("div", { className: "board-ranking-head" },
+                  h("div", null,
+                    h("span", { className: "eyebrow" }, "Ranking"),
+                    h("h3", { className: "home-side-title" }, "보드 랭킹")
+                  ),
+                  h("button", {
+                    type: "button",
+                    className: "btn btn-secondary btn-compact",
+                    disabled: rankings?.canRefresh === false,
+                    onClick: onRefreshRankings
+                  }, "갱신")
+                ),
+                h("div", { className: "board-ranking-meta" },
+                  h("span", null, `오늘 ${rankings?.refreshCount ?? 0}회`),
+                  h("span", null, `남은 ${rankings?.remainingRefreshes ?? 10}회`)
+                ),
+                h(Feedback, { feedback: rankingFeedback }),
+                rankingItems.length
+                  ? h("div", { className: "board-ranking-list" }, rankingItems.map((item) =>
+                      h(Link, {
+                        href: `/board/${encodeURIComponent(item.gall_id)}`,
+                        className: "board-ranking-row",
+                        key: `ranking-${item.gall_id}`,
+                        reload: true
+                      },
+                        h("span", { className: "board-ranking-rank" }, item.rank_no),
+                        h("span", { className: "board-ranking-name" }, item.gall_name || item.gall_id),
+                        h("span", { className: "board-ranking-score" }, item.score ?? 0)
+                      )
+                    ))
+                  : h("div", { className: "empty-box" }, "랭킹 데이터가 없습니다.")
+              ),
               h("article", { className: "card home-side-card" },
                 h(SectionHead, { eyebrow: "Quick", title: "바로 가기" }),
                 h("div", { className: "compact-stack" },
@@ -706,6 +825,99 @@
                 )
               )
             )
+          )
+        )
+      )
+    );
+  }
+
+  function FeedView({ session, feed, onLogout, alarmCount }) {
+    const items = Array.isArray(feed) ? feed : [];
+    return h(React.Fragment, null,
+      h(TopbarV2, { session, onLogout, alarmCount }),
+      h("main", { className: "shell" },
+        h("div", { className: "frame" },
+          h("section", { className: "section-stack" },
+            h(SectionHead, { eyebrow: "Feed", title: "피드" }),
+            items.length
+              ? h("div", { className: "home-feed-list" }, items.map((post, index) =>
+                  h(Link, {
+                    href: `/board/${encodeURIComponent(post.gall_id)}/${post.post_no}`,
+                    className: "home-feed-row card",
+                    key: `${post.gall_id}-${post.post_no}`,
+                    reload: true
+                  },
+                    h("span", { className: "home-feed-rank" }, String(index + 1).padStart(2, "0")),
+                    h("div", { className: "home-feed-copy" },
+                      h("div", { className: "home-feed-title" }, post.title || "제목 없음"),
+                      h("div", { className: "home-feed-meta" }, `${post.gall_name || post.gall_id} · ${authorLabel(post)} · ${formatDate(post.writed_at)}`)
+                    )
+                  )
+                ))
+              : h("div", { className: "empty-box" }, "표시할 피드가 없습니다.")
+          )
+        )
+      )
+    );
+  }
+
+  function SearchResultsView({ session, boards, posts, searchQuery, onLogout, alarmCount }) {
+    const q = (searchQuery || "").trim().toLowerCase();
+    const boardMatches = q
+      ? boards.filter((board) =>
+          String(board?.gall_id || "").toLowerCase().includes(q) ||
+          String(board?.gall_name || "").toLowerCase().includes(q)
+        ).slice(0, 12)
+      : [];
+
+    return h(React.Fragment, null,
+      h(TopbarV2, { session, onLogout, alarmCount }),
+      h("main", { className: "shell" },
+        h("div", { className: "frame" },
+          h("section", { className: "section-stack" },
+            h(SectionHead, { eyebrow: "Search", title: q ? `검색 결과: ${searchQuery}` : "통합 검색" }),
+            !q
+              ? h("div", { className: "empty-box" }, "상단 검색창에서 보드나 게시글을 검색해 주세요.")
+              : h("div", { className: "board-directory-layout" },
+                  h("article", { className: "card board-directory-card" },
+                    h("div", { className: "board-directory-meta" },
+                      h("strong", null, "보드"),
+                      h("span", { className: "chip" }, `${boardMatches.length}개`)
+                    ),
+                    boardMatches.length
+                      ? h("div", { className: "compact-stack" }, boardMatches.map((board) =>
+                          h(Link, {
+                            href: `/board/${encodeURIComponent(board.gall_id)}`,
+                            className: "board-directory-entry",
+                            key: `search-board-${board.gall_id}`,
+                            reload: true
+                          },
+                            h("strong", { className: "board-directory-name" }, board.gall_name || board.gall_id),
+                            h("span", { className: "board-directory-sub" }, `${board.gall_id} · ${board.post_count ?? 0} posts`)
+                          )
+                        ))
+                      : h("div", { className: "empty-box" }, "일치하는 보드가 없습니다.")
+                  ),
+                  h("article", { className: "card board-directory-card" },
+                    h("div", { className: "board-directory-meta" },
+                      h("strong", null, "게시글"),
+                      h("span", { className: "chip" }, `${Array.isArray(posts) ? posts.length : 0}개`)
+                    ),
+                    Array.isArray(posts) && posts.length
+                      ? h("div", { className: "compact-stack" }, posts.map((post) =>
+                          h(Link, {
+                            href: `/board/${encodeURIComponent(post.gall_id)}/${post.post_no}`,
+                            className: "mini-link-card",
+                            key: `search-post-${post.gall_id}-${post.post_no}`,
+                            reload: true
+                          },
+                            h("div", { className: "board-title", style: { fontSize: "1rem" } }, post.title || "제목 없음"),
+                            h("div", { className: "muted" }, `${post.gall_name || post.gall_id} · ${authorLabel(post)} · ${formatDate(post.writed_at)}`)
+                          )
+                        ))
+                      : h("div", { className: "empty-box" }, "일치하는 게시글이 없습니다.")
+                  )
+                )
           )
         )
       )
@@ -758,7 +970,7 @@
     }, [categories.join("|")]);
 
     return h(React.Fragment, null,
-      h(Topbar, { session, onLogout, alarmCount }),
+      h(TopbarV2, { session, onLogout, alarmCount }),
       h("main", { className: "shell" },
         h("div", { className: "frame" },
           h("section", { className: "dc-board-shell", style: boardThemeStyle },
@@ -1054,7 +1266,7 @@
     const permissions = manageData?.permissions || {};
     const settings = manageData?.settings || { gall_id: gid, theme_color: "#ff8fab", concept_recommend_threshold: 10, allow_guest_post: true, allow_guest_comment: true };
     return h(React.Fragment, null,
-      h(Topbar, { session, onLogout, alarmCount }),
+      h(TopbarV2, { session, onLogout, alarmCount }),
       h("main", { className: "shell" },
         h("div", { className: "frame" },
           h("section", { className: "section-stack" },
@@ -1129,11 +1341,11 @@
     const canRenderDelete = (item) => item && (!session?.loggedIn ? !item.writer_uid : isOwnedBySession(item) || isAdmin || !!permissions.canManage);
 
     if (!post) {
-      return h(React.Fragment, null, h(Topbar, { session, onLogout, alarmCount }), h("main", { className: "shell" }, h("div", { className: "frame" }, h("div", { className: "error-box" }, "게시글을 찾을 수 없습니다."))));
+      return h(React.Fragment, null, h(TopbarV2, { session, onLogout, alarmCount }), h("main", { className: "shell" }, h("div", { className: "frame" }, h("div", { className: "error-box" }, "게시글을 찾을 수 없습니다."))));
     }
 
     return h(React.Fragment, null,
-      h(Topbar, { session, onLogout, alarmCount }),
+      h(TopbarV2, { session, onLogout, alarmCount }),
       h("main", { className: "shell" },
         h("div", { className: "frame" },
           h(PermissionMatrix, { items: [
@@ -1244,7 +1456,7 @@
       }
     }, [settings?.category_options]);
     return h(React.Fragment, null,
-      h(Topbar, { session, onLogout, alarmCount }),
+      h(TopbarV2, { session, onLogout, alarmCount }),
       h("main", { className: "shell" },
         h("div", { className: "frame" },
           h("section", { className: "write-grid" },
@@ -1326,6 +1538,10 @@
     const [stepFeedback, setStepFeedback] = useState(null);
     const [uidFeedback, setUidFeedback] = useState(null);
     const [nickFeedback, setNickFeedback] = useState(null);
+    const [uidChecking, setUidChecking] = useState(false);
+    const [nickChecking, setNickChecking] = useState(false);
+    const [verificationLoading, setVerificationLoading] = useState(false);
+    const [signupLoading, setSignupLoading] = useState(false);
     const [uidChecked, setUidChecked] = useState({ value: "", ok: false });
     const [nickChecked, setNickChecked] = useState({ value: "", type: "variable", ok: false });
     const isLogin = mode === "login";
@@ -1370,40 +1586,50 @@
 
     async function checkUidDuplicate() {
       try {
-        setStepFeedback(null);
+        setUidChecking(true);
+        setUidFeedback(null);
         await validateSignupFieldRequest("uid", trimmedUid);
         setUidChecked({ value: trimmedUid, ok: true });
-        setStepFeedback({ type: "success", message: "사용 가능한 아이디입니다." });
+        setUidFeedback({ type: "success", message: "사용 가능한 아이디입니다." });
       } catch (error) {
         setUidChecked({ value: "", ok: false });
-        setStepFeedback({ type: "error", message: error.message || "아이디를 다시 확인해 주세요." });
+        setUidFeedback({ type: "error", message: error.message || "아이디를 다시 확인해 주세요." });
+      } finally {
+        setUidChecking(false);
       }
     }
 
     async function checkNickDuplicate() {
       try {
-        setStepFeedback(null);
+        setNickChecking(true);
+        setNickFeedback(null);
         await validateSignupFieldRequest("nick", trimmedNick, "fixed");
         setNickChecked({ value: trimmedNick, type: "fixed", ok: true });
-        setStepFeedback({ type: "success", message: "사용 가능한 고정 닉네임입니다." });
+        setNickFeedback({ type: "success", message: "사용 가능한 고정 닉네임입니다." });
       } catch (error) {
         setNickChecked({ value: "", type: "fixed", ok: false });
-        setStepFeedback({ type: "error", message: error.message || "닉네임을 다시 확인해 주세요." });
+        setNickFeedback({ type: "error", message: error.message || "닉네임을 다시 확인해 주세요." });
+      } finally {
+        setNickChecking(false);
       }
     }
 
     async function requestVerificationMail() {
       try {
+        setVerificationLoading(true);
         setStepFeedback(null);
         await validateSignupForm();
         onSubmitAuth({ mode, uid, nick, email, password, nickType: requiresFixedNickCheck ? "fixed" : "variable", resendOnly: true, setVerificationSent, signupTermsAgreed });
       } catch (error) {
         setStepFeedback({ type: "error", message: error.message || "가입 정보를 다시 확인해주세요." });
+      } finally {
+        setVerificationLoading(false);
       }
     }
 
     async function completeSignup() {
       try {
+        setSignupLoading(true);
         setStepFeedback(null);
         await validateSignupForm();
         if (!verificationSent) {
@@ -1415,11 +1641,13 @@
         onSubmitAuth({ mode, uid, nick, email, password, nickType: requiresFixedNickCheck ? "fixed" : "variable", code, verificationSent, setVerificationSent, signupTermsAgreed });
       } catch (error) {
         setStepFeedback({ type: "error", message: error.message || "가입 정보를 다시 확인해주세요." });
+      } finally {
+        setSignupLoading(false);
       }
     }
 
     return h(React.Fragment, null,
-      h(Topbar, { session, onLogout, alarmCount }),
+      h(TopbarV2, { session, onLogout, alarmCount }),
       h("main", { className: "shell" },
         h("div", { className: "frame" },
           h("section", { className: "auth-wrap" },
@@ -1439,7 +1667,6 @@
               ] }),
               h("span", { className: "eyebrow" }, isLogin ? "Access" : "Join"),
               h("h1", { className: "section-title" }, isLogin ? "로그인" : "회원가입"),
-              isLogin ? null : h(Feedback, { feedback: stepFeedback }),
               h("div", { className: "stack", style: { marginTop: "16px" } },
                 isLogin
                   ? h("div", { className: "stack" },
@@ -1458,10 +1685,11 @@
                           h("div", { className: "signup-inline-value" }, uid || "사용할 아이디를 입력해 주세요."),
                           h("div", { className: "signup-inline-row" },
                             h("div", { className: "field", style: { flex: "1" } },
-                              h("input", { id: "auth-uid", type: "text", value: uid, onChange: (event) => setUid(event.target.value), placeholder: "4~20자 영문 소문자, 숫자, 밑줄" })
+                              h("input", { id: "auth-uid", type: "text", value: uid, onChange: (event) => { setUid(event.target.value); setUidChecked({ value: "", ok: false }); setUidFeedback(null); }, placeholder: "4~20자 영문 소문자, 숫자, 밑줄" })
                             ),
-                            h("button", { type: "button", className: "btn btn-secondary signup-mail-btn", onClick: checkUidDuplicate }, "중복확인")
+                            h("button", { type: "button", className: "btn btn-secondary signup-mail-btn", onClick: checkUidDuplicate, disabled: uidChecking }, uidChecking ? h(React.Fragment, null, h("span", { className: "loading-spinner", "aria-hidden": "true" }), "확인 중") : "중복확인")
                           ),
+                          h(Feedback, { feedback: uidFeedback }),
                           h("div", { className: "signup-help danger-text" }, "아이디, 비밀번호를 저장해 주세요."),
                           h("div", { className: "signup-help danger-text" }, "첫 글자는 영문 소문자여야 하며, 가입 후에는 변경할 수 없습니다."),
                           h("div", { className: "signup-help" }, uidCheckPassed ? "아이디 중복확인이 완료되었습니다." : "가입 전에 아이디 중복확인 버튼을 눌러 주세요.")
@@ -1486,15 +1714,16 @@
                         h("div", { className: "signup-label" }, "닉네임 만들기"),
                         h("div", { className: "signup-control stack compact-stack" },
                           h("div", { className: "signup-inline-row" },
-                            h("div", { className: "field", style: { flex: "1" } }, h("input", { id: "auth-nick", type: "text", value: nick, onChange: (event) => setNick(event.target.value), placeholder: "닉네임을 입력해 주세요." })),
+                            h("div", { className: "field", style: { flex: "1" } }, h("input", { id: "auth-nick", type: "text", value: nick, onChange: (event) => { setNick(event.target.value); setNickChecked({ value: "", type: requiresFixedNickCheck ? "fixed" : "variable", ok: false }); setNickFeedback(null); }, placeholder: "닉네임을 입력해 주세요." })),
                             h("div", { className: "field signup-select-field" },
-                              h("select", { value: nicknameMode, onChange: (event) => setNicknameMode(event.target.value) },
+                              h("select", { value: nicknameMode, onChange: (event) => { const nextMode = event.target.value; setNicknameMode(nextMode); setNickChecked({ value: "", type: nextMode === "고정" ? "fixed" : "variable", ok: false }); setNickFeedback(null); } },
                                 h("option", { value: "비고정" }, "비고정"),
                                 h("option", { value: "고정" }, "고정")
                               )
                             ),
-                            requiresFixedNickCheck ? h("button", { type: "button", className: "btn btn-secondary signup-mail-btn", onClick: checkNickDuplicate }, "중복확인") : null
+                            requiresFixedNickCheck ? h("button", { type: "button", className: "btn btn-secondary signup-mail-btn", onClick: checkNickDuplicate, disabled: nickChecking }, nickChecking ? h(React.Fragment, null, h("span", { className: "loading-spinner", "aria-hidden": "true" }), "확인 중") : "중복확인") : null
                           ),
+                          h(Feedback, { feedback: nickFeedback }),
                           h("div", { className: "signup-help" }, requiresFixedNickCheck
                             ? (nickCheckPassed ? "고정 닉네임 중복확인이 완료되었습니다." : "1~20자 닉네임을 입력한 뒤 중복확인 버튼을 눌러 주세요.")
                             : "1~20자 닉네임을 입력해 주세요. 비고정 닉네임은 중복확인이 필요하지 않습니다.")
@@ -1503,7 +1732,7 @@
                         h("div", { className: "signup-control stack compact-stack" },
                           h("div", { className: "signup-inline-row" },
                             h("div", { className: "field", style: { flex: "1" } }, h("input", { id: "auth-email", type: "email", value: email, onChange: (event) => setEmail(event.target.value), placeholder: "인증 메일을 받을 주소를 입력해 주세요." })),
-                            h("button", { type: "button", className: "btn btn-secondary signup-mail-btn", onClick: requestVerificationMail }, verificationSent ? "인증 메일 재발송" : "인증 메일 발송")
+                            h("button", { type: "button", className: "btn btn-secondary signup-mail-btn", onClick: requestVerificationMail, disabled: verificationLoading }, verificationLoading ? h(React.Fragment, null, h("span", { className: "loading-spinner", "aria-hidden": "true" }), "처리 중") : (verificationSent ? "인증 메일 재발송" : "인증 메일 발송"))
                           ),
                           h("div", { className: "signup-inline-row" },
                             h("div", { className: "field", style: { flex: "1" } }, h("input", { id: "auth-code", type: "text", value: code, onChange: (event) => setCode(event.target.value), placeholder: "메일로 받은 인증 코드를 입력해 주세요." })),
@@ -1526,14 +1755,15 @@
                       h(ConsentChecklist, { title: "회원가입 필수 동의", items: SIGNUP_REQUIRED_TERMS, checked: signupTermsAgreed, onToggle: setSignupTermsAgreed, requiredLabel: "위 약관과 개인정보 수집 및 이용에 동의합니다." }),
                       verificationSent ? h("div", { className: "success-box" }, "인증 메일을 보냈습니다. 코드를 입력해 가입을 완료해주세요.") : null
                     ),
+                isLogin ? null : h(Feedback, { feedback: stepFeedback }),
                 h(Feedback, { feedback }),
                 isLogin ? null : null,
                 h("div", { className: "inline-actions" },
                   isLogin
                     ? h("button", { type: "button", className: "btn btn-primary", onClick: () => onSubmitAuth({ mode, uid, password }) }, "로그인")
                     : [
-                        h("button", { type: "button", className: "btn btn-secondary", key: "send", onClick: requestVerificationMail }, verificationSent ? "인증 메일 다시 보내기" : "인증 메일 보내기"),
-                        h("button", { type: "button", className: "btn btn-primary", key: "verify", disabled: !verificationSent, onClick: completeSignup }, "인증 완료하고 가입")
+                        h("button", { type: "button", className: "btn btn-secondary", key: "send", onClick: requestVerificationMail, disabled: verificationLoading }, verificationLoading ? h(React.Fragment, null, h("span", { className: "loading-spinner", "aria-hidden": "true" }), "처리 중") : (verificationSent ? "인증 메일 다시 보내기" : "인증 메일 보내기")),
+                        h("button", { type: "button", className: "btn btn-primary", key: "verify", disabled: !verificationSent || signupLoading, onClick: completeSignup }, signupLoading ? h(React.Fragment, null, h("span", { className: "loading-spinner", "aria-hidden": "true" }), "가입 중") : "인증 완료하고 가입")
                       ],
                   h(Link, { href: isLogin ? "/nid" : "/signin", className: "btn btn-secondary" }, isLogin ? "회원가입" : "로그인으로")
                 )
@@ -1547,7 +1777,7 @@
 
   function AlarmsView({ session, alarms, feedback, onAcceptAlarm, onRejectAlarm, onMarkAllRead, onLogout, alarmCount }) {
     return h(React.Fragment, null,
-      h(Topbar, { session, onLogout, alarmCount }),
+      h(TopbarV2, { session, onLogout, alarmCount }),
       h("main", { className: "shell" },
         h("div", { className: "frame" },
           h("section", { className: "section-stack" },
@@ -1604,14 +1834,14 @@
     }, [profileData]);
 
     if (!profileData) {
-      return h(React.Fragment, null, h(Topbar, { session, onLogout, alarmCount }), h("main", { className: "shell" }, h("div", { className: "frame" }, h("section", { className: "section-stack" }, h("div", { className: "error-box" }, "프로필을 불러오지 못했습니다.")))));
+      return h(React.Fragment, null, h(TopbarV2, { session, onLogout, alarmCount }), h("main", { className: "shell" }, h("div", { className: "frame" }, h("section", { className: "section-stack" }, h("div", { className: "error-box" }, "프로필을 불러오지 못했습니다.")))));
     }
 
     const stats = profileData.stats || {};
     const accentStyle = profileData.accentColor ? { borderTop: `4px solid ${profileData.accentColor}` } : null;
 
     return h(React.Fragment, null,
-      h(Topbar, { session, onLogout, alarmCount }),
+      h(TopbarV2, { session, onLogout, alarmCount }),
       h("main", { className: "shell" },
         h("div", { className: "frame" },
           h("section", { className: "section-stack" },
@@ -1691,7 +1921,7 @@
 
   function NotFoundView({ session, onLogout, alarmCount }) {
     return h(React.Fragment, null,
-      h(Topbar, { session, onLogout, alarmCount }),
+      h(TopbarV2, { session, onLogout, alarmCount }),
       h("main", { className: "shell" },
         h("div", { className: "frame" },
           h("section", { className: "auth-wrap" },
@@ -1711,6 +1941,8 @@
     const [session, setSession] = useState({ loggedIn: false });
     const [boards, setBoards] = useState([]);
     const [feed, setFeed] = useState([]);
+    const [rankings, setRankings] = useState({ items: [], refreshCount: 0, remainingRefreshes: 10, canRefresh: true });
+    const [searchResults, setSearchResults] = useState([]);
     const [alarms, setAlarms] = useState([]);
     const [query, setQuery] = useState("");
     const [page, setPage] = useState(getCurrentPageFromLocation());
@@ -1727,10 +1959,13 @@
     const [settingsFeedback, setSettingsFeedback] = useState(null);
     const [profileFeedback, setProfileFeedback] = useState(null);
     const [boardRequestFeedback, setBoardRequestFeedback] = useState(null);
+    const [rankingFeedback, setRankingFeedback] = useState(null);
 
     const currentBoard = boards.find((board) => board.gall_id === route.params.gid) || null;
     const targetProfileUid = route.params.uid || session.uid || "";
     const alarmCount = alarms.filter((alarm) => alarm?.actionable).length;
+    const searchQuery = getSearchQueryFromLocation();
+    const boardTypeFilter = getBoardTypeFromLocation();
 
     useEffect(() => {
       const syncRoute = () => {
@@ -1755,6 +1990,36 @@
 
     function refreshFeed() {
       return api("/api/posts/recommend").then((data) => setFeed(Array.isArray(data) ? data : [])).catch(() => setFeed([]));
+    }
+
+    function refreshRankings() {
+      return api("/api/board/rankings")
+        .then((result) => setRankings(result?.success && result.data ? result.data : { items: [], refreshCount: 0, remainingRefreshes: 10, canRefresh: true }))
+        .catch(() => setRankings({ items: [], refreshCount: 0, remainingRefreshes: 10, canRefresh: true }));
+    }
+
+    function requestRefreshRankings() {
+      return api("/api/board/rankings/refresh", { method: "POST" })
+        .then((result) => {
+          if (!result?.success || !result.data) {
+            setRankingFeedback({ type: "error", message: result?.message || "랭킹 갱신에 실패했습니다." });
+            return;
+          }
+          setRankings(result.data);
+          setRankingFeedback({ type: "success", message: "보드 랭킹을 갱신했습니다." });
+        })
+        .catch((error) => setRankingFeedback({ type: "error", message: error.message || "랭킹 갱신에 실패했습니다." }));
+    }
+
+    function refreshSearchResults(q) {
+      const trimmed = (q || "").trim();
+      if (!trimmed) {
+        setSearchResults([]);
+        return Promise.resolve();
+      }
+      return api(`/api/features/search?q=${encodeURIComponent(trimmed)}`)
+        .then((result) => setSearchResults(result?.success && Array.isArray(result.posts) ? result.posts : []))
+        .catch(() => setSearchResults([]));
     }
 
     function refreshAlarms() {
@@ -1811,6 +2076,7 @@
       refreshSession();
       refreshBoards();
       refreshFeed();
+      refreshRankings();
     }, []);
 
     useEffect(() => {
@@ -1831,6 +2097,7 @@
       }
       if (route.name === "profile") refreshProfile(targetProfileUid);
       if (route.name === "alarms") refreshAlarms();
+      if (route.name === "search") refreshSearchResults(searchQuery);
     }, [route, page, targetProfileUid]);
 
     function handleLogout() {
@@ -2221,8 +2488,10 @@
         .catch((error) => setAlarmFeedback({ type: "error", message: error.message || "알림 읽음 처리에 실패했습니다." }));
     }
 
-    if (route.name === "home") return h(HomePortalView, { session, boards, feed, onLogout: handleLogout, alarmCount });
-    if (route.name === "boards") return h(BoardsView, { session, boards, query, onQueryChange: setQuery, onSubmitSideBoardRequest: submitSideBoardRequest, requestFeedback: boardRequestFeedback, onLogout: handleLogout, alarmCount });
+    if (route.name === "home") return h(HomePortalView, { session, boards, feed, rankings, rankingFeedback, onRefreshRankings: requestRefreshRankings, onLogout: handleLogout, alarmCount });
+    if (route.name === "boards") return h(BoardsView, { session, boards, query, boardTypeFilter, onQueryChange: setQuery, onSubmitSideBoardRequest: submitSideBoardRequest, requestFeedback: boardRequestFeedback, onLogout: handleLogout, alarmCount });
+    if (route.name === "feed") return h(FeedView, { session, feed, onLogout: handleLogout, alarmCount });
+    if (route.name === "search") return h(SearchResultsView, { session, boards, posts: searchResults, searchQuery, onLogout: handleLogout, alarmCount });
     if (route.name === "boardRequests") return h(BoardRequestsView, { session, feedback: boardRequestFeedback, onSubmitSideBoardRequest: submitSideBoardRequest, onLogout: handleLogout, alarmCount });
     if (route.name === "board") return h(BoardView, { session, gid: route.params.gid, board: currentBoard, posts: boardPosts, page, manageData: boardManageData, settingsFeedback, onPrevPage: () => navigate(`/board/${encodeURIComponent(route.params.gid)}?page=${Math.max(1, page - 1)}`), onNextPage: () => navigate(`/board/${encodeURIComponent(route.params.gid)}?page=${page + 1}`), onLogout: handleLogout, alarmCount });
     if (route.name === "boardManage") return h(BoardManageView, { session, gid: route.params.gid, board: currentBoard, manageData: boardManageData, feedback: settingsFeedback, onSaveSettings: submitBoardSettings, onLogout: handleLogout, alarmCount });

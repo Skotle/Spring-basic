@@ -1,65 +1,130 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>보드</title>
-    <link rel="stylesheet" href="/css/boardsheet.css">
+    <title th:text="${boardInfo.gall_name != null ? boardInfo.gall_name : gid}">Board</title>
+    <link rel="stylesheet" href="/css/app.css">
 </head>
 <body>
-<nav>
-    <a class="nav-logo" href="/boards">
-        <span class="dot"></span>
-        <span>irisen</span>
-    </a>
-    <div class="nav-right">
-        <span id="currentGid" class="status-badge online"></span>
-        <span id="currentPageLabel" class="status-badge">1 page</span>
-    </div>
-</nav>
-
-<main class="page-shell">
-    <div class="boardContainer">
-        <div class="boardBox" style="width: 100%;">
-            <div class="board-header">
-                <span class="board-name" id="boardTitle">보드</span>
-                <a class="btn btn-primary" id="writePageLink" href="#">글쓰기</a>
-            </div>
-
-            <div class="board-preview" id="postContainer"></div>
-
-            <div class="pagination">
-                <button class="btn btn-ghost" onclick="changePage(-1)">이전</button>
-                <button class="btn btn-ghost" onclick="changePage(1)">다음</button>
+<header class="topbar">
+    <div class="frame">
+        <div class="topbar-inner">
+            <a class="brand" href="/">
+                <span class="brand-mark"></span>
+                <span>irisen web</span>
+            </a>
+            <div class="nav-actions">
+                <a class="btn btn-ghost" href="/boards">보드</a>
+                <a class="btn btn-ghost" href="/" th:if="${!loggedIn}">홈</a>
+                <a class="btn btn-primary"
+                   th:if="${canWritePost}"
+                   th:href="@{/board/{gid}/write(gid=${gid})}">글쓰기</a>
             </div>
         </div>
-
-        <aside class="compose-card" id="composerCard" hidden>
-            <div class="board-header">
-                <span class="board-name">HTML 작성</span>
-                <span class="board-desc" id="composerMeta"></span>
-            </div>
-            <div class="utility-row" style="margin-top: 8px;">
-                <a class="btn btn-primary" id="writePageLinkAside" href="#">작성 페이지 열기</a>
-            </div>
-        </aside>
     </div>
+</header>
 
-    <div class="panel" id="loginHint" style="margin-top: 20px;">
-        <div class="board-name">로그인 후 글쓰기가 가능합니다.</div>
-        <div class="utility-row" style="margin-top: 12px;">
-            <a class="btn btn-primary" href="/signin">로그인</a>
-            <a class="btn btn-ghost" href="/nid">가입</a>
-        </div>
+<main class="shell">
+    <div class="frame">
+        <section class="dc-board-shell" th:with="accent=${settings.theme_color != null ? settings.theme_color : '#ff7f9d'}" th:style="'--board-accent:' + ${accent}">
+            <div class="dc-board-head">
+                <div class="dc-board-title-row">
+                    <h1 class="dc-board-title" th:text="${boardInfo.gall_name != null ? boardInfo.gall_name : gid}">Board</h1>
+                    <span class="dc-board-id" th:text="${gid}">gid</span>
+                </div>
+                <div class="dc-board-head-links">
+                    <a class="dc-head-link" href="/boards">보드 목록</a>
+                    <a class="dc-head-link" th:if="${permissions.canManage == true}" th:href="@{/board/{gid}/manage(gid=${gid})}">설정</a>
+                    <a class="dc-head-link dc-head-link-strong"
+                       th:if="${canWritePost}"
+                       th:href="@{/board/{gid}/write(gid=${gid})}">글쓰기</a>
+                </div>
+            </div>
+
+            <div class="dc-board-summary">
+                <div class="dc-board-summary-main">
+                    <div class="dc-board-badge">
+                        <img th:if="${boardBadgeImage != null}" th:src="${boardBadgeImage}" alt="board badge cover">
+                        <span th:if="${boardBadgeImage == null}"
+                              th:text="${boardInfo.gall_type != null ? boardInfo.gall_type : 'BOARD'}">BOARD</span>
+                    </div>
+                    <div class="dc-board-summary-copy">
+                        <div class="dc-board-summary-lines">
+                            <p th:text="${settings.welcome_message != null ? settings.welcome_message : (boardInfo.gall_name != null ? boardInfo.gall_name : gid) + ' 게시판입니다.'}">welcome</p>
+                            <p class="dc-board-notice-line" th:if="${settings.board_notice != null}" th:text="${settings.board_notice}">notice</p>
+                        </div>
+                        <div class="dc-board-staff">
+                            <strong>운영진</strong>
+                            <div class="dc-board-staff-list">
+                                <span th:if="${manager != null}" th:text="${'매니저 ' + (manager.nick != null ? manager.nick : manager.uid)}">manager</span>
+                                <span th:if="${manager == null}">매니저 미지정</span>
+                                <span th:if="${!#lists.isEmpty(submanagers)}"
+                                      th:each="submanager, stat : ${submanagers}"
+                                      th:text="${(stat.index == 0 ? ' · ' : ' · ') + '부매니저 ' + (submanager.nick != null ? submanager.nick : submanager.uid)}">submanager</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="dc-board-policy">
+                    <h3 class="dc-side-heading">이용 안내</h3>
+                    <ul class="dc-policy-list">
+                        <li th:text="${'글쓰기 ' + (canWritePost ? '가능' : '제한')}">글쓰기</li>
+                        <li th:text="${'비회원 댓글 ' + ((settings.allow_guest_comment == true or settings.allow_guest_comment == 1) ? '허용' : '제한')}">댓글</li>
+                        <li th:text="${'개념글 기준 추천 ' + (settings.concept_recommend_threshold != null ? settings.concept_recommend_threshold : 10)}">concept</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="dc-board-tabs">
+                <span class="dc-tab is-active">전체글</span>
+                <div class="dc-board-actions">
+                    <span class="dc-page-chip" th:text="${'페이지 ' + currentPage}">페이지 1</span>
+                </div>
+            </div>
+
+            <div class="dc-post-table-wrap">
+                <div class="dc-post-table-head">
+                    <div>번호</div>
+                    <div>말머리</div>
+                    <div>제목</div>
+                    <div>글쓴이</div>
+                    <div>작성일</div>
+                    <div>조회</div>
+                    <div>추천</div>
+                </div>
+
+                <div th:if="${#lists.isEmpty(posts)}" class="empty-box" style="margin: 14px;">표시할 게시글이 없습니다.</div>
+
+                <a th:each="post : ${posts}"
+                   class="dc-post-row"
+                   th:href="@{/board/{gid}/{postNo}(gid=${gid},postNo=${post.post_no},page=${currentPage})}">
+                    <div class="dc-col-number" th:text="${post.post_no}">1</div>
+                    <div class="dc-col-category" th:text="${post.display_category != null ? post.display_category : (post.category != null ? post.category : '일반')}">일반</div>
+                    <div class="dc-col-title">
+                        <strong th:text="${post.title != null ? post.title : '제목 없음'}">제목</strong>
+                        <span th:if="${post.comment_count != null and post.comment_count > 0}"
+                              class="dc-comment-count"
+                              th:text="${' [' + post.comment_count + ']'}">[3]</span>
+                    </div>
+                    <div class="dc-col-writer" th:text="${post.name != null ? post.name : '익명'}">writer</div>
+                    <div class="dc-col-date" th:text="${post.writed_at}">date</div>
+                    <div class="dc-col-view" th:text="${post.view_count != null ? post.view_count : 0}">0</div>
+                    <div class="dc-col-recommend" th:text="${post.recommend_count != null ? post.recommend_count : 0}">0</div>
+                </a>
+            </div>
+
+            <div class="dc-board-actions" style="padding: 0 16px 16px; justify-content: space-between;">
+                <a class="btn btn-secondary btn-compact"
+                   th:if="${hasPrevPage}"
+                   th:href="@{/board/{gid}(gid=${gid},page=${currentPage - 1})}">이전</a>
+                <span th:if="${!hasPrevPage}"></span>
+                <a class="btn btn-secondary btn-compact"
+                   th:if="${hasNextPage}"
+                   th:href="@{/board/{gid}(gid=${gid},page=${currentPage + 1})}">다음</a>
+            </div>
+        </section>
     </div>
 </main>
-
-<script src="/js/common.js"></script>
-<script src="/js/session.js"></script>
-<script src="/js/board-page.js"></script>
-<script src="/js/page-init.js"></script>
-<script>
-    initBoardMainPage();
-</script>
 </body>
 </html>

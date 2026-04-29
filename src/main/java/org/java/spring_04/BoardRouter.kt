@@ -44,9 +44,51 @@ class BoardRouter(
     }
 
     @GetMapping("/board/{gid}")
-    fun boardDetail(@PathVariable gid: String): String {
-        logRequest("BOARD $gid")
-        return "index"
+    fun boardDetail(
+        @PathVariable gid: String,
+        @RequestParam(name = "page", defaultValue = "1") page: Int,
+        model: Model,
+        session: HttpSession
+    ): String {
+        val currentPage = if (page < 1) 1 else page
+        val manageData = boardService.getBoardManageInfo(gid, sessionUid(session), sessionDivision(session))
+        @Suppress("UNCHECKED_CAST")
+        val settings = manageData["settings"] as? Map<String, Any?> ?: emptyMap()
+        @Suppress("UNCHECKED_CAST")
+        val permissions = manageData["permissions"] as? Map<String, Any?> ?: emptyMap()
+        @Suppress("UNCHECKED_CAST")
+        val board = manageData["board"] as? Map<String, Any?> ?: emptyMap()
+        @Suppress("UNCHECKED_CAST")
+        val submanagers = manageData["submanagers"] as? List<Map<String, Any?>> ?: emptyList()
+        val posts = boardService.getPostsByGallery(gid, currentPage)
+        val canWritePost = isLoggedIn(session) || flagEnabled(settings["allow_guest_post"])
+        val boardBadgeImage = firstNonBlank(
+            settings["cover_image_url"]?.toString(),
+            board["cover_image_url"]?.toString(),
+            board["badge_image_url"]?.toString(),
+            board["badge_url"]?.toString(),
+            board["icon_url"]?.toString(),
+            board["image_url"]?.toString()
+        )
+
+        logRequest("BOARD $gid", "page=$currentPage posts=${posts.size}")
+        model.addAttribute("gid", gid)
+        model.addAttribute("currentPage", currentPage)
+        model.addAttribute("loggedIn", isLoggedIn(session))
+        model.addAttribute("sessionUid", sessionUid(session))
+        model.addAttribute("sessionNick", session.getAttribute("nick")?.toString() ?: "")
+        model.addAttribute("manageData", manageData)
+        model.addAttribute("boardInfo", board)
+        model.addAttribute("settings", settings)
+        model.addAttribute("permissions", permissions)
+        model.addAttribute("manager", manageData["manager"])
+        model.addAttribute("submanagers", submanagers)
+        model.addAttribute("posts", posts)
+        model.addAttribute("canWritePost", canWritePost)
+        model.addAttribute("boardBadgeImage", boardBadgeImage)
+        model.addAttribute("hasPrevPage", currentPage > 1)
+        model.addAttribute("hasNextPage", posts.size >= 20)
+        return "board_main"
     }
 
     @GetMapping("/m/board/{gid}")
@@ -157,5 +199,26 @@ class BoardRouter(
 
     private fun extractClientIp(request: HttpServletRequest): String {
         return requestIpResolver.resolve(request)
+    }
+
+    private fun flagEnabled(value: Any?): Boolean {
+        return when (value) {
+            is Boolean -> value
+            is Number -> value.toInt() != 0
+            null -> false
+            else -> {
+                val text = value.toString().trim()
+                text == "1" || text.equals("true", ignoreCase = true) || text.equals("yes", ignoreCase = true) || text.equals("on", ignoreCase = true)
+            }
+        }
+    }
+
+    private fun firstNonBlank(vararg values: String?): String? {
+        for (value in values) {
+            if (!value.isNullOrBlank()) {
+                return value
+            }
+        }
+        return null
     }
 }

@@ -6,12 +6,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.bcrypt.BCrypt;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -20,6 +22,8 @@ import java.util.Map;
 
 @Service
 public class BoardService {
+    private static final int BOARD_RANKING_DAILY_LIMIT = 10;
+    private static final long BOARD_RANKING_AUTO_REFRESH_MINUTES = 144L;
     private static final String ALARM_REF_TYPE_BOARD_STAFF = "board_staff_request";
     private static final String ALARM_REF_TYPE_BOARD_OPEN = "board_open_request";
     private static final String ALARM_TYPE_MANAGER_REQUEST = "board_manager_request";
@@ -132,6 +136,30 @@ public class BoardService {
                     PRIMARY KEY (ban_id)
                 )
                 """);
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS board_ranking_snapshot (
+                    ranking_date DATE NOT NULL,
+                    rank_no INT NOT NULL,
+                    gall_id VARCHAR(50) NOT NULL,
+                    gall_name VARCHAR(100) NOT NULL,
+                    gall_type VARCHAR(10) NULL,
+                    score BIGINT NOT NULL DEFAULT 0,
+                    post_count INT NOT NULL DEFAULT 0,
+                    recent_post_count INT NOT NULL DEFAULT 0,
+                    recent_recommend_sum INT NOT NULL DEFAULT 0,
+                    refreshed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (ranking_date, rank_no),
+                    UNIQUE KEY uk_board_ranking_snapshot_board (ranking_date, gall_id)
+                )
+                """);
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS board_ranking_refresh_state (
+                    ranking_date DATE NOT NULL,
+                    refresh_count INT NOT NULL DEFAULT 0,
+                    last_refreshed_at DATETIME NULL,
+                    PRIMARY KEY (ranking_date)
+                )
+                """);
         if (!columnExists("board_request", "gall_id")) {
             jdbcTemplate.execute("ALTER TABLE board_request ADD COLUMN gall_id VARCHAR(50) NULL AFTER requester_uid");
         }
@@ -180,6 +208,80 @@ public class BoardService {
                 ORDER BY g.gall_id ASC
                 """;
         return jdbcTemplate.queryForList(sql);
+    }
+
+    public Map<String, Object> getBoardRankingData() {
+        autoRefreshBoardRankingsIfNeeded();
+        LocalDate today = LocalDate.now();
+        List<Map<String, Object>> items = jdbcTemplate.queryForList("""
+                SELECT rank_no,
+                       gall_id,
+                       gall_name,
+                       gall_type,
+                       score,
+                       post_count,
+                       recent_post_count,
+                       recent_recommend_sum,
+                       refreshed_at
+                FROM board_ranking_snapshot
+                WHERE ranking_date = ?
+                ORDER BY rank_no ASC
+                """, today);
+        Integer refreshCount = jdbcTemplate.queryForObject("""
+                SELECT COALESCE(refresh_count, 0)
+                FROM board_ranking_refresh_state
+                WHERE ranking_date = ?
+                """, Integer.class, today);
+        LocalDateTime lastRefreshedAt = toLocalDateTime(jdbcTemplate.queryForObject("""
+                SELECT last_refreshed_at
+                FROM board_ranking_refresh_state
+                WHERE ranking_date = ?
+                """, Object.class, today));
+        int used = refreshCount == null ? 0 : refreshCount;
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("rankingDate", today.toString());
+        result.put("refreshCount", used);
+        result.put("remainingRefreshes", Math.max(0, BOARD_RANKING_DAILY_LIMIT - used));
+        result.put("canRefresh", false);
+        result.put("lastRefreshedAt", lastRefreshedAt == null ? null : lastRefreshedAt.toString());
+        result.put("items", items);
+        return result;
+    }
+
+    @Transactional
+    public Map<String, Object> refreshBoardRankings() {
+        LocalDate today = LocalDate.now();
+        jdbcTemplate.update("""
+                INSERT INTO board_ranking_refresh_state (ranking_date, refresh_count, last_refreshed_at)
+                VALUES (?, 0, NULL)
+                ON DUPLICATE KEY UPDATE ranking_date = ranking_date
+                """, today);
+        Integer refreshCount = jdbcTemplate.queryForObject("""
+                SELECT COALESCE(refresh_count, 0)
+                FROM board_ranking_refresh_state
+                WHERE ranking_date = ?
+                """, Integer.class, today);
+        int used = refreshCount == null ? 0 : refreshCount;
+        if (used >= BOARD_RANKING_DAILY_LIMIT) {
+            throw new RuntimeException("보드 랭킹은 하루에 최대 10회까지만 갱신할 수 있습니다.");
+        }
+        rebuildBoardRankings(today);
+        jdbcTemplate.update("""
+                UPDATE board_ranking_refresh_state
+                SET refresh_count = refresh_count + 1,
+                    last_refreshed_at = NOW()
+                WHERE ranking_date = ?
+                """, today);
+        return getBoardRankingData();
+    }
+
+    @Scheduled(fixedRate = 300000)
+    public void autoRefreshBoardRankingsOnSchedule() {
+        try {
+            autoRefreshBoardRankingsIfNeeded();
+        } catch (Exception e) {
+            System.err.println("[Board Ranking Scheduler Error] " + e.getMessage());
+        }
     }
 
     public List<Map<String, Object>> getPostsByGallery(String gallId, int page) {
@@ -1664,6 +1766,132 @@ public class BoardService {
         }
         return category;
     }
+
+    @Transactional
+    public void autoRefreshBoardRankingsIfNeeded() {
+        LocalDate today = LocalDate.now();
+        Integer count = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM board_ranking_snapshot
+                WHERE ranking_date = ?
+                """, Integer.class, today);
+        jdbcTemplate.update("""
+                INSERT INTO board_ranking_refresh_state (ranking_date, refresh_count, last_refreshed_at)
+                VALUES (?, 0, NULL)
+                ON DUPLICATE KEY UPDATE ranking_date = ranking_date
+                """, today);
+        Integer refreshCount = jdbcTemplate.queryForObject("""
+                SELECT COALESCE(refresh_count, 0)
+                FROM board_ranking_refresh_state
+                WHERE ranking_date = ?
+                """, Integer.class, today);
+        LocalDateTime lastRefreshedAt = toLocalDateTime(jdbcTemplate.queryForObject("""
+                SELECT last_refreshed_at
+                FROM board_ranking_refresh_state
+                WHERE ranking_date = ?
+                """, Object.class, today));
+        int used = refreshCount == null ? 0 : refreshCount;
+        boolean missingSnapshot = count == null || count == 0;
+        if (!missingSnapshot) {
+            if (used >= BOARD_RANKING_DAILY_LIMIT) {
+                return;
+            }
+            if (lastRefreshedAt != null && lastRefreshedAt.plusMinutes(BOARD_RANKING_AUTO_REFRESH_MINUTES).isAfter(LocalDateTime.now())) {
+                return;
+            }
+        }
+        rebuildBoardRankings(today);
+        jdbcTemplate.update("""
+                UPDATE board_ranking_refresh_state
+                SET refresh_count = ?,
+                    last_refreshed_at = NOW()
+                WHERE ranking_date = ?
+                """, missingSnapshot ? Math.max(1, used + 1) : used + 1, today);
+    }
+
+    private void rebuildBoardRankings(LocalDate rankingDate) {
+        List<Map<String, Object>> rankedBoards = jdbcTemplate.queryForList("""
+                SELECT b.gall_id,
+                       COALESCE(NULLIF(b.gall_name, ''), b.gall_id) AS gall_name,
+                       COALESCE(b.gall_type, 'other') AS gall_type,
+                       COALESCE(b.post_count, 0) AS post_count,
+                       SUM(CASE
+                               WHEN p.is_deleted = 0
+                                AND COALESCE(p.is_draft, 0) = 0
+                                AND p.writed_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+                               THEN 1 ELSE 0
+                           END) AS recent_post_count,
+                       SUM(CASE
+                               WHEN p.is_deleted = 0
+                                AND COALESCE(p.is_draft, 0) = 0
+                                AND p.writed_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+                               THEN COALESCE(p.recommend_count, 0) ELSE 0
+                           END) AS recent_recommend_sum,
+                       (
+                           COALESCE(b.post_count, 0) * 2 +
+                           SUM(CASE
+                                   WHEN p.is_deleted = 0
+                                    AND COALESCE(p.is_draft, 0) = 0
+                                    AND p.writed_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+                                   THEN 8 ELSE 0
+                               END) +
+                           SUM(CASE
+                                   WHEN p.is_deleted = 0
+                                    AND COALESCE(p.is_draft, 0) = 0
+                                    AND p.writed_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+                                   THEN COALESCE(p.recommend_count, 0) * 3 ELSE 0
+                               END) +
+                           SUM(CASE
+                                   WHEN p.is_deleted = 0
+                                    AND COALESCE(p.is_draft, 0) = 0
+                                    AND p.writed_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+                                   THEN LEAST(COALESCE(p.view_count, 0), 500) ELSE 0
+                               END) / 25
+                       ) AS score
+                FROM board b
+                LEFT JOIN post p ON p.gall_id = b.gall_id
+                WHERE COALESCE(b.status, 'active') <> 'deleted'
+                GROUP BY b.gall_id, b.gall_name, b.gall_type, b.post_count
+                ORDER BY score DESC, recent_post_count DESC, post_count DESC, b.gall_id ASC
+                LIMIT 10
+                """);
+        jdbcTemplate.update("DELETE FROM board_ranking_snapshot WHERE ranking_date = ?", rankingDate);
+        int rank = 1;
+        for (Map<String, Object> item : rankedBoards) {
+            jdbcTemplate.update("""
+                    INSERT INTO board_ranking_snapshot (
+                        ranking_date, rank_no, gall_id, gall_name, gall_type,
+                        score, post_count, recent_post_count, recent_recommend_sum, refreshed_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                    """,
+                    rankingDate,
+                    rank++,
+                    nullableText(item.get("gall_id")),
+                    nullableText(item.get("gall_name")),
+                    nullableText(item.get("gall_type")),
+                    normalizeLong(item.get("score"), 0L),
+                    normalizeNonNegativeInt(item.get("post_count"), 0),
+                    normalizeNonNegativeInt(item.get("recent_post_count"), 0),
+                    normalizeNonNegativeInt(item.get("recent_recommend_sum"), 0)
+            );
+        }
+    }
     private record WriterInfo(String uid, String name, String ip, String passwordHash) {
+    }
+    private LocalDateTime toLocalDateTime(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof LocalDateTime ldt) {
+            return ldt;
+        }
+        if (value instanceof java.sql.Timestamp ts) {
+            return ts.toLocalDateTime();
+        }
+        if (value instanceof java.time.Instant instant) {
+            return LocalDateTime.ofInstant(instant, java.time.ZoneId.systemDefault());
+        }
+        throw new RuntimeException("LocalDateTime으로 변환할 수 없는 타입: " + value.getClass().getName());
     }
 }
