@@ -10,6 +10,8 @@ import org.springframework.ui.Model
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestParam
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 import java.time.LocalDateTime
 import java.util.LinkedHashMap
 
@@ -47,6 +49,8 @@ class BoardRouter(
     fun boardDetail(
         @PathVariable gid: String,
         @RequestParam(name = "page", defaultValue = "1") page: Int,
+        @RequestParam(name = "mode", defaultValue = "all") mode: String,
+        @RequestParam(name = "category", required = false) category: String?,
         model: Model,
         session: HttpSession
     ): String {
@@ -60,7 +64,18 @@ class BoardRouter(
         val board = manageData["board"] as? Map<String, Any?> ?: emptyMap()
         @Suppress("UNCHECKED_CAST")
         val submanagers = manageData["submanagers"] as? List<Map<String, Any?>> ?: emptyList()
-        val posts = boardService.getPostsByGallery(gid, currentPage)
+
+        val categoryOptions = (settings["category_options_list"] as? List<*>)?.mapNotNull {
+            it?.toString()?.trim()?.takeIf(String::isNotBlank)
+        } ?: emptyList()
+        val currentMode = normalizeBoardMode(mode)
+        val currentCategory = normalizeBoardCategory(category, categoryOptions)
+
+        if (shouldRedirectBoardCanonical(page, mode, category, currentPage, currentMode, currentCategory)) {
+            return buildBoardCanonicalRedirect(gid, currentPage, currentMode, currentCategory)
+        }
+
+        val posts = boardService.getPostsByGallery(gid, currentPage, currentMode, currentCategory)
         val canWritePost = isLoggedIn(session) || flagEnabled(settings["allow_guest_post"])
         val boardBadgeImage = firstNonBlank(
             settings["cover_image_url"]?.toString(),
@@ -71,7 +86,7 @@ class BoardRouter(
             board["image_url"]?.toString()
         )
 
-        logRequest("BOARD $gid", "page=$currentPage posts=${posts.size}")
+        logRequest("BOARD $gid", "page=$currentPage mode=$currentMode category=${currentCategory ?: "-"} posts=${posts.size}")
         model.addAttribute("gid", gid)
         model.addAttribute("currentPage", currentPage)
         model.addAttribute("loggedIn", isLoggedIn(session))
@@ -84,6 +99,9 @@ class BoardRouter(
         model.addAttribute("manager", manageData["manager"])
         model.addAttribute("submanagers", submanagers)
         model.addAttribute("posts", posts)
+        model.addAttribute("currentMode", currentMode)
+        model.addAttribute("currentCategory", currentCategory)
+        model.addAttribute("categoryOptions", categoryOptions)
         model.addAttribute("canWritePost", canWritePost)
         model.addAttribute("boardBadgeImage", boardBadgeImage)
         model.addAttribute("hasPrevPage", currentPage > 1)
@@ -141,15 +159,21 @@ class BoardRouter(
         val currentPage = if (page < 1) 1 else page
         logRequest("POST $gid/$postNo", "viewer=$viewerUid ip=$clientIp page=$currentPage")
         val post = postService.getPostDetail(gid, postNo)
+        val manageData = boardService.getBoardManageInfo(gid, sessionUid(session), sessionDivision(session))
+        @Suppress("UNCHECKED_CAST")
+        val settings = manageData["settings"] as? Map<String, Any?> ?: emptyMap()
+        @Suppress("UNCHECKED_CAST")
+        val permissions = manageData["permissions"] as? Map<String, Any?> ?: emptyMap()
         model.addAttribute("gid", gid)
         model.addAttribute("postNo", postNo)
         model.addAttribute("currentPage", currentPage)
         model.addAttribute("loggedIn", isLoggedIn(session))
         model.addAttribute("sessionUid", sessionUid(session))
         model.addAttribute("sessionNick", session.getAttribute("nick")?.toString() ?: "")
+        model.addAttribute("settings", settings)
+        model.addAttribute("permissions", permissions)
 
         if (post == null) {
-            println("[${LocalDateTime.now()}] POST PAGE RESULT | gid=$gid postNo=$postNo result=not_found")
             model.addAttribute("errorMessage", "Post not found.")
             model.addAttribute("comments", emptyList<Map<String, Any>>())
             model.addAttribute("voteState", mapOf("canVote" to true, "voteType" to ""))
@@ -172,7 +196,6 @@ class BoardRouter(
         model.addAttribute("voteState", postService.getVoteState(gid, postNo, sessionUid(session), extractClientIp(request)))
         model.addAttribute("postCanDelete", canDelete(post, session, gid, true))
         model.addAttribute("postRequiresDeletePassword", requiresDeletePassword(post, session))
-        println("[${LocalDateTime.now()}] POST PAGE RESULT | gid=$gid postNo=$postNo page=$currentPage comments=${comments.size} canDelete=${canDelete(post, session, gid, true)}")
         return "post"
     }
 
@@ -182,11 +205,14 @@ class BoardRouter(
         return "mobile"
     }
 
-    private fun sessionUid(session: HttpSession): String? = session.getAttribute("uid")?.toString()?.takeIf { it.isNotBlank() }
+    private fun sessionUid(session: HttpSession): String? =
+        session.getAttribute("uid")?.toString()?.takeIf { it.isNotBlank() }
 
-    private fun sessionDivision(session: HttpSession): String = session.getAttribute("memberDivision")?.toString().orEmpty()
+    private fun sessionDivision(session: HttpSession): String =
+        session.getAttribute("memberDivision")?.toString().orEmpty()
 
-    private fun isLoggedIn(session: HttpSession): Boolean = !sessionUid(session).isNullOrBlank()
+    private fun isLoggedIn(session: HttpSession): Boolean =
+        !sessionUid(session).isNullOrBlank()
 
     private fun requiresDeletePassword(row: Map<String, *>, session: HttpSession): Boolean {
         val writerUid = row["writer_uid"]?.toString()?.trim().orEmpty()
@@ -206,8 +232,54 @@ class BoardRouter(
         return currentUid.isBlank()
     }
 
-    private fun extractClientIp(request: HttpServletRequest): String {
-        return requestIpResolver.resolve(request)
+    private fun extractClientIp(request: HttpServletRequest): String =
+        requestIpResolver.resolve(request)
+
+    private fun normalizeBoardMode(value: String?): String {
+        return when (value?.trim()?.lowercase()) {
+            "concept" -> "concept"
+            "notice" -> "notice"
+            else -> "all"
+        }
+    }
+
+    private fun normalizeBoardCategory(value: String?, options: List<String>): String? {
+        val normalized = value?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        if (normalized.startsWith(":")) {
+            return null
+        }
+        return normalized
+    }
+
+    private fun shouldRedirectBoardCanonical(
+        rawPage: Int,
+        rawMode: String?,
+        rawCategory: String?,
+        currentPage: Int,
+        currentMode: String,
+        currentCategory: String?
+    ): Boolean {
+        if (rawPage != currentPage) return true
+        if (normalizeBoardMode(rawMode) != currentMode) return true
+        val trimmedCategory = rawCategory?.trim()
+        if (trimmedCategory.isNullOrEmpty()) {
+            return rawCategory != null && currentCategory == null
+        }
+        if (trimmedCategory.startsWith(":")) {
+            return currentCategory == null
+        }
+        return currentCategory != trimmedCategory
+    }
+
+    private fun buildBoardCanonicalRedirect(gid: String, page: Int, mode: String, category: String?): String {
+        val query = mutableListOf("page=$page")
+        if (mode != "all") {
+            query += "mode=$mode"
+        }
+        if (!category.isNullOrBlank()) {
+            query += "category=" + URLEncoder.encode(category, StandardCharsets.UTF_8)
+        }
+        return "redirect:/board/$gid?" + query.joinToString("&")
     }
 
     private fun flagEnabled(value: Any?): Boolean {
@@ -217,7 +289,9 @@ class BoardRouter(
             null -> false
             else -> {
                 val text = value.toString().trim()
-                text == "1" || text.equals("true", ignoreCase = true) || text.equals("yes", ignoreCase = true) || text.equals("on", ignoreCase = true)
+                text == "1" || text.equals("true", ignoreCase = true)
+                        || text.equals("yes", ignoreCase = true)
+                        || text.equals("on", ignoreCase = true)
             }
         }
     }

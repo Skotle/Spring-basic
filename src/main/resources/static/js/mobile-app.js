@@ -24,6 +24,24 @@
     return payload;
   };
 
+  const SUBMANAGER_PERMISSION_FIELDS = [
+    ["can_delete_post", "글 삭제"],
+    ["can_delete_comment", "댓글 삭제"],
+    ["can_manage_write", "글쓰기 관리"],
+    ["can_manage_guest_penalty", "비회원 제재"],
+    ["can_manage_tags", "말머리 관리"],
+    ["can_manage_images", "이미지 관리"],
+    ["can_manage_notice", "공지 관리"],
+    ["can_manage_categories", "카테고리 관리"],
+    ["can_manage_cover", "대문 관리"],
+    ["can_ban_user", "사용자 차단"],
+    ["can_manage_forbidden_word", "금칙어 관리"],
+    ["can_bump_post", "글 끌올"],
+    ["can_manage_concept", "개념글 관리"],
+    ["can_manage_concept_cut", "개념글 해제"],
+    ["can_manage_submanager", "부매니저 관리"]
+  ];
+
   const getSearchQueryFromLocation = () => (new URLSearchParams(window.location.search).get("q") || "").trim();
   const normalizeNickType = (value) => String(value || "").trim().toLowerCase() === "fixed" ? "fixed" : "variable";
   const nickTypeLabel = (value) => normalizeNickType(value) === "fixed" ? "고정" : "비고정";
@@ -86,6 +104,9 @@
 
     let match = pathname.match(/^\/m\/profile\/([^/]+)$/);
     if (match) return { name: "profile", params: { uid: decodeURIComponent(match[1]) } };
+
+    match = pathname.match(/^\/m\/board\/([^/]+)\/manage$/);
+    if (match) return { name: "boardManage", params: { gid: decodeURIComponent(match[1]) } };
 
     match = pathname.match(/^\/m\/board\/([^/]+)\/write$/);
     if (match) return { name: "write", params: { gid: decodeURIComponent(match[1]) } };
@@ -538,7 +559,7 @@
     );
   }
 
-  function BoardView({ session, gid, board, posts, page, settings, onPrev, onNext, onLogout, alarmCount }) {
+  function BoardView({ session, gid, board, posts, page, settings, manageData, onPrev, onNext, onLogout, alarmCount }) {
     const [selectedCategory, setSelectedCategory] = useState("전체");
     const [listMode, setListMode] = useState("all");
     const configuredCategories = categoryOptionsFromSettings(settings);
@@ -546,7 +567,7 @@
     const categories = ["전체", ...Array.from(new Set([...configuredCategories, ...postCategories]))];
     const parsedConceptThreshold = Number(settings?.concept_recommend_threshold || settings?.concept_threshold);
     const conceptThreshold = Number.isFinite(parsedConceptThreshold) && parsedConceptThreshold > 0 ? parsedConceptThreshold : 10;
-    const isConceptPost = (post) => Number(post.is_concept || post.concept || 0) === 1 || Number(post.recommend_count || 0) >= conceptThreshold;
+    const isConceptPost = (post) => Number(post.is_concept || post.concept || 0) === 1;
     const isNoticePost = (post) => Number(post.notice || post.is_notice || 0) === 1;
     const filteredPosts = posts.filter((post) => {
       const matchesCategory = selectedCategory === "전체" || String(post.category || "일반") === selectedCategory;
@@ -556,11 +577,24 @@
     const visiblePosts = filteredPosts.slice(0, 15);
     const boardName = board ? board.gall_name : gid;
     const boardInitial = String(board?.gall_name || gid || "I").trim().charAt(0).toUpperCase();
+    const permissions = manageData?.permissions || {};
+    const manager = manageData?.manager || null;
+    const submanagers = Array.isArray(manageData?.submanagers) ? manageData.submanagers : [];
     const boardIntro = settings?.welcome_message || `${boardName} 모바일 게시판입니다.`;
     const boardHeadline = settings?.board_notice || boardIntro;
     const boardSubcopy = settings?.board_notice && settings?.welcome_message
       ? settings.welcome_message
       : "말머리를 선택해서 원하는 글만 빠르게 볼 수 있습니다.";
+    const staffSummaryLines = [
+      settings?.board_notice || settings?.welcome_message || "등록된 보드 정보가 없습니다.",
+      "",
+      manager
+        ? `매니저: ${manager.nick && manager.nick !== manager.uid ? `${manager.nick} (${manager.uid})` : (manager.uid || manager.nick)}`
+        : "매니저: 미지정",
+      submanagers.length
+        ? `부매니저: ${submanagers.map((user) => user.nick && user.nick !== user.uid ? `${user.nick} (${user.uid})` : (user.uid || user.nick)).join(", ")}`
+        : "부매니저: 없음"
+    ].filter((line, index, array) => line || (index > 0 && array[index - 1]));
 
     useEffect(() => {
       if (!categories.includes(selectedCategory)) setSelectedCategory("전체");
@@ -580,7 +614,8 @@
             h("span", { className: "m-board-count" }, `(${posts.length.toLocaleString("ko-KR")})`)
           ),
           h("div", { className: "m-board-title-actions" },
-            h("button", { type: "button", className: "m-info-dot", onClick: () => window.alert(settings?.board_notice || settings?.welcome_message || "등록된 보드 정보가 없습니다.") }, "i"),
+            h("button", { type: "button", className: "m-info-dot", onClick: () => window.alert(staffSummaryLines.join("\n")) }, "i"),
+            permissions.canManage ? h(MLink, { href: `/m/board/${encodeURIComponent(gid)}/manage`, className: "m-manage-outline" }, "관리") : null,
             h(MLink, { href: `/m/board/${encodeURIComponent(gid)}/write`, className: "m-write-outline" }, "글쓰기")
           )
         ),
@@ -605,7 +640,7 @@
             h("strong", null, settings?.board_notice || settings?.welcome_message || `${board ? board.gall_name : gid} 모바일 게시판입니다.`),
             h("span", null, settings?.welcome_message && settings?.board_notice ? settings.welcome_message : "말머리를 선택해서 원하는 글만 빠르게 볼 수 있습니다.")
           ),
-          h("span", { className: "m-info-float" }, "i")
+          h("button", { type: "button", className: "m-info-float", onClick: () => window.alert(staffSummaryLines.join("\n")) }, "i")
         ),
         h("section", { className: "m-board-tabs", "aria-label": "글 목록 종류" },
           h("button", { type: "button", className: listMode === "all" ? "is-active" : "", onClick: () => setListMode("all") }, "전체"),
@@ -647,6 +682,114 @@
           h("button", { type: "button", className: "m-btn m-btn-secondary", onClick: onPrev }, "이전"),
           h("span", { className: "m-chip" }, `page ${page}`),
           h("button", { type: "button", className: "m-btn m-btn-secondary", onClick: onNext }, "다음")
+        )
+      )
+    );
+  }
+
+  function MPendingStaffRequestList({ requests = [] }) {
+    return h("section", { className: "m-panel m-stack" },
+      h(MSectionHead, { eyebrow: "Pending", title: "임명 대기 목록" }),
+      requests.length
+        ? requests.map((request) =>
+            h("article", { className: "m-panel m-stack m-staff-card", key: `pending-${request.alarm_id}` },
+              h("strong", null, request.role === "manager" ? "매니저 위임 요청" : "부매니저 임명 요청"),
+              h("div", { className: "m-muted" }, request.display_name || request.target_nick || request.target_uid || "대상 미지정"),
+              h("div", { className: "m-muted" }, `요청자 ${request.requester_nick && request.requester_nick !== request.requester_uid ? `${request.requester_nick} (${request.requester_uid})` : (request.requester_uid || request.requester_nick || "알 수 없음")}`),
+              h("div", { className: "m-muted" }, formatDate(request.created_at))
+            )
+          )
+        : h("div", { className: "m-empty" }, "현재 대기 중인 임명 요청이 없습니다.")
+    );
+  }
+
+  function MSubmanagerPermissionPanel({ submanagers = [], permissions = {}, feedback, onSave, onAppoint, onRevoke, onTransfer }) {
+    const [drafts, setDrafts] = useState({});
+    const [appointUid, setAppointUid] = useState("");
+    const [transferUid, setTransferUid] = useState("");
+    const canAssign = !!permissions.canAssignSubmanager || !!permissions.isAdmin;
+    const canEdit = canAssign || !!permissions.canManageSubmanager;
+    const canTransfer = !!permissions.canTransferManager || !!permissions.isAdmin;
+
+    useEffect(() => {
+      const nextDrafts = {};
+      submanagers.forEach((sub) => {
+        nextDrafts[sub.uid] = Object.fromEntries(SUBMANAGER_PERMISSION_FIELDS.map(([key]) => [key, flagEnabled(sub[key])]));
+      });
+      setDrafts(nextDrafts);
+    }, [submanagers.map((sub) => `${sub.uid}:${SUBMANAGER_PERMISSION_FIELDS.map(([key]) => sub[key]).join(",")}`).join("|")]);
+
+    return h("section", { className: "m-panel m-stack" },
+      h(MSectionHead, { eyebrow: "Staff", title: "운영진 관리" }),
+      canAssign ? h("div", { className: "m-field" },
+        h("label", { htmlFor: "m-staff-appoint-uid" }, "부매니저 임명 UID"),
+        h("div", { className: "m-inline" },
+          h("input", { id: "m-staff-appoint-uid", type: "text", value: appointUid, onChange: (event) => setAppointUid(event.target.value) }),
+          h("button", { type: "button", className: "m-btn m-btn-primary", onClick: () => appointUid.trim() && onAppoint(appointUid.trim(), () => setAppointUid("")) }, "임명 요청")
+        )
+      ) : null,
+      canTransfer ? h("div", { className: "m-field" },
+        h("label", { htmlFor: "m-staff-transfer-uid" }, "매니저 위임 UID"),
+        h("div", { className: "m-inline" },
+          h("input", { id: "m-staff-transfer-uid", type: "text", value: transferUid, onChange: (event) => setTransferUid(event.target.value) }),
+          h("button", { type: "button", className: "m-btn m-btn-secondary", onClick: () => transferUid.trim() && onTransfer(transferUid.trim(), () => setTransferUid("")) }, "위임 요청")
+        )
+      ) : null,
+      submanagers.length
+        ? submanagers.map((sub) =>
+            h("article", { className: "m-panel m-stack m-staff-card", key: sub.uid },
+              h("strong", null, sub.nick && sub.nick !== sub.uid ? `${sub.nick} (${sub.uid})` : (sub.uid || sub.nick)),
+              h("div", { className: "m-staff-permission-grid" },
+                SUBMANAGER_PERMISSION_FIELDS.map(([key, label]) =>
+                  h("label", { className: "m-check-row", key: `${sub.uid}-${key}` },
+                    h("input", {
+                      type: "checkbox",
+                      disabled: !canEdit,
+                      checked: !!drafts[sub.uid]?.[key],
+                      onChange: (event) => setDrafts((current) => ({
+                        ...current,
+                        [sub.uid]: { ...(current[sub.uid] || {}), [key]: event.target.checked }
+                      }))
+                    }),
+                    h("span", null, label)
+                  )
+                )
+              ),
+              h("div", { className: "m-inline" },
+                canEdit ? h("button", { type: "button", className: "m-btn m-btn-secondary", onClick: () => onSave(sub.uid, drafts[sub.uid] || {}) }, "권한 저장") : null,
+                canAssign ? h("button", { type: "button", className: "m-btn m-btn-secondary", onClick: () => onRevoke(sub.uid) }, "해임") : null
+              )
+            )
+          )
+        : h("div", { className: "m-empty" }, "등록된 부매니저가 없습니다."),
+      h(MFeedback, { feedback })
+    );
+  }
+
+  function MBoardManageView({ session, gid, board, manageData, feedback, onSaveSubmanagerPermissions, onAppointSubmanager, onRevokeSubmanager, onTransferManager, onLogout, alarmCount }) {
+    const permissions = manageData?.permissions || {};
+    const pendingRequests = Array.isArray(manageData?.pendingStaffRequests) ? manageData.pendingStaffRequests : [];
+    const submanagers = Array.isArray(manageData?.submanagers) ? manageData.submanagers : [];
+    const canOpen = !!permissions.canAssignSubmanager || !!permissions.canManageSubmanager || !!permissions.isAdmin;
+    return h(React.Fragment, null,
+      h(MobileTopbar, { session, onLogout, alarmCount }),
+      h("main", { className: "m-shell m-stack" },
+        h("section", { className: "m-card m-stack" },
+          h(MSectionHead, { eyebrow: "Manage", title: `${board?.gall_name || gid} 관리`, action: h(MLink, { href: `/m/board/${encodeURIComponent(gid)}`, className: "m-btn m-btn-secondary" }, "보드") }),
+          canOpen
+            ? h(React.Fragment, null,
+              h(MPendingStaffRequestList, { requests: pendingRequests }),
+              h(MSubmanagerPermissionPanel, {
+                submanagers,
+                permissions,
+                feedback,
+                onSave: onSaveSubmanagerPermissions,
+                onAppoint: onAppointSubmanager,
+                onRevoke: onRevokeSubmanager,
+                onTransfer: onTransferManager
+              })
+            )
+            : h("div", { className: "m-feedback-error" }, "운영진을 관리할 권한이 없습니다.")
         )
       )
     );
@@ -1054,11 +1197,13 @@
     const [page, setPage] = useState(1);
     const [boardPosts, setBoardPosts] = useState([]);
     const [boardSettings, setBoardSettings] = useState(null);
+    const [boardManageData, setBoardManageData] = useState(null);
     const [postData, setPostData] = useState({ post: null, comments: [], voteState: { canUpvote: true, canDownvote: true } });
     const [authFeedback, setAuthFeedback] = useState(null);
     const [writeFeedback, setWriteFeedback] = useState(null);
     const [commentFeedback, setCommentFeedback] = useState(null);
     const [boardRequestFeedback, setBoardRequestFeedback] = useState(null);
+    const [boardManageFeedback, setBoardManageFeedback] = useState(null);
     const [searchResults, setSearchResults] = useState([]);
     const [alarms, setAlarms] = useState([]);
     const [alarmFeedback, setAlarmFeedback] = useState(null);
@@ -1108,10 +1253,12 @@
           });
         }).catch(() => setPostData({ post: null, comments: [], voteState: { canUpvote: true, canDownvote: true } }));
       }
-      if (route.name === "board" || route.name === "write") {
-        api(`/api/board/manage/${encodeURIComponent(route.params.gid)}/settings`).then((result) => {
-          setBoardSettings(result && result.success ? result.data : null);
-        }).catch(() => setBoardSettings(null));
+      if (route.name === "board" || route.name === "boardManage" || route.name === "write") {
+        api(`/api/board/manage/${encodeURIComponent(route.params.gid)}`).then((result) => {
+          const nextManageData = result && result.success ? result.data : null;
+          setBoardManageData(nextManageData);
+          setBoardSettings(nextManageData?.settings || null);
+        }).catch(() => setBoardManageData(null));
       }
       if (route.name === "search") {
         const trimmed = getSearchQueryFromLocation();
@@ -1136,9 +1283,11 @@
       if (route.name !== "board") setPage(1);
       if (route.name !== "login" && route.name !== "signup") setAuthFeedback(null);
       if (route.name !== "write") setWriteFeedback(null);
-      if (route.name !== "write" && route.name !== "board") setBoardSettings(null);
+      if (route.name !== "write" && route.name !== "board" && route.name !== "boardManage") setBoardSettings(null);
+      if (route.name !== "write" && route.name !== "board" && route.name !== "boardManage") setBoardManageData(null);
       if (route.name !== "post") setCommentFeedback(null);
       if (route.name !== "boardRequest") setBoardRequestFeedback(null);
+      if (route.name !== "boardManage") setBoardManageFeedback(null);
       if (route.name !== "alarms") setAlarmFeedback(null);
       if (route.name !== "profile") setProfileFeedback(null);
       if (route.name !== "profile") setProfileData(null);
@@ -1166,6 +1315,12 @@
       });
     }
 
+    function refreshBoardManage(gallId) {
+      return api(`/api/board/manage/${encodeURIComponent(gallId)}`).then((result) => {
+        setBoardManageData(result && result.success ? result.data : null);
+      }).catch(() => setBoardManageData(null));
+    }
+
     function refreshAlarms() {
       if (!session?.loggedIn) {
         setAlarms([]);
@@ -1179,6 +1334,102 @@
         setSession({ loggedIn: false });
         navigate("/m", true);
       });
+    }
+
+    function managerPasswordForStaffAction(actionName) {
+      const permissions = boardManageData?.permissions || {};
+      if (permissions.isAdmin) {
+        return "";
+      }
+      const password = window.prompt(`${actionName}용 매니저 비밀번호를 입력해 주세요.`);
+      if (password === null) {
+        return null;
+      }
+      if (!password.trim()) {
+        setBoardManageFeedback({ type: "error", message: "매니저 비밀번호를 입력해 주세요." });
+        return null;
+      }
+      return password;
+    }
+
+    function appointSubmanager(targetUid, reset) {
+      if (!boardManageData?.permissions?.canAssignSubmanager) {
+        setBoardManageFeedback({ type: "error", message: "부매니저를 임명할 권한이 없습니다." });
+        return;
+      }
+      const password = managerPasswordForStaffAction("부매니저 임명");
+      if (password === null) return;
+      api(`/api/board/manage/${encodeURIComponent(route.params.gid)}/submanager`, {
+        method: "POST",
+        body: JSON.stringify({ targetUid, password })
+      }).then((result) => {
+        if (!result?.success) {
+          setBoardManageFeedback({ type: "error", message: result?.message || "부매니저 임명 요청에 실패했습니다." });
+          return;
+        }
+        if (typeof reset === "function") reset();
+        setBoardManageFeedback({ type: "success", message: "부매니저 임명 요청을 보냈습니다." });
+        return refreshBoardManage(route.params.gid);
+      }).catch((error) => setBoardManageFeedback({ type: "error", message: error.message || "부매니저 임명 요청에 실패했습니다." }));
+    }
+
+    function revokeSubmanager(targetUid) {
+      if (!boardManageData?.permissions?.canAssignSubmanager) {
+        setBoardManageFeedback({ type: "error", message: "부매니저를 해임할 권한이 없습니다." });
+        return;
+      }
+      const password = managerPasswordForStaffAction("부매니저 해임");
+      if (password === null) return;
+      api(`/api/board/manage/${encodeURIComponent(route.params.gid)}/submanager/${encodeURIComponent(targetUid)}`, {
+        method: "DELETE",
+        body: JSON.stringify({ password })
+      }).then((result) => {
+        if (!result?.success) {
+          setBoardManageFeedback({ type: "error", message: result?.message || "부매니저 해임에 실패했습니다." });
+          return;
+        }
+        setBoardManageFeedback({ type: "success", message: "부매니저를 해임했습니다." });
+        return refreshBoardManage(route.params.gid);
+      }).catch((error) => setBoardManageFeedback({ type: "error", message: error.message || "부매니저 해임에 실패했습니다." }));
+    }
+
+    function transferManager(targetUid, reset) {
+      if (!boardManageData?.permissions?.canTransferManager) {
+        setBoardManageFeedback({ type: "error", message: "매니저를 위임할 권한이 없습니다." });
+        return;
+      }
+      const password = managerPasswordForStaffAction("매니저 위임");
+      if (password === null) return;
+      api(`/api/board/manage/${encodeURIComponent(route.params.gid)}/manager`, {
+        method: "POST",
+        body: JSON.stringify({ targetUid, password })
+      }).then((result) => {
+        if (!result?.success) {
+          setBoardManageFeedback({ type: "error", message: result?.message || "매니저 위임 요청에 실패했습니다." });
+          return;
+        }
+        if (typeof reset === "function") reset();
+        setBoardManageFeedback({ type: "success", message: "매니저 위임 요청을 보냈습니다." });
+        return refreshBoardManage(route.params.gid);
+      }).catch((error) => setBoardManageFeedback({ type: "error", message: error.message || "매니저 위임 요청에 실패했습니다." }));
+    }
+
+    function submitSubmanagerPermissions(targetUid, payload) {
+      if (!boardManageData?.permissions?.canAssignSubmanager && !boardManageData?.permissions?.canManageSubmanager) {
+        setBoardManageFeedback({ type: "error", message: "부매니저 권한을 변경할 권한이 없습니다." });
+        return;
+      }
+      api(`/api/board/manage/${encodeURIComponent(route.params.gid)}/submanager/${encodeURIComponent(targetUid)}/permissions`, {
+        method: "POST",
+        body: JSON.stringify(payload)
+      }).then((result) => {
+        if (!result?.success) {
+          setBoardManageFeedback({ type: "error", message: result?.message || "부매니저 권한 저장에 실패했습니다." });
+          return;
+        }
+        setBoardManageData(result.data || boardManageData);
+        setBoardManageFeedback({ type: "success", message: "부매니저 권한을 저장했습니다." });
+      }).catch((error) => setBoardManageFeedback({ type: "error", message: error.message || "부매니저 권한 저장에 실패했습니다." }));
     }
 
     function submitAuth(payload) {
@@ -1467,7 +1718,8 @@
     if (route.name === "search") return h(SearchView, { session, boards, posts: searchResults, searchQuery, onLogout: handleLogout, alarmCount });
     if (route.name === "boards") return h(BoardsView, { session, boards, query, onChangeQuery: setQuery, onLogout: handleLogout, alarmCount });
     if (route.name === "boardRequest") return h(BoardRequestView, { session, feedback: boardRequestFeedback, onSubmitRequest: submitBoardRequest, onLogout: handleLogout, alarmCount });
-    if (route.name === "board") return h(BoardView, { session, gid: route.params.gid, board: currentBoard, posts: boardPosts, page, settings: boardSettings, onPrev: () => setPage((value) => Math.max(1, value - 1)), onNext: () => setPage((value) => value + 1), onLogout: handleLogout, alarmCount });
+    if (route.name === "board") return h(BoardView, { session, gid: route.params.gid, board: currentBoard, posts: boardPosts, page, settings: boardSettings, manageData: boardManageData, onPrev: () => setPage((value) => Math.max(1, value - 1)), onNext: () => setPage((value) => value + 1), onLogout: handleLogout, alarmCount });
+    if (route.name === "boardManage") return h(MBoardManageView, { session, gid: route.params.gid, board: currentBoard, manageData: boardManageData, feedback: boardManageFeedback, onSaveSubmanagerPermissions: submitSubmanagerPermissions, onAppointSubmanager: appointSubmanager, onRevokeSubmanager: revokeSubmanager, onTransferManager: transferManager, onLogout: handleLogout, alarmCount });
     if (route.name === "post") return h(PostView, { session, gid: route.params.gid, postNo: route.params.postNo, post: postData.post, comments: postData.comments, feedback: commentFeedback, voteFeedback: commentFeedback, voteState: postData.voteState, onSubmitComment: submitComment, onVote: submitVote, onScrapPost: scrapPost, onReportPost: reportPost, onLikeComment: likeComment, onReportComment: reportComment, onLogout: handleLogout, alarmCount });
     if (route.name === "write") return h(WriteView, { session, gid: route.params.gid, feedback: writeFeedback, settings: boardSettings, onSubmitPost: submitPost, onLogout: handleLogout, alarmCount });
     if (route.name === "profile") return h(ProfileView, { session, profileData, feedback: profileFeedback, onSaveProfile: saveProfile, onFollowProfile: followProfile, onUnfollowProfile: unfollowProfile, onLogout: handleLogout, alarmCount });

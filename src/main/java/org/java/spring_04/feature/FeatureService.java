@@ -73,6 +73,8 @@ public class FeatureService {
         addColumnIfMissing("post", "is_secret", "TINYINT(1) NOT NULL DEFAULT 0");
         addColumnIfMissing("post", "is_concept", "TINYINT(1) NOT NULL DEFAULT 0");
         addColumnIfMissing("post", "is_notice", "TINYINT(1) NOT NULL DEFAULT 0");
+        addColumnIfMissing("post", "concept_target_count", "INT NULL");
+        addColumnIfMissing("post", "concept_manual_state", "VARCHAR(20) NOT NULL DEFAULT 'auto'");
         addColumnIfMissing("post", "review_status", "VARCHAR(20) NOT NULL DEFAULT 'normal'");
         addColumnIfMissing("post", "report_count", "INT NOT NULL DEFAULT 0");
         addColumnIfMissing("post", "pinned_at", "DATETIME NULL");
@@ -387,7 +389,12 @@ public class FeatureService {
         if (!boardService.hasBoardPermission(gallId, uid, memberDivision, BoardService.PERMISSION_MANAGE_CONCEPT)) {
             return Map.of("success", false, "message", "개념글을 취소할 권한이 없습니다.");
         }
-        jdbcTemplate.update("UPDATE post SET is_concept = 0 WHERE gall_id = ? AND post_no = ?", gallId, postNo);
+        jdbcTemplate.update("""
+                UPDATE post
+                SET is_concept = 0,
+                    concept_manual_state = 'manual_cut'
+                WHERE gall_id = ? AND post_no = ?
+                """, gallId, postNo);
         logModeration(gallId, uid, null, null, "concept_cancel", "manual");
         return Map.of("success", true);
     }
@@ -397,7 +404,23 @@ public class FeatureService {
         if (!boardService.hasBoardPermission(gallId, uid, memberDivision, BoardService.PERMISSION_MANAGE_CONCEPT)) {
             return Map.of("success", false, "message", "개념글을 지정할 권한이 없습니다.");
         }
-        jdbcTemplate.update("UPDATE post SET is_concept = 1 WHERE gall_id = ? AND post_no = ? AND is_deleted = 0", gallId, postNo);
+        Map<String, Object> settings = getBoardSettings(gallId);
+        int threshold = number(settings.get("concept_recommend_threshold"), 10);
+        Map<String, Object> post = findPost(gallId, postNo);
+        if (post == null) {
+            return Map.of("success", false, "message", "Post not found.");
+        }
+        int recommendCount = number(post.get("recommend_count"), 0);
+        if (recommendCount < threshold) {
+            return Map.of("success", false, "message", "개념글 추천 기준을 만족한 글만 수동 등재할 수 있습니다.");
+        }
+        jdbcTemplate.update("""
+                UPDATE post
+                SET is_concept = 1,
+                    concept_manual_state = 'manual_set',
+                    concept_target_count = GREATEST(COALESCE(concept_target_count, 0), ?)
+                WHERE gall_id = ? AND post_no = ? AND is_deleted = 0
+                """, threshold, gallId, postNo);
         logModeration(gallId, uid, null, null, "concept_set", "manual");
         return Map.of("success", true);
     }
@@ -431,11 +454,45 @@ public class FeatureService {
     public void refreshConceptState(String gallId, long postNo) {
         Map<String, Object> settings = getBoardSettings(gallId);
         int threshold = number(settings.get("concept_recommend_threshold"), 10);
+        Map<String, Object> post = findPost(gallId, postNo);
+        if (post == null) {
+            return;
+        }
+        String manualState = text(post.get("concept_manual_state"), "auto");
+        if ("manual_set".equalsIgnoreCase(manualState)) {
+            jdbcTemplate.update("""
+                    UPDATE post
+                    SET is_concept = 1,
+                        concept_target_count = GREATEST(COALESCE(concept_target_count, 0), ?)
+                    WHERE gall_id = ? AND post_no = ? AND is_deleted = 0
+                    """, threshold, gallId, postNo);
+            return;
+        }
+        if ("manual_cut".equalsIgnoreCase(manualState)) {
+            jdbcTemplate.update("""
+                    UPDATE post
+                    SET is_concept = 0,
+                        concept_target_count = CASE
+                            WHEN concept_target_count IS NULL OR concept_target_count < ? THEN ?
+                            ELSE concept_target_count
+                        END
+                    WHERE gall_id = ? AND post_no = ? AND is_deleted = 0
+                    """, threshold, threshold, gallId, postNo);
+            return;
+        }
+
+        int recommendCount = number(post.get("recommend_count"), 0);
+        int targetCount = number(post.get("concept_target_count"), threshold);
+        if (targetCount <= 0) {
+            targetCount = threshold;
+        }
+        boolean concept = recommendCount >= targetCount;
         jdbcTemplate.update("""
                 UPDATE post
-                SET is_concept = CASE WHEN recommend_count >= ? THEN 1 ELSE is_concept END
+                SET is_concept = ?,
+                    concept_target_count = ?
                 WHERE gall_id = ? AND post_no = ? AND is_deleted = 0
-                """, threshold, gallId, postNo);
+                """, concept ? 1 : 0, targetCount, gallId, postNo);
     }
 
     public List<Map<String, Object>> searchPosts(Map<String, String> params, String viewerUid, String memberDivision) {

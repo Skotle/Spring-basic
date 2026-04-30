@@ -203,6 +203,8 @@
     if (match) return { name: "write", params: { gid: decodeURIComponent(match[1]) } };
     match = path.match(/^\/board\/([^/]+)\/(?:manage|settings)$/);
     if (match) return { name: "boardManage", params: { gid: decodeURIComponent(match[1]) } };
+    match = path.match(/^\/board\/([^/]+)\/staff$/);
+    if (match) return { name: "boardStaffManage", params: { gid: decodeURIComponent(match[1]) } };
     match = path.match(/^\/board\/([^/]+)\/([^/]+)$/);
     if (match) return { name: "post", params: { gid: decodeURIComponent(match[1]), postNo: decodeURIComponent(match[2]) } };
     match = path.match(/^\/board\/([^/]+)$/);
@@ -983,9 +985,7 @@
     const configuredCategories = categoryOptionsFromSettings(settings);
     const postCategories = posts.map((post) => String(post.category || "").trim()).filter(Boolean);
     const categories = ["전체", ...Array.from(new Set([...configuredCategories, ...postCategories]))];
-    const isConceptPost = (post) =>
-      Number(post.is_concept || post.concept || 0) === 1 ||
-      Number(post.recommend_count || post.recommend || post.likes || 0) >= conceptThreshold;
+    const isConceptPost = (post) => Number(post.is_concept || post.concept || 0) === 1;
     const filteredPosts = posts.filter((post) => {
       const category = String(post.category || "일반");
       const matchesCategory = selectedCategory === "전체" || category === selectedCategory;
@@ -996,8 +996,8 @@
       return matchesCategory && matchesMode;
     });
     const staffItems = [
-      manager ? `매니저 ${manager.nick || manager.uid}` : "매니저 미지정",
-      ...submanagers.slice(0, 4).map((user) => `부매니저 ${user.nick || user.uid}`)
+      manager ? `매니저 ${manager.nick && manager.nick !== manager.uid ? `${manager.nick} (${manager.uid})` : (manager.uid || manager.nick)}` : "매니저 미지정",
+      ...submanagers.slice(0, 4).map((user) => `부매니저 ${user.nick && user.nick !== user.uid ? `${user.nick} (${user.uid})` : (user.uid || user.nick)}`)
     ];
 
     useEffect(() => {
@@ -1087,7 +1087,7 @@
                 ? filteredPosts.map((post) =>
                     h(Link, { href: `/board/${encodeURIComponent(gid)}/${post.post_no}?page=${page}`, className: "dc-post-row", key: `${gid}-${post.post_no}`, reload: true },
                       h("span", { className: "dc-post-no" }, post.post_no ?? "-"),
-                      h("span", { className: "dc-post-kind" }, post.category || (post.notice ? "공지" : Number(post.recommend_count || 0) >= conceptThreshold ? "개념글" : "일반")),
+                      h("span", { className: "dc-post-kind" }, post.category || (post.notice ? "공지" : Number(post.is_concept || 0) === 1 ? "개념글" : "일반")),
                       h("span", { className: "dc-post-subject" }, h("strong", null, post.title || "제목 없음"), Number(post.comment_count || 0) > 0 ? h("em", null, `[${post.comment_count}]`) : null),
                       h("span", { className: "dc-post-author" }, h(MemberIdentity, { item: post, className: "member-identity inline" }), h(ProfileInlineLink, { item: post })),
                       h("span", { className: "dc-post-date" }, formatDate(post.writed_at || post.created_at)),
@@ -1351,10 +1351,29 @@
     );
   }
 
+  function PendingStaffRequestList({ requests = [] }) {
+    return h("article", { className: "card board-settings-card" },
+      h(SectionHead, { eyebrow: "Pending", title: "임명 대기 목록" }),
+      requests.length
+        ? h("div", { className: "stack" },
+          requests.map((request) =>
+            h("section", { className: "mini-link-card", key: `pending-${request.alarm_id}` },
+              h("div", { className: "board-title" }, request.role === "manager" ? "매니저 위임 요청" : "부매니저 임명 요청"),
+              h("div", { className: "muted" }, `${request.display_name || request.target_nick || request.target_uid || "대상 미지정"} · ${formatDate(request.created_at)}`),
+              h("div", { className: "muted" }, `요청자 ${request.requester_nick && request.requester_nick !== request.requester_uid ? `${request.requester_nick} (${request.requester_uid})` : (request.requester_uid || request.requester_nick || "알 수 없음")}`),
+              h("div", { className: "muted" }, `${request.gall_name || request.gall_id || ""}`)
+            )
+          )
+        )
+        : h("div", { className: "empty-box" }, "현재 대기 중인 임명 요청이 없습니다.")
+    );
+  }
+
   function BoardManageView({ session, gid, board, manageData, feedback, submanagerFeedback, onSaveSettings, onSaveSubmanagerPermissions, onAppointSubmanager, onRevokeSubmanager, onTransferManager, onLogout, alarmCount }) {
     const permissions = manageData?.permissions || {};
     const settings = manageData?.settings || { gall_id: gid, theme_color: "#ff8fab", concept_recommend_threshold: 10, allow_guest_post: true, allow_guest_comment: true };
     const submanagers = Array.isArray(manageData?.submanagers) ? manageData.submanagers : [];
+    const pendingRequests = Array.isArray(manageData?.pendingStaffRequests) ? manageData.pendingStaffRequests : [];
     return h(React.Fragment, null,
       h(TopbarV2, { session, onLogout, alarmCount }),
       h("main", { className: "shell" },
@@ -1374,7 +1393,57 @@
             permissions.canEditSettings
               ? h(BoardSettingsPanel, { settings, feedback, onSave: onSaveSettings })
               : h("article", { className: "card board-settings-card" }, h("div", { className: "error-box" }, "이 보드 설정을 변경할 권한이 없습니다.")),
+            (permissions.canAssignSubmanager || permissions.canManageSubmanager || permissions.isAdmin)
+              ? h(PendingStaffRequestList, { requests: pendingRequests })
+              : null,
+            (permissions.canAssignSubmanager || permissions.canManageSubmanager || permissions.isAdmin)
+              ? h(Link, { href: `/board/${encodeURIComponent(gid)}/staff`, className: "mini-link-card" },
+                h("div", { className: "board-title" }, "부매니저 임명 화면"),
+                h("div", { className: "muted" }, "임명 요청, 해임, 권한 설정을 전용 화면에서 관리합니다.")
+              )
+              : null,
             h(SubmanagerPermissionPanel, { submanagers, permissions, feedback: submanagerFeedback, onSave: onSaveSubmanagerPermissions, onAppoint: onAppointSubmanager, onRevoke: onRevokeSubmanager, onTransfer: onTransferManager })
+          )
+        )
+      )
+    );
+  }
+
+  function BoardStaffManageView({ session, gid, board, manageData, feedback, onSaveSubmanagerPermissions, onAppointSubmanager, onRevokeSubmanager, onTransferManager, onLogout, alarmCount }) {
+    const permissions = manageData?.permissions || {};
+    const submanagers = Array.isArray(manageData?.submanagers) ? manageData.submanagers : [];
+    const pendingRequests = Array.isArray(manageData?.pendingStaffRequests) ? manageData.pendingStaffRequests : [];
+    const canOpen = !!permissions.canAssignSubmanager || !!permissions.canManageSubmanager || !!permissions.isAdmin;
+    return h(React.Fragment, null,
+      h(TopbarV2, { session, onLogout, alarmCount }),
+      h("main", { className: "shell" },
+        h("div", { className: "frame" },
+          h("section", { className: "section-stack" },
+            h(SectionHead, {
+              eyebrow: "Staff",
+              title: `${board?.gall_name || gid} 부매니저 임명`,
+              action: h("div", { className: "inline-actions" },
+                h(Link, { href: `/board/${encodeURIComponent(gid)}/manage`, className: "btn btn-secondary" }, "보드 관리"),
+                h(Link, { href: `/board/${encodeURIComponent(gid)}`, className: "btn btn-secondary" }, "보드로")
+              )
+            }),
+            h(PermissionMatrix, { items: [
+              { action: "부매니저 임명 요청", required: "관리자 또는 현재 매니저", available: !!permissions.canAssignSubmanager },
+              { action: "부매니저 해임", required: "관리자 또는 현재 매니저", available: !!permissions.canAssignSubmanager },
+              { action: "부매니저 권한 설정", required: "관리자, 현재 매니저, 권한제어 권한 보유자", available: !!permissions.canManageSubmanager || !!permissions.canAssignSubmanager || !!permissions.isAdmin }
+            ] }),
+            canOpen ? h(PendingStaffRequestList, { requests: pendingRequests }) : null,
+            canOpen
+              ? h(SubmanagerPermissionPanel, {
+                submanagers,
+                permissions,
+                feedback,
+                onSave: onSaveSubmanagerPermissions,
+                onAppoint: onAppointSubmanager,
+                onRevoke: onRevokeSubmanager,
+                onTransfer: onTransferManager
+              })
+              : h("article", { className: "card board-settings-card" }, h("div", { className: "error-box" }, "부매니저를 관리할 권한이 없습니다."))
           )
         )
       )
@@ -1428,6 +1497,9 @@
     const isAdmin = ["1", 1, "admin", "operator"].includes(session?.memberDivision);
     const permissions = manageData?.permissions || {};
     const settings = manageData?.settings || null;
+    const parsedConceptThreshold = Number(settings?.concept_recommend_threshold || settings?.concept_threshold);
+    const conceptThreshold = Number.isFinite(parsedConceptThreshold) && parsedConceptThreshold > 0 ? parsedConceptThreshold : 10;
+    const canForceConcept = Number(post?.recommend_count || 0) >= conceptThreshold;
     const canComment = !!session?.loggedIn || flagEnabled(settings?.allow_guest_comment);
     const isOwnedBySession = (item) => session?.loggedIn && session?.uid && item?.writer_uid && String(item.writer_uid).trim() === String(session.uid).trim();
     const isDeletedComment = (item) => Number(item?.is_deleted || 0) === 1;
@@ -1484,7 +1556,7 @@
                 permissions.canManageConcept || isAdmin
                   ? Number(post.is_concept || 0) === 1
                     ? h("button", { type: "button", className: "btn btn-ghost btn-compact", onClick: () => onCancelConcept(post) }, "개념글 취소")
-                    : h("button", { type: "button", className: "btn btn-ghost btn-compact", onClick: () => onSetConcept(post) }, "개념글 지정")
+                    : canForceConcept ? h("button", { type: "button", className: "btn btn-ghost btn-compact", onClick: () => onSetConcept(post) }, "개념글 지정") : null
                   : null
               ),
               canRenderDelete(post, "post") ? h(PopupDeleteControl, { session, buttonLabel: "게시글 삭제", requirePassword: requiresDeletePassword(post, "post"), onDelete: (password, reset) => onDeletePost({ gid, postNo: post.post_no, password }, reset) }) : null,
@@ -2147,7 +2219,7 @@
       return api(`/api/board/manage/${encodeURIComponent(gid)}`)
         .then((result) => {
           const data = result?.success ? result.data : null;
-          if (route.name === "boardManage" && (!data || !data?.permissions?.canManage)) {
+          if ((route.name === "boardManage" || route.name === "boardStaffManage") && (!data || !data?.permissions?.canManage)) {
             setSettingsFeedback({ type: "error", message: result?.message || "보드 관리 권한이 없습니다." });
             navigate(`/board/${encodeURIComponent(gid)}`, true);
             setBoardManageData(null);
@@ -2156,7 +2228,7 @@
           setBoardManageData(data);
         })
         .catch(() => {
-          if (route.name === "boardManage") {
+          if (route.name === "boardManage" || route.name === "boardStaffManage") {
             setSettingsFeedback({ type: "error", message: "보드 관리 권한이 없습니다." });
             navigate(`/board/${encodeURIComponent(gid)}`, true);
           }
@@ -2198,7 +2270,7 @@
         refreshBoardPosts(route.params.gid, page);
         refreshBoardManage(route.params.gid);
       }
-      if (route.name === "boardManage") refreshBoardManage(route.params.gid);
+      if (route.name === "boardManage" || route.name === "boardStaffManage") refreshBoardManage(route.params.gid);
       if (route.name === "write") refreshBoardManage(route.params.gid);
       if (route.name === "post") {
         refreshPostDetail(route.params.gid, route.params.postNo);
@@ -2753,6 +2825,7 @@
     if (route.name === "boardRequests") return h(BoardRequestsView, { session, feedback: boardRequestFeedback, onSubmitSideBoardRequest: submitSideBoardRequest, onLogout: handleLogout, alarmCount });
     if (route.name === "board") return h(BoardView, { session, gid: route.params.gid, board: currentBoard, posts: boardPosts, page, manageData: boardManageData, settingsFeedback, onPrevPage: () => navigate(`/board/${encodeURIComponent(route.params.gid)}?page=${Math.max(1, page - 1)}`), onNextPage: () => navigate(`/board/${encodeURIComponent(route.params.gid)}?page=${page + 1}`), onLogout: handleLogout, alarmCount });
     if (route.name === "boardManage") return h(BoardManageView, { session, gid: route.params.gid, board: currentBoard, manageData: boardManageData, feedback: settingsFeedback, submanagerFeedback, onSaveSettings: submitBoardSettings, onSaveSubmanagerPermissions: submitSubmanagerPermissions, onAppointSubmanager: appointSubmanager, onRevokeSubmanager: revokeSubmanager, onTransferManager: transferManager, onLogout: handleLogout, alarmCount });
+    if (route.name === "boardStaffManage") return h(BoardStaffManageView, { session, gid: route.params.gid, board: currentBoard, manageData: boardManageData, feedback: submanagerFeedback, onSaveSubmanagerPermissions: submitSubmanagerPermissions, onAppointSubmanager: appointSubmanager, onRevokeSubmanager: revokeSubmanager, onTransferManager: transferManager, onLogout: handleLogout, alarmCount });
     if (route.name === "post") return h(PostView, { session, gid: route.params.gid, post: postData.post, comments: postData.comments, feedback: commentFeedback, deleteFeedback, voteFeedback, voteState: postData.voteState, manageData: boardManageData, onSubmitComment: submitComment, onDeletePost: submitDeletePost, onDeleteComment: submitDeleteComment, onVote: submitVote, onScrapPost: scrapPost, onReportPost: reportPost, onLikeComment: likeComment, onReportComment: reportComment, onCancelConcept: cancelConcept, onSetConcept: setConcept, onBumpPost: bumpPost, onSetNotice: setNotice, onLogout: handleLogout, alarmCount });
     if (route.name === "profile") return h(ProfileView, { session, profileData, feedback: profileFeedback, onSaveProfile: submitProfileSettings, onFollowProfile: followProfile, onUnfollowProfile: unfollowProfile, onLogout: handleLogout, alarmCount });
     if (route.name === "write") return h(WriteView, { session, gid: route.params.gid, feedback: writeFeedback, manageData: boardManageData, onSubmitPost: submitPost, onLogout: handleLogout, alarmCount });
