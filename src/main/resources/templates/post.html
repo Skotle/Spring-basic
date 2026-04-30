@@ -24,7 +24,7 @@
 
 <main class="shell">
     <div class="frame">
-        <div th:if="${flashMessage != null}"
+        <div id="post-flash" th:if="${flashMessage != null}"
              th:class="${flashType == 'error' ? 'error-box' : 'success-box'}"
              style="margin-bottom: 16px;">
             <span th:text="${flashMessage}">message</span>
@@ -92,13 +92,13 @@
                         </div>
                     </div>
 
-                    <form class="inline-actions delete-control"
+                    <form class="inline-actions delete-control js-post-delete-form"
                           th:if="${postCanDelete}"
                           th:action="@{/board/{gid}/{postNo}/delete(gid=${gid},postNo=${post.post_no})}"
                           method="post"
                           onsubmit="return confirm('게시글을 삭제할까요?');">
                         <input type="hidden" name="page" th:value="${currentPage}">
-                        <input class="delete-password-input" th:if="${post.writer_uid == null}" type="password" name="password" placeholder="비밀번호">
+                        <input class="delete-password-input" th:if="${postRequiresDeletePassword}" type="password" name="password" placeholder="비밀번호">
                         <button class="btn btn-secondary btn-danger" type="submit">글 삭제</button>
                     </form>
                 </div>
@@ -141,9 +141,9 @@
                 <div th:if="${not #lists.isEmpty(comments)}" class="stack">
                     <article th:each="comment : ${comments}"
                              class="card comment-card"
-                             th:classappend="' depth-' + ${comment.reply_depth}">
+                             th:classappend="${' depth-' + comment.reply_depth + (comment.is_deleted == 1 ? ' is-deleted' : '') + ((comment.reply_depth != null and comment.reply_depth > 0) ? ' is-reply' : '')}">
                         <div class="comment-card-head">
-                            <div class="muted">
+                            <div class="muted" th:if="${comment.is_deleted != 1}">
                                 <span th:text="${comment.name}">comment author</span>
                                 <a th:if="${comment.writer_uid != null}"
                                    class="profile-inline-link"
@@ -151,7 +151,7 @@
                                 <span th:text="${' · ' + comment.writed_at}">comment meta</span>
                             </div>
                             <div class="comment-card-tools">
-                                <button th:if="${comment.reply_depth < 2}"
+                                <button th:if="${comment.is_deleted != 1 and comment.reply_depth < 2}"
                                         class="comment-action-button reply-toggle-button"
                                         type="button"
                                         th:attr="data-target='reply-form-' + ${comment.id}">답글</button>
@@ -159,14 +159,17 @@
                                       th:action="@{/board/{gid}/{postNo}/comment/{commentId}/delete(gid=${gid},postNo=${post.post_no},commentId=${comment.id})}"
                                       method="post"
                                       class="comment-delete-form"
-                                      th:attr="data-require-password=${comment.writer_uid == null}">
+                                      th:attr="data-require-password=${comment.requiresDeletePassword},data-gid=${gid},data-post-no=${post.post_no},data-comment-id=${comment.id}">
                                     <input type="hidden" name="page" th:value="${currentPage}">
                                     <button class="comment-delete-button" type="submit">삭제</button>
                                 </form>
                             </div>
                         </div>
+                        <div class="muted comment-deleted-label"
+                             th:if="${comment.is_deleted == 1}"
+                             th:text="${(comment.reply_depth != null and comment.reply_depth > 0) ? '↳ 삭제된 답글' : '삭제된 댓글'}">deleted comment</div>
                         <div class="preview comment-preview" th:utext="${comment.content}">comment</div>
-                        <form th:if="${comment.reply_depth < 2}"
+                        <form th:if="${comment.is_deleted != 1 and comment.reply_depth < 2}"
                               th:id="'reply-form-' + ${comment.id}"
                               th:action="@{/board/{gid}/{postNo}/comment(gid=${gid},postNo=${post.post_no})}"
                               method="post"
@@ -318,6 +321,145 @@
       }
     });
   });
+})();
+</script>
+<script>
+(() => {
+  const createFlashBox = () => {
+    const box = document.createElement('div');
+    box.id = 'post-flash';
+    box.style.marginBottom = '16px';
+    const shell = document.querySelector('main.shell .frame');
+    if (shell) {
+      shell.insertBefore(box, shell.firstChild);
+    }
+    return box;
+  };
+
+  const showFlash = (message, type = 'error') => {
+    const box = document.getElementById('post-flash') || createFlashBox();
+    box.className = type === 'success' ? 'success-box' : 'error-box';
+    box.innerHTML = '';
+    const text = document.createElement('span');
+    text.textContent = message;
+    box.appendChild(text);
+    box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const postJson = async (url, payload) => {
+    const response = await fetch(url, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    return response.json();
+  };
+
+  const parsePostPath = (form) => {
+    const action = form.getAttribute('action') || '';
+    const match = action.match(/\/board\/([^/]+)\/(\d+)(?:\/|$)/);
+    if (!match) return null;
+    return {
+      gid: decodeURIComponent(match[1]),
+      postNo: match[2]
+    };
+  };
+
+  const handlePostDelete = async (form) => {
+    const path = parsePostPath(form);
+    if (!path) {
+      showFlash('삭제 경로를 확인할 수 없습니다.');
+      return;
+    }
+
+    const passwordInput = form.querySelector('input[name="password"]');
+    const password = passwordInput ? passwordInput.value.trim() : '';
+    if (passwordInput && !password) {
+      showFlash('비밀번호를 입력해 주세요.');
+      passwordInput.focus();
+      return;
+    }
+
+    if (!window.confirm('게시글을 삭제할까요?')) {
+      return;
+    }
+
+    try {
+      const result = await postJson('/api/posts/delete', {
+        gid: path.gid,
+        postNo: path.postNo,
+        password
+      });
+      if (!result?.success) {
+        showFlash(result?.message || '게시글 삭제에 실패했습니다.');
+        return;
+      }
+      const page = form.querySelector('input[name="page"]')?.value || '1';
+      window.location.href = `/board/${encodeURIComponent(path.gid)}?page=${encodeURIComponent(page)}`;
+    } catch (error) {
+      showFlash('게시글 삭제 요청 중 오류가 발생했습니다.');
+    }
+  };
+
+  const handleCommentDelete = async (form) => {
+    const gid = form.dataset.gid;
+    const postNo = form.getAttribute('data-post-no');
+    const commentId = form.dataset.commentId;
+    if (!gid || !postNo || !commentId) {
+      showFlash('댓글 삭제 정보가 올바르지 않습니다.');
+      return;
+    }
+
+    if (!window.confirm('댓글을 삭제할까요?')) {
+      return;
+    }
+
+    let password = '';
+    if (form.dataset.requirePassword === 'true') {
+      const prompted = window.prompt('비밀번호를 입력해 주세요.');
+      if (prompted === null) return;
+      password = prompted.trim();
+      if (!password) {
+        showFlash('비밀번호를 입력해 주세요.');
+        return;
+      }
+    }
+
+    try {
+      const result = await postJson('/api/posts/comment/delete', {
+        gid,
+        postNo,
+        commentId,
+        password
+      });
+      if (!result?.success) {
+        showFlash(result?.message || '댓글 삭제에 실패했습니다.');
+        return;
+      }
+      window.location.reload();
+    } catch (error) {
+      showFlash('댓글 삭제 요청 중 오류가 발생했습니다.');
+    }
+  };
+
+  document.addEventListener('submit', (event) => {
+    const form = event.target;
+    if (!(form instanceof HTMLFormElement)) return;
+
+    if (form.matches('.js-post-delete-form')) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      handlePostDelete(form);
+      return;
+    }
+
+    if (form.matches('.comment-delete-form')) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      handleCommentDelete(form);
+    }
+  }, true);
 })();
 </script>
 </body>

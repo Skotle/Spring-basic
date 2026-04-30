@@ -168,6 +168,17 @@ public class AdminController {
         return Map.of("success", true);
     }
 
+    @ResponseBody
+    @PostMapping("/api/admin/boards/{gid}/submanagers/{targetUid}/permissions")
+    public Map<String, Object> updateSubmanagerPermissions(@PathVariable("gid") String gid,
+                                                           @PathVariable("targetUid") String targetUid,
+                                                           @RequestBody Map<String, String> payload,
+                                                           HttpSession session) {
+        ensureAdmin(session);
+        String uid = (String) session.getAttribute("uid");
+        return Map.of("success", true, "data", boardService.updateSubmanagerPermissions(gid, targetUid, payload, uid, "admin"));
+    }
+
     private void ensureAdmin(HttpSession session) {
         adminAccessService.assertAdmin(session);
     }

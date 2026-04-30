@@ -93,7 +93,7 @@ public class BoardController {
                                                 @SessionAttribute(name = "memberDivision", required = false) String memberDivision) {
         System.out.println("[" + LocalDateTime.now() + "] API /api/board/manage/" + gid + "/settings");
         try {
-            if (!boardService.canManageBoard(gid, uid, memberDivision)) {
+            if (!boardService.canEditBoardSettings(gid, uid, memberDivision)) {
                 return Map.of("success", false, "message", "보드 설정을 조회할 권한이 없습니다.");
             }
             return Map.of("success", true, "data", boardService.getBoardSettings(gid));
@@ -123,7 +123,8 @@ public class BoardController {
         System.out.println("[" + LocalDateTime.now() + "] API /api/board/manage/" + gid + "/manager");
         try {
             String targetUid = payload == null ? null : payload.get("targetUid");
-            boardService.assignManager(gid, targetUid, uid, memberDivision);
+            String password = payload == null ? null : payload.get("password");
+            boardService.assignManager(gid, targetUid, uid, memberDivision, password);
             return Map.of("success", true);
         } catch (Exception e) {
             return Map.of("success", false, "message", e.getMessage());
@@ -137,7 +138,7 @@ public class BoardController {
                                                  @SessionAttribute(name = "memberDivision", required = false) String memberDivision) {
         System.out.println("[" + LocalDateTime.now() + "] API /api/board/manage/" + gid + "/submanager");
         try {
-            boardService.appointSubmanager(gid, payload.get("targetUid"), uid, memberDivision);
+            boardService.appointSubmanager(gid, payload.get("targetUid"), uid, memberDivision, payload.get("password"));
             return Map.of("success", true);
         } catch (Exception e) {
             return Map.of("success", false, "message", e.getMessage());
@@ -147,12 +148,27 @@ public class BoardController {
     @DeleteMapping("/manage/{gid}/submanager/{targetUid}")
     public Map<String, Object> revokeSubmanager(@PathVariable("gid") String gid,
                                                 @PathVariable("targetUid") String targetUid,
+                                                @RequestBody(required = false) Map<String, String> payload,
                                                 @SessionAttribute(name = "uid", required = false) String uid,
                                                 @SessionAttribute(name = "memberDivision", required = false) String memberDivision) {
         System.out.println("[" + LocalDateTime.now() + "] API /api/board/manage/" + gid + "/submanager/" + targetUid);
         try {
-            boardService.revokeSubmanager(gid, targetUid, uid, memberDivision);
+            boardService.revokeSubmanager(gid, targetUid, uid, memberDivision, payload == null ? null : payload.get("password"));
             return Map.of("success", true);
+        } catch (Exception e) {
+            return Map.of("success", false, "message", e.getMessage());
+        }
+    }
+
+    @PostMapping("/manage/{gid}/submanager/{targetUid}/permissions")
+    public Map<String, Object> updateSubmanagerPermissions(@PathVariable("gid") String gid,
+                                                           @PathVariable("targetUid") String targetUid,
+                                                           @RequestBody Map<String, String> payload,
+                                                           @SessionAttribute(name = "uid", required = false) String uid,
+                                                           @SessionAttribute(name = "memberDivision", required = false) String memberDivision) {
+        System.out.println("[" + LocalDateTime.now() + "] API /api/board/manage/" + gid + "/submanager/" + targetUid + "/permissions");
+        try {
+            return Map.of("success", true, "data", boardService.updateSubmanagerPermissions(gid, targetUid, payload, uid, memberDivision));
         } catch (Exception e) {
             return Map.of("success", false, "message", e.getMessage());
         }

@@ -2,6 +2,7 @@ package org.java.spring_04.feature;
 
 import jakarta.annotation.PostConstruct;
 import org.java.spring_04.common.HtmlSanitizerService;
+import org.java.spring_04.board.BoardService;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -17,10 +18,12 @@ import java.util.Map;
 public class FeatureService {
     private final JdbcTemplate jdbcTemplate;
     private final HtmlSanitizerService htmlSanitizerService;
+    private final BoardService boardService;
 
-    public FeatureService(JdbcTemplate jdbcTemplate, HtmlSanitizerService htmlSanitizerService) {
+    public FeatureService(JdbcTemplate jdbcTemplate, HtmlSanitizerService htmlSanitizerService, BoardService boardService) {
         this.jdbcTemplate = jdbcTemplate;
         this.htmlSanitizerService = htmlSanitizerService;
+        this.boardService = boardService;
     }
 
     @PostConstruct
@@ -69,6 +72,7 @@ public class FeatureService {
         addColumnIfMissing("post", "is_draft", "TINYINT(1) NOT NULL DEFAULT 0");
         addColumnIfMissing("post", "is_secret", "TINYINT(1) NOT NULL DEFAULT 0");
         addColumnIfMissing("post", "is_concept", "TINYINT(1) NOT NULL DEFAULT 0");
+        addColumnIfMissing("post", "is_notice", "TINYINT(1) NOT NULL DEFAULT 0");
         addColumnIfMissing("post", "review_status", "VARCHAR(20) NOT NULL DEFAULT 'normal'");
         addColumnIfMissing("post", "report_count", "INT NOT NULL DEFAULT 0");
         addColumnIfMissing("post", "pinned_at", "DATETIME NULL");
@@ -380,11 +384,46 @@ public class FeatureService {
 
     @Transactional
     public Map<String, Object> cancelConcept(String gallId, long postNo, String uid, String memberDivision) {
-        if (!isAdmin(memberDivision) && !isBoardStaff(gallId, uid)) {
+        if (!boardService.hasBoardPermission(gallId, uid, memberDivision, BoardService.PERMISSION_MANAGE_CONCEPT)) {
             return Map.of("success", false, "message", "개념글을 취소할 권한이 없습니다.");
         }
         jdbcTemplate.update("UPDATE post SET is_concept = 0 WHERE gall_id = ? AND post_no = ?", gallId, postNo);
         logModeration(gallId, uid, null, null, "concept_cancel", "manual");
+        return Map.of("success", true);
+    }
+
+    @Transactional
+    public Map<String, Object> setConcept(String gallId, long postNo, String uid, String memberDivision) {
+        if (!boardService.hasBoardPermission(gallId, uid, memberDivision, BoardService.PERMISSION_MANAGE_CONCEPT)) {
+            return Map.of("success", false, "message", "개념글을 지정할 권한이 없습니다.");
+        }
+        jdbcTemplate.update("UPDATE post SET is_concept = 1 WHERE gall_id = ? AND post_no = ? AND is_deleted = 0", gallId, postNo);
+        logModeration(gallId, uid, null, null, "concept_set", "manual");
+        return Map.of("success", true);
+    }
+
+    @Transactional
+    public Map<String, Object> bumpPost(String gallId, long postNo, String uid, String memberDivision) {
+        if (!boardService.hasBoardPermission(gallId, uid, memberDivision, BoardService.PERMISSION_BUMP_POST)) {
+            return Map.of("success", false, "message", "포스트를 끌올할 권한이 없습니다.");
+        }
+        jdbcTemplate.update("UPDATE post SET writed_at = NOW() WHERE gall_id = ? AND post_no = ? AND is_deleted = 0", gallId, postNo);
+        logModeration(gallId, uid, null, null, "post_bump", "manual");
+        return Map.of("success", true);
+    }
+
+    @Transactional
+    public Map<String, Object> setNotice(String gallId, long postNo, boolean notice, String uid, String memberDivision) {
+        if (!boardService.hasBoardPermission(gallId, uid, memberDivision, BoardService.PERMISSION_MANAGE_NOTICE)) {
+            return Map.of("success", false, "message", "공지 등록 권한이 없습니다.");
+        }
+        jdbcTemplate.update("""
+                UPDATE post
+                SET is_notice = ?,
+                    pinned_at = CASE WHEN ? = 1 THEN COALESCE(pinned_at, NOW()) ELSE NULL END
+                WHERE gall_id = ? AND post_no = ? AND is_deleted = 0
+                """, notice ? 1 : 0, notice ? 1 : 0, gallId, postNo);
+        logModeration(gallId, uid, null, null, notice ? "notice_set" : "notice_unset", "manual");
         return Map.of("success", true);
     }
 
@@ -474,7 +513,7 @@ public class FeatureService {
 
     @Transactional
     public Map<String, Object> approveJoinBoard(String gallId, String targetUid, String actorUid, String memberDivision) {
-        if (!isAdmin(memberDivision) && !isBoardStaff(gallId, actorUid)) {
+        if (!boardService.hasBoardPermission(gallId, actorUid, memberDivision, BoardService.PERMISSION_MANAGE_WRITE)) {
             return Map.of("success", false, "message", "가입 요청을 승인할 권한이 없습니다.");
         }
         String target = required(targetUid, "대상 UID가 필요합니다.");
@@ -550,7 +589,7 @@ public class FeatureService {
 
     @Transactional
     public Map<String, Object> addForbiddenWord(String gallId, String word, String action, String actorUid, String memberDivision) {
-        if (!isAdmin(memberDivision) && !isBoardStaff(gallId, actorUid)) {
+        if (!boardService.hasBoardPermission(gallId, actorUid, memberDivision, BoardService.PERMISSION_MANAGE_FORBIDDEN_WORD)) {
             return Map.of("success", false, "message", "금칙어를 설정할 권한이 없습니다.");
         }
         jdbcTemplate.update("""
@@ -562,7 +601,7 @@ public class FeatureService {
 
     @Transactional
     public Map<String, Object> banFromBoard(String gallId, String targetUid, String targetIp, String reason, String expiresAt, String actorUid, String memberDivision) {
-        if (!isAdmin(memberDivision) && !isBoardStaff(gallId, actorUid)) {
+        if (!boardService.hasBoardPermission(gallId, actorUid, memberDivision, BoardService.PERMISSION_BAN_USER)) {
             return Map.of("success", false, "message", "차단 권한이 없습니다.");
         }
         jdbcTemplate.update("""

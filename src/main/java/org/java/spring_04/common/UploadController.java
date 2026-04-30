@@ -43,6 +43,12 @@ public class UploadController {
                             ? "Guest image upload is disabled for this board."
                             : "Member image upload is disabled for this board."
             ));
+        } else {
+            try {
+                boardService.assertAttachmentPolicy(normalizedGallId, file.getContentType(), file.getSize());
+            } catch (RuntimeException e) {
+                return ResponseEntity.badRequest().body(Map.of("success", false, "message", e.getMessage()));
+            }
         }
         try {
             String url = gcsImageService.uploadImage(file);

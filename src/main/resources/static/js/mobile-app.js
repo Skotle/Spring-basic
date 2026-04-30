@@ -665,11 +665,15 @@
         : !canDownvote
           ? "오늘 비추천은 이미 사용했습니다. 추천은 가능합니다."
           : "추천과 비추천은 각각 하루 1회 가능합니다.";
+    const isDeletedComment = (item) => Number(item?.is_deleted || 0) === 1;
+    const commentDepth = (item) => Math.max(0, Math.min(2, Number(item?.reply_depth || (item?.parent_id ? 1 : 0)) || 0));
+    const isReplyComment = (item) => commentDepth(item) > 0 || !!item?.parent_id;
+    const deletedCommentHtml = (item) => isReplyComment(item) ? "<p>삭제된 답글입니다.</p>" : "<p>삭제된 댓글입니다.</p>";
 
     return h(React.Fragment, null,
       h(MobileTopbar, { session, onLogout, alarmCount }),
-      h("main", { className: "m-shell m-stack" },
-        h("article", { className: "m-post-card" },
+      h("main", { className: "m-shell m-stack m-post-detail-page" },
+        h("article", { className: "m-post-detail" },
           post
             ? [
                 h("div", { className: "m-meta m-muted", key: "meta" },
@@ -702,10 +706,12 @@
                   h(MSectionHead, { eyebrow: "Comments", title: "댓글" }),
                   comments.length
                     ? comments.map((comment) =>
-                        h("div", { className: "m-post-row", key: comment.id || comment.comment_id },
-                          h("div", { className: "m-meta m-muted" }, h(MMemberIdentity, { item: comment }), h("span", null, formatDate(comment.writed_at || comment.created_at))),
-                          h("div", { className: "m-post-title", style: { fontSize: "0.98rem" } }, comment.content || ""),
-                          h("div", { className: "m-inline", style: { marginTop: "8px" } },
+                        h("div", { className: ["m-post-row", "m-comment-row", `depth-${commentDepth(comment)}`, isDeletedComment(comment) ? "is-deleted" : "", isReplyComment(comment) ? "is-reply" : ""].filter(Boolean).join(" "), key: comment.id || comment.comment_id },
+                          isDeletedComment(comment)
+                            ? h("div", { className: "m-meta m-muted m-deleted-comment-label" }, isReplyComment(comment) ? "↳ 삭제된 답글" : "삭제된 댓글")
+                            : h("div", { className: "m-meta m-muted" }, h(MMemberIdentity, { item: comment }), h("span", null, formatDate(comment.writed_at || comment.created_at))),
+                          h("div", { className: "m-post-title", style: { fontSize: "0.98rem" }, dangerouslySetInnerHTML: { __html: isDeletedComment(comment) ? deletedCommentHtml(comment) : (comment.content || "") } }),
+                          isDeletedComment(comment) ? null : h("div", { className: "m-inline", style: { marginTop: "8px" } },
                             h("button", { type: "button", className: "m-btn m-btn-secondary", onClick: () => onLikeComment(comment) }, `공감 ${comment.like_count ?? 0}`),
                             h("button", { type: "button", className: "m-btn m-btn-secondary", onClick: () => onReportComment(comment) }, "신고")
                           )

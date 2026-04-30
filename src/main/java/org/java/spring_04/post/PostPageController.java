@@ -103,7 +103,10 @@ public class PostPageController {
         );
         System.out.println("[" + LocalDateTime.now() + "] PAGE POST RESULT /board/" + gid + "/" + postNo + "/delete success=" + result.get("success") + " message=" + result.get("message"));
         putFlash(redirectAttributes, result, "Post deleted.");
-        return "redirect:/board/" + gid + "?page=" + normalizePage(page);
+        if (Boolean.TRUE.equals(result.get("success"))) {
+            return "redirect:/board/" + gid + "?page=" + normalizePage(page);
+        }
+        return "redirect:/board/" + gid + "/" + postNo + "?page=" + normalizePage(page);
     }
 
     @PostMapping("/board/{gid}/{postNo}/comment/{commentId}/delete")

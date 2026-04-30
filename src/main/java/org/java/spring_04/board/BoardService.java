@@ -35,6 +35,38 @@ public class BoardService {
     private static final String ALARM_TYPE_MANAGER_REJECTED = "board_manager_request_rejected";
     private static final String ALARM_TYPE_SUBMANAGER_REJECTED = "board_submanager_request_rejected";
     private static final String ALARM_TYPE_SIDE_BOARD_REJECTED = "side_board_request_rejected";
+    public static final String PERMISSION_DELETE_POST = "can_delete_post";
+    public static final String PERMISSION_DELETE_COMMENT = "can_delete_comment";
+    public static final String PERMISSION_MANAGE_WRITE = "can_manage_write";
+    public static final String PERMISSION_MANAGE_GUEST_PENALTY = "can_manage_guest_penalty";
+    public static final String PERMISSION_MANAGE_TAGS = "can_manage_tags";
+    public static final String PERMISSION_MANAGE_IMAGES = "can_manage_images";
+    public static final String PERMISSION_MANAGE_NOTICE = "can_manage_notice";
+    public static final String PERMISSION_MANAGE_CATEGORIES = "can_manage_categories";
+    public static final String PERMISSION_MANAGE_COVER = "can_manage_cover";
+    public static final String PERMISSION_BAN_USER = "can_ban_user";
+    public static final String PERMISSION_MANAGE_FORBIDDEN_WORD = "can_manage_forbidden_word";
+    public static final String PERMISSION_BUMP_POST = "can_bump_post";
+    public static final String PERMISSION_MANAGE_CONCEPT = "can_manage_concept";
+    public static final String PERMISSION_MANAGE_CONCEPT_CUT = "can_manage_concept_cut";
+    public static final String PERMISSION_MANAGE_SUBMANAGER = "can_manage_submanager";
+    private static final List<String> SUBMANAGER_PERMISSION_COLUMNS = List.of(
+            PERMISSION_DELETE_POST,
+            PERMISSION_DELETE_COMMENT,
+            PERMISSION_MANAGE_WRITE,
+            PERMISSION_MANAGE_GUEST_PENALTY,
+            PERMISSION_MANAGE_TAGS,
+            PERMISSION_MANAGE_IMAGES,
+            PERMISSION_MANAGE_NOTICE,
+            PERMISSION_MANAGE_CATEGORIES,
+            PERMISSION_MANAGE_COVER,
+            PERMISSION_BAN_USER,
+            PERMISSION_MANAGE_FORBIDDEN_WORD,
+            PERMISSION_BUMP_POST,
+            PERMISSION_MANAGE_CONCEPT,
+            PERMISSION_MANAGE_CONCEPT_CUT,
+            PERMISSION_MANAGE_SUBMANAGER
+    );
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -53,9 +85,25 @@ public class BoardService {
                     uid VARCHAR(50) NOT NULL,
                     appointed_by VARCHAR(50) NULL,
                     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    can_delete_post TINYINT(1) NOT NULL DEFAULT 1,
+                    can_delete_comment TINYINT(1) NOT NULL DEFAULT 1,
+                    can_manage_write TINYINT(1) NOT NULL DEFAULT 1,
+                    can_manage_guest_penalty TINYINT(1) NOT NULL DEFAULT 1,
+                    can_manage_tags TINYINT(1) NOT NULL DEFAULT 1,
+                    can_manage_images TINYINT(1) NOT NULL DEFAULT 1,
+                    can_manage_notice TINYINT(1) NOT NULL DEFAULT 1,
+                    can_manage_categories TINYINT(1) NOT NULL DEFAULT 1,
+                    can_manage_cover TINYINT(1) NOT NULL DEFAULT 1,
+                    can_ban_user TINYINT(1) NOT NULL DEFAULT 1,
+                    can_manage_forbidden_word TINYINT(1) NOT NULL DEFAULT 1,
+                    can_bump_post TINYINT(1) NOT NULL DEFAULT 1,
+                    can_manage_concept TINYINT(1) NOT NULL DEFAULT 1,
+                    can_manage_concept_cut TINYINT(1) NOT NULL DEFAULT 1,
+                    can_manage_submanager TINYINT(1) NOT NULL DEFAULT 0,
                     PRIMARY KEY (gall_id, uid)
                 )
                 """);
+        ensureSubmanagerPermissionColumns();
         jdbcTemplate.execute("""
                 CREATE TABLE IF NOT EXISTS alarm (
                     alarm_id BIGINT NOT NULL AUTO_INCREMENT,
@@ -182,6 +230,15 @@ public class BoardService {
         }
         if (!columnExists("post", "category")) {
             jdbcTemplate.execute("ALTER TABLE post ADD COLUMN category VARCHAR(50) NULL");
+        }
+    }
+
+    private void ensureSubmanagerPermissionColumns() {
+        for (String column : SUBMANAGER_PERMISSION_COLUMNS) {
+            if (!columnExists("board_submanager", column)) {
+                int defaultValue = PERMISSION_MANAGE_SUBMANAGER.equals(column) ? 0 : 1;
+                jdbcTemplate.execute("ALTER TABLE board_submanager ADD COLUMN " + column + " TINYINT(1) NOT NULL DEFAULT " + defaultValue);
+            }
         }
     }
 
@@ -325,7 +382,7 @@ public class BoardService {
                   AND COALESCE(p.is_draft, 0) = 0
                   AND COALESCE(p.is_secret, 0) = 0
                   AND COALESCE(p.review_status, 'normal') <> 'review'
-                ORDER BY p.writed_at DESC, p.id DESC, p.post_no DESC
+                ORDER BY COALESCE(p.is_notice, 0) DESC, p.pinned_at DESC, p.writed_at DESC, p.id DESC, p.post_no DESC
                 LIMIT ? OFFSET ?
                 """;
         return decorateListRows(sanitizeRowsContent(jdbcTemplate.queryForList(sql, gallId, size, offset)));
@@ -385,13 +442,35 @@ public class BoardService {
         ));
         result.put("submanagers", getSubmanagers(gallId));
         result.put("settings", getBoardSettings(gallId));
-        result.put("permissions", Map.of(
-                "isManager", isBoardManager(gallId, viewerUid),
-                "isSubmanager", isBoardSubmanager(gallId, viewerUid),
-                "canManage", canManageBoard(gallId, viewerUid, viewerDivision),
-                "canAppoint", canAssignBoardStaff(gallId, viewerUid, viewerDivision),
-                "isAdmin", isGlobalAdmin(viewerDivision)
-        ));
+        boolean isAdmin = isGlobalAdmin(viewerDivision);
+        boolean isManager = isBoardManager(gallId, viewerUid);
+        boolean isSubmanager = isBoardSubmanager(gallId, viewerUid);
+        Map<String, Object> permissions = new LinkedHashMap<>();
+        permissions.put("isManager", isManager);
+        permissions.put("isSubmanager", isSubmanager);
+        permissions.put("isAdmin", isAdmin);
+        permissions.put("canManage", canManageBoard(gallId, viewerUid, viewerDivision));
+        permissions.put("canEditSettings", canEditBoardSettings(gallId, viewerUid, viewerDivision));
+        permissions.put("canModerate", canModerateBoardContent(gallId, viewerUid, viewerDivision));
+        permissions.put("canDeletePost", canDeletePost(gallId, viewerUid, viewerDivision));
+        permissions.put("canDeleteComment", canDeleteComment(gallId, viewerUid, viewerDivision));
+        permissions.put("canManageWrite", hasBoardPermission(gallId, viewerUid, viewerDivision, PERMISSION_MANAGE_WRITE));
+        permissions.put("canManageGuestPenalty", hasBoardPermission(gallId, viewerUid, viewerDivision, PERMISSION_MANAGE_GUEST_PENALTY));
+        permissions.put("canManageTags", hasBoardPermission(gallId, viewerUid, viewerDivision, PERMISSION_MANAGE_TAGS));
+        permissions.put("canManageImages", hasBoardPermission(gallId, viewerUid, viewerDivision, PERMISSION_MANAGE_IMAGES));
+        permissions.put("canManageNotice", hasBoardPermission(gallId, viewerUid, viewerDivision, PERMISSION_MANAGE_NOTICE));
+        permissions.put("canManageCategories", hasBoardPermission(gallId, viewerUid, viewerDivision, PERMISSION_MANAGE_CATEGORIES));
+        permissions.put("canManageCover", hasBoardPermission(gallId, viewerUid, viewerDivision, PERMISSION_MANAGE_COVER));
+        permissions.put("canBanUser", hasBoardPermission(gallId, viewerUid, viewerDivision, PERMISSION_BAN_USER));
+        permissions.put("canManageForbiddenWord", hasBoardPermission(gallId, viewerUid, viewerDivision, PERMISSION_MANAGE_FORBIDDEN_WORD));
+        permissions.put("canBumpPost", hasBoardPermission(gallId, viewerUid, viewerDivision, PERMISSION_BUMP_POST));
+        permissions.put("canManageConcept", hasBoardPermission(gallId, viewerUid, viewerDivision, PERMISSION_MANAGE_CONCEPT));
+        permissions.put("canManageConceptCut", hasBoardPermission(gallId, viewerUid, viewerDivision, PERMISSION_MANAGE_CONCEPT_CUT));
+        permissions.put("canManageSubmanager", hasBoardPermission(gallId, viewerUid, viewerDivision, PERMISSION_MANAGE_SUBMANAGER));
+        permissions.put("canAppoint", canAssignBoardStaff(gallId, viewerUid, viewerDivision));
+        permissions.put("canAssignSubmanager", canAssignBoardStaff(gallId, viewerUid, viewerDivision));
+        permissions.put("canTransferManager", canTransferBoardManager(gallId, viewerUid, viewerDivision));
+        result.put("permissions", permissions);
         result.put("roleLabels", resolveBoardRoleLabels(gallId, viewerUid, viewerDivision));
         return result;
     }
@@ -453,7 +532,8 @@ public class BoardService {
         String actorUid = required(uid, "로그인 정보가 필요합니다.");
 
         requireBoard(boardId);
-        if (!canManageBoard(boardId, actorUid, memberDivision)) {
+        Map<String, Object> currentSettings = getBoardSettings(boardId);
+        if (!canEditBoardSettings(boardId, actorUid, memberDivision)) {
             throw new RuntimeException("게시판 설정을 변경할 권한이 없습니다.");
         }
 
@@ -474,6 +554,30 @@ public class BoardService {
         long attachmentMaxBytes = normalizeLong(payload.get("attachmentMaxBytes"), 10_485_760L);
         String sideBoardApprovalPolicy = normalizeChoice(payload.get("sideBoardApprovalPolicy"), List.of("operator", "auto"), "operator");
         int dormantAfterDays = normalizeNonNegativeInt(payload.get("dormantAfterDays"), 180);
+
+        assertBoardSettingPermissions(
+                boardId,
+                actorUid,
+                memberDivision,
+                currentSettings,
+                boardNotice,
+                welcomeMessage,
+                coverImageUrl,
+                categoryOptions,
+                themeColor,
+                conceptRecommendThreshold,
+                allowGuestPost,
+                allowGuestComment,
+                allowMemberImage,
+                allowGuestImage,
+                joinPolicy,
+                visibility,
+                pinnedNoticeCount,
+                allowedAttachmentTypes,
+                attachmentMaxBytes,
+                sideBoardApprovalPolicy,
+                dormantAfterDays
+        );
 
         jdbcTemplate.update("""
                 INSERT INTO gallery_setting (
@@ -529,6 +633,84 @@ public class BoardService {
         return getBoardSettings(boardId);
     }
 
+    private void assertBoardSettingPermissions(
+            String boardId,
+            String actorUid,
+            String memberDivision,
+            Map<String, Object> current,
+            String boardNotice,
+            String welcomeMessage,
+            String coverImageUrl,
+            String categoryOptions,
+            String themeColor,
+            int conceptRecommendThreshold,
+            int allowGuestPost,
+            int allowGuestComment,
+            int allowMemberImage,
+            int allowGuestImage,
+            String joinPolicy,
+            String visibility,
+            int pinnedNoticeCount,
+            String allowedAttachmentTypes,
+            long attachmentMaxBytes,
+            String sideBoardApprovalPolicy,
+            int dormantAfterDays
+    ) {
+        requirePermissionIfChanged(boardId, actorUid, memberDivision, current, "board_notice", boardNotice, PERMISSION_MANAGE_NOTICE, "공지 등록 권한이 없습니다.");
+        requirePermissionIfChanged(boardId, actorUid, memberDivision, current, "welcome_message", welcomeMessage, PERMISSION_MANAGE_NOTICE, "공지/안내 문구 변경 권한이 없습니다.");
+        requirePermissionIfChanged(boardId, actorUid, memberDivision, current, "cover_image_url", coverImageUrl, PERMISSION_MANAGE_COVER, "대문 변경 권한이 없습니다.");
+        requirePermissionIfChanged(boardId, actorUid, memberDivision, current, "theme_color", themeColor, PERMISSION_MANAGE_COVER, "대문/테마 변경 권한이 없습니다.");
+        requirePermissionIfChanged(boardId, actorUid, memberDivision, current, "category_options", categoryOptions, PERMISSION_MANAGE_CATEGORIES, "말머리 변경 권한이 없습니다.");
+        requirePermissionIfIntChanged(boardId, actorUid, memberDivision, current, "concept_recommend_threshold", conceptRecommendThreshold, PERMISSION_MANAGE_CONCEPT_CUT, "개념컷 설정 권한이 없습니다.");
+        requirePermissionIfFlagChanged(boardId, actorUid, memberDivision, current, "allow_guest_post", allowGuestPost, PERMISSION_MANAGE_WRITE, "작성 권한 지정 권한이 없습니다.");
+        requirePermissionIfFlagChanged(boardId, actorUid, memberDivision, current, "allow_guest_comment", allowGuestComment, PERMISSION_MANAGE_WRITE, "댓글 작성 권한 지정 권한이 없습니다.");
+        requirePermissionIfFlagChanged(boardId, actorUid, memberDivision, current, "allow_member_image", allowMemberImage, PERMISSION_MANAGE_IMAGES, "이미지 등록 권한 지정 권한이 없습니다.");
+        requirePermissionIfFlagChanged(boardId, actorUid, memberDivision, current, "allow_guest_image", allowGuestImage, PERMISSION_MANAGE_IMAGES, "이미지 등록 권한 지정 권한이 없습니다.");
+        requirePermissionIfChanged(boardId, actorUid, memberDivision, current, "join_policy", joinPolicy, PERMISSION_MANAGE_GUEST_PENALTY, "비회원/가입 정책 변경 권한이 없습니다.");
+        requirePermissionIfChanged(boardId, actorUid, memberDivision, current, "visibility", visibility, PERMISSION_MANAGE_GUEST_PENALTY, "공개 범위 변경 권한이 없습니다.");
+        requirePermissionIfIntChanged(boardId, actorUid, memberDivision, current, "pinned_notice_count", pinnedNoticeCount, PERMISSION_MANAGE_NOTICE, "공지 등록 권한이 없습니다.");
+        requirePermissionIfChanged(boardId, actorUid, memberDivision, current, "allowed_attachment_types", allowedAttachmentTypes, PERMISSION_MANAGE_IMAGES, "이미지 차단 설정 권한이 없습니다.");
+        requirePermissionIfLongChanged(boardId, actorUid, memberDivision, current, "attachment_max_bytes", attachmentMaxBytes, PERMISSION_MANAGE_IMAGES, "이미지 차단 설정 권한이 없습니다.");
+        requirePermissionIfChanged(boardId, actorUid, memberDivision, current, "side_board_approval_policy", sideBoardApprovalPolicy, PERMISSION_MANAGE_SUBMANAGER, "부매니저 권한제어 권한이 없습니다.");
+        requirePermissionIfIntChanged(boardId, actorUid, memberDivision, current, "dormant_after_days", dormantAfterDays, PERMISSION_MANAGE_GUEST_PENALTY, "비회원 불이익 설정 권한이 없습니다.");
+    }
+
+    private void requirePermissionIfChanged(String boardId, String actorUid, String memberDivision, Map<String, Object> current, String key, String nextValue, String permission, String message) {
+        if (!sameText(nullableText(current.get(key)), nextValue)) {
+            requireBoardPermission(boardId, actorUid, memberDivision, permission, message);
+        }
+    }
+
+    private void requirePermissionIfFlagChanged(String boardId, String actorUid, String memberDivision, Map<String, Object> current, String key, int nextValue, String permission, String message) {
+        if ((toBooleanFlag(current.get(key)) ? 1 : 0) != nextValue) {
+            requireBoardPermission(boardId, actorUid, memberDivision, permission, message);
+        }
+    }
+
+    private void requirePermissionIfIntChanged(String boardId, String actorUid, String memberDivision, Map<String, Object> current, String key, int nextValue, String permission, String message) {
+        if (normalizeNonNegativeInt(current.get(key), 0) != nextValue) {
+            requireBoardPermission(boardId, actorUid, memberDivision, permission, message);
+        }
+    }
+
+    private void requirePermissionIfLongChanged(String boardId, String actorUid, String memberDivision, Map<String, Object> current, String key, long nextValue, String permission, String message) {
+        if (normalizeLong(current.get(key), 0L) != nextValue) {
+            requireBoardPermission(boardId, actorUid, memberDivision, permission, message);
+        }
+    }
+
+    private void requireBoardPermission(String boardId, String actorUid, String memberDivision, String permission, String message) {
+        if (!hasBoardPermission(boardId, actorUid, memberDivision, permission)) {
+            throw new RuntimeException(message);
+        }
+    }
+
+    private boolean sameText(String left, String right) {
+        String normalizedLeft = left == null ? "" : left.trim();
+        String normalizedRight = right == null ? "" : right.trim();
+        return normalizedLeft.equals(normalizedRight);
+    }
+
     public boolean canUploadImage(String gallId, String uid) {
         Map<String, Object> settings = getBoardSettings(gallId);
         if (uid != null && !uid.isBlank()) {
@@ -537,8 +719,40 @@ public class BoardService {
         return toBooleanFlag(settings.get("allow_guest_image"));
     }
 
+    public void assertAttachmentPolicy(String gallId, String contentType, long size) {
+        Map<String, Object> settings = getBoardSettings(gallId);
+        long maxBytes = normalizeLong(settings.get("attachment_max_bytes"), 10_485_760L);
+        if (maxBytes > 0 && size > maxBytes) {
+            throw new RuntimeException("이 보드의 첨부 최대 용량을 초과했습니다.");
+        }
+        String allowedTypes = nullableText(settings.get("allowed_attachment_types"));
+        if (allowedTypes == null) {
+            return;
+        }
+        String normalizedType = nullableText(contentType);
+        if (normalizedType == null) {
+            throw new RuntimeException("첨부 파일 형식을 확인할 수 없습니다.");
+        }
+        boolean allowed = false;
+        for (String item : allowedTypes.split("[,\\r\\n]+")) {
+            String allowedType = item.trim();
+            if (!allowedType.isBlank() && allowedType.equalsIgnoreCase(normalizedType)) {
+                allowed = true;
+                break;
+            }
+        }
+        if (!allowed) {
+            throw new RuntimeException("이 보드에서 허용되지 않는 첨부 형식입니다.");
+        }
+    }
+
     @Transactional
     public void assignManager(String gallId, String targetUid, String actorUid, String actorDivision) {
+        assignManager(gallId, targetUid, actorUid, actorDivision, null);
+    }
+
+    @Transactional
+    public void assignManager(String gallId, String targetUid, String actorUid, String actorDivision, String actorPassword) {
         String boardId = required(gallId, "갤러리 ID를 입력해주세요.");
         String actor = required(actorUid, "요청자 정보를 입력해주세요.");
         String resolvedTarget = required(targetUid == null || targetUid.isBlank() ? actorUid : targetUid, "대상자 UID를 입력해주세요.");
@@ -561,11 +775,17 @@ public class BoardService {
             throw new RuntimeException("기존 매니저가 있는 갤러리는 부매니저 한 명에게만 양도할 수 있습니다.");
         }
 
+        requireManagerPasswordForStaffAction(boardId, actor, actorDivision, actorPassword, board, "매니저 위임");
         createBoardStaffRequest(board, resolvedTarget, actor, "manager");
     }
 
     @Transactional
     public void appointSubmanager(String gallId, String targetUid, String actorUid, String actorDivision) {
+        appointSubmanager(gallId, targetUid, actorUid, actorDivision, null);
+    }
+
+    @Transactional
+    public void appointSubmanager(String gallId, String targetUid, String actorUid, String actorDivision, String actorPassword) {
         String boardId = required(gallId, "갤러리 ID를 입력해주세요.");
         String actor = required(actorUid, "요청자 정보를 입력해주세요.");
         String resolvedTarget = required(targetUid, "부매니저 대상자 UID를 입력해주세요.");
@@ -582,11 +802,17 @@ public class BoardService {
             throw new RuntimeException("현재 매니저는 부매니저로 임명할 수 없습니다.");
         }
 
+        requireManagerPasswordForStaffAction(boardId, actor, actorDivision, actorPassword, board, "부매니저 임명");
         createBoardStaffRequest(board, resolvedTarget, actor, "submanager");
     }
 
     @Transactional
     public void revokeSubmanager(String gallId, String targetUid, String actorUid, String actorDivision) {
+        revokeSubmanager(gallId, targetUid, actorUid, actorDivision, null);
+    }
+
+    @Transactional
+    public void revokeSubmanager(String gallId, String targetUid, String actorUid, String actorDivision, String actorPassword) {
         String boardId = required(gallId, "갤러리 ID를 입력해주세요.");
         String actor = required(actorUid, "요청자 정보를 입력해주세요.");
         String resolvedTarget = required(targetUid, "부매니저 대상자 UID를 입력해주세요.");
@@ -597,7 +823,47 @@ public class BoardService {
             throw new RuntimeException("매니저만 부매니저를 해임할 수 있습니다.");
         }
 
+        requireManagerPasswordForStaffAction(boardId, actor, actorDivision, actorPassword, board, "부매니저 해임");
         jdbcTemplate.update("DELETE FROM board_submanager WHERE gall_id = ? AND uid = ?", boardId, resolvedTarget);
+    }
+
+    @Transactional
+    public Map<String, Object> updateSubmanagerPermissions(String gallId, String targetUid, Map<String, String> payload, String actorUid, String actorDivision) {
+        String boardId = required(gallId, "갤러리 ID를 입력해주세요.");
+        String actor = required(actorUid, "로그인 정보가 필요합니다.");
+        String resolvedTarget = required(targetUid, "부매니저 UID를 입력해주세요.");
+        Map<String, Object> board = requireBoard(boardId);
+        ensureManagedBoardEligible(board);
+
+        if (!canAssignBoardStaff(boardId, actor, actorDivision)
+                && !hasBoardPermission(boardId, actor, actorDivision, PERMISSION_MANAGE_SUBMANAGER)) {
+            throw new RuntimeException("부매니저 권한을 변경할 권한이 없습니다.");
+        }
+        if (!isBoardSubmanager(boardId, resolvedTarget)) {
+            throw new RuntimeException("해당 사용자는 이 보드의 부매니저가 아닙니다.");
+        }
+
+        StringBuilder sql = new StringBuilder("UPDATE board_submanager SET ");
+        List<Object> args = new ArrayList<>();
+        boolean appended = false;
+        for (String column : SUBMANAGER_PERMISSION_COLUMNS) {
+            if (payload != null && payload.containsKey(column)) {
+                if (appended) {
+                    sql.append(", ");
+                }
+                sql.append(column).append(" = ?");
+                args.add(parseBooleanFlag(payload.get(column)));
+                appended = true;
+            }
+        }
+        if (!appended) {
+            throw new RuntimeException("변경할 권한 항목이 없습니다.");
+        }
+        sql.append(" WHERE gall_id = ? AND uid = ?");
+        args.add(boardId);
+        args.add(resolvedTarget);
+        jdbcTemplate.update(sql.toString(), args.toArray());
+        return getBoardManageInfo(boardId, actor, actorDivision);
     }
 
     public List<Map<String, Object>> getMyAlarms(String uid) {
@@ -906,25 +1172,115 @@ public class BoardService {
     }
 
     public boolean canManageBoard(String gallId, String uid, String memberDivision) {
-        if (uid == null || uid.isBlank()) {
-            return false;
-        }
         Map<String, Object> board = getBoardRow(gallId);
         if (!isManagedBoardEligible(board)) {
+            return false;
+        }
+        if (isGlobalAdmin(memberDivision)) {
+            return true;
+        }
+        if (uid == null || uid.isBlank()) {
             return false;
         }
         return isGlobalAdmin(memberDivision) || isBoardManager(gallId, uid) || isBoardSubmanager(gallId, uid);
     }
 
-    public boolean canAssignBoardStaff(String gallId, String uid, String memberDivision) {
+    public boolean canModerateBoardContent(String gallId, String uid, String memberDivision) {
+        return canDeletePost(gallId, uid, memberDivision)
+                || canDeleteComment(gallId, uid, memberDivision)
+                || hasBoardPermission(gallId, uid, memberDivision, PERMISSION_BAN_USER)
+                || hasBoardPermission(gallId, uid, memberDivision, PERMISSION_MANAGE_FORBIDDEN_WORD)
+                || hasBoardPermission(gallId, uid, memberDivision, PERMISSION_MANAGE_CONCEPT)
+                || hasBoardPermission(gallId, uid, memberDivision, PERMISSION_BUMP_POST);
+    }
+
+    public boolean canEditBoardSettings(String gallId, String uid, String memberDivision) {
+        return hasBoardPermission(gallId, uid, memberDivision, PERMISSION_MANAGE_WRITE)
+                || hasBoardPermission(gallId, uid, memberDivision, PERMISSION_MANAGE_GUEST_PENALTY)
+                || hasBoardPermission(gallId, uid, memberDivision, PERMISSION_MANAGE_TAGS)
+                || hasBoardPermission(gallId, uid, memberDivision, PERMISSION_MANAGE_IMAGES)
+                || hasBoardPermission(gallId, uid, memberDivision, PERMISSION_MANAGE_NOTICE)
+                || hasBoardPermission(gallId, uid, memberDivision, PERMISSION_MANAGE_CATEGORIES)
+                || hasBoardPermission(gallId, uid, memberDivision, PERMISSION_MANAGE_COVER)
+                || hasBoardPermission(gallId, uid, memberDivision, PERMISSION_MANAGE_CONCEPT_CUT);
+    }
+
+    public boolean canDeletePost(String gallId, String uid, String memberDivision) {
+        return hasBoardDeletePermission(gallId, uid, memberDivision, PERMISSION_DELETE_POST);
+    }
+
+    public boolean canDeleteComment(String gallId, String uid, String memberDivision) {
+        return hasBoardDeletePermission(gallId, uid, memberDivision, PERMISSION_DELETE_COMMENT);
+    }
+
+    private boolean hasBoardDeletePermission(String gallId, String uid, String memberDivision, String permissionColumn) {
+        if (isGlobalAdmin(memberDivision)) {
+            return true;
+        }
         if (uid == null || uid.isBlank()) {
+            return false;
+        }
+        if (isBoardManager(gallId, uid)) {
+            return true;
+        }
+        return hasBoardPermission(gallId, uid, memberDivision, permissionColumn);
+    }
+
+    public boolean hasBoardPermission(String gallId, String uid, String memberDivision, String permissionColumn) {
+        if (!SUBMANAGER_PERMISSION_COLUMNS.contains(permissionColumn)) {
             return false;
         }
         Map<String, Object> board = getBoardRow(gallId);
         if (!isManagedBoardEligible(board)) {
             return false;
         }
-        return isGlobalAdmin(memberDivision) || isBoardManager(gallId, uid);
+        if (isGlobalAdmin(memberDivision)) {
+            return true;
+        }
+        if (uid == null || uid.isBlank()) {
+            return false;
+        }
+        if (isBoardManager(gallId, uid)) {
+            return true;
+        }
+        if (!isBoardSubmanager(gallId, uid)) {
+            return false;
+        }
+        Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM board_submanager WHERE gall_id = ? AND uid = ? AND " + permissionColumn + " = 1",
+                Integer.class,
+                gallId,
+                uid
+        );
+        return count != null && count > 0;
+    }
+
+    public boolean canAssignBoardStaff(String gallId, String uid, String memberDivision) {
+        Map<String, Object> board = getBoardRow(gallId);
+        if (!isManagedBoardEligible(board)) {
+            return false;
+        }
+        if (isGlobalAdmin(memberDivision)) {
+            return true;
+        }
+        if (uid == null || uid.isBlank()) {
+            return false;
+        }
+        return isBoardManager(gallId, uid);
+    }
+
+    public boolean canTransferBoardManager(String gallId, String uid, String memberDivision) {
+        Map<String, Object> board = getBoardRow(gallId);
+        if (!isManagedBoardEligible(board)) {
+            return false;
+        }
+        if (isGlobalAdmin(memberDivision)) {
+            return true;
+        }
+        if (uid == null || uid.isBlank()) {
+            return false;
+        }
+        return isBoardManager(gallId, uid);
     }
 
     public boolean isBoardManager(String gallId, String uid) {
@@ -959,7 +1315,22 @@ public class BoardService {
                        u.nick,
                        bs.appointed_by,
                        appointor.nick AS appointed_by_nick,
-                       bs.created_at
+                       bs.created_at,
+                       bs.can_delete_post,
+                       bs.can_delete_comment,
+                       bs.can_manage_write,
+                       bs.can_manage_guest_penalty,
+                       bs.can_manage_tags,
+                       bs.can_manage_images,
+                       bs.can_manage_notice,
+                       bs.can_manage_categories,
+                       bs.can_manage_cover,
+                       bs.can_ban_user,
+                       bs.can_manage_forbidden_word,
+                       bs.can_bump_post,
+                       bs.can_manage_concept,
+                       bs.can_manage_concept_cut,
+                       bs.can_manage_submanager
                 FROM board_submanager bs
                 LEFT JOIN user u ON u.uid = bs.uid
                 LEFT JOIN user appointor ON appointor.uid = bs.appointed_by
@@ -1446,6 +1817,39 @@ public class BoardService {
     private void ensureManagedBoardEligible(Map<String, Object> board) {
         if (!isManagedBoardEligible(board)) {
             throw new RuntimeException("gall_type이 main인 게시판은 매니저를 지정할 수 없습니다.");
+        }
+    }
+
+    private void requireManagerPasswordForStaffAction(String boardId,
+                                                      String actorUid,
+                                                      String actorDivision,
+                                                      String actorPassword,
+                                                      Map<String, Object> board,
+                                                      String actionLabel) {
+        if (isGlobalAdmin(actorDivision)) {
+            return;
+        }
+        String currentManager = nullableText(board == null ? null : board.get("manager_uid"));
+        if (currentManager == null || !currentManager.equals(actorUid)) {
+            return;
+        }
+        String password = nullableTrim(actorPassword);
+        if (password == null) {
+            throw new RuntimeException(actionLabel + "을 하려면 매니저 비밀번호를 다시 입력해야 합니다.");
+        }
+        try {
+            String passwordHash = jdbcTemplate.queryForObject(
+                    "SELECT password_hash FROM user WHERE uid = ?",
+                    String.class,
+                    actorUid
+            );
+            if (passwordHash == null || passwordHash.isBlank() || !BCrypt.checkpw(password, passwordHash)) {
+                throw new RuntimeException("매니저 비밀번호가 일치하지 않습니다.");
+            }
+        } catch (EmptyResultDataAccessException e) {
+            throw new RuntimeException("매니저 계정을 찾을 수 없습니다.");
+        } catch (IllegalArgumentException e) {
+            throw new RuntimeException("매니저 비밀번호를 확인할 수 없습니다.");
         }
     }
 

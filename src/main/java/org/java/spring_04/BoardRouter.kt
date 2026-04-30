@@ -106,7 +106,7 @@ class BoardRouter(
     @GetMapping("/board/{gid}/settings")
     fun boardSettings(@PathVariable gid: String, session: HttpSession): String {
         logRequest("BOARD SETTINGS $gid")
-        if (!boardService.canManageBoard(gid, sessionUid(session), sessionDivision(session))) {
+        if (!boardService.canEditBoardSettings(gid, sessionUid(session), sessionDivision(session))) {
             return "redirect:/board/$gid"
         }
         return "index"
@@ -160,7 +160,9 @@ class BoardRouter(
 
         val comments = postService.getComments(gid, postNo).map { comment ->
             val copy = LinkedHashMap(comment)
-            copy["canDelete"] = canDelete(comment, session)
+            val deleted = flagEnabled(comment["is_deleted"])
+            copy["canDelete"] = !deleted && canDelete(comment, session, gid, false)
+            copy["requiresDeletePassword"] = requiresDeletePassword(comment, session)
             copy
         }
 
@@ -168,8 +170,9 @@ class BoardRouter(
         model.addAttribute("comments", comments)
         model.addAttribute("pagePosts", boardService.getPostsByGallery(gid, currentPage))
         model.addAttribute("voteState", postService.getVoteState(gid, postNo, sessionUid(session), extractClientIp(request)))
-        model.addAttribute("postCanDelete", canDelete(post, session))
-        println("[${LocalDateTime.now()}] POST PAGE RESULT | gid=$gid postNo=$postNo page=$currentPage comments=${comments.size} canDelete=${canDelete(post, session)}")
+        model.addAttribute("postCanDelete", canDelete(post, session, gid, true))
+        model.addAttribute("postRequiresDeletePassword", requiresDeletePassword(post, session))
+        println("[${LocalDateTime.now()}] POST PAGE RESULT | gid=$gid postNo=$postNo page=$currentPage comments=${comments.size} canDelete=${canDelete(post, session, gid, true)}")
         return "post"
     }
 
@@ -185,7 +188,12 @@ class BoardRouter(
 
     private fun isLoggedIn(session: HttpSession): Boolean = !sessionUid(session).isNullOrBlank()
 
-    private fun canDelete(row: Map<String, *>, session: HttpSession): Boolean {
+    private fun requiresDeletePassword(row: Map<String, *>, session: HttpSession): Boolean {
+        val writerUid = row["writer_uid"]?.toString()?.trim().orEmpty()
+        return writerUid.isBlank() && !isLoggedIn(session)
+    }
+
+    private fun canDelete(row: Map<String, *>, session: HttpSession, gallId: String, postDelete: Boolean): Boolean {
         val writerUid = row["writer_uid"]?.toString()?.trim().orEmpty()
         val currentUid = sessionUid(session)?.trim().orEmpty()
         val division = sessionDivision(session)
@@ -193,6 +201,7 @@ class BoardRouter(
                 || division.equals("admin", ignoreCase = true)
                 || division.equals("operator", ignoreCase = true)
         if (admin) return true
+        if (if (postDelete) boardService.canDeletePost(gallId, currentUid, division) else boardService.canDeleteComment(gallId, currentUid, division)) return true
         if (writerUid.isNotBlank()) return currentUid.isNotBlank() && writerUid == currentUid
         return currentUid.isBlank()
     }

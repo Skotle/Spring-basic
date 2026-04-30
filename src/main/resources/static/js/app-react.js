@@ -51,6 +51,24 @@
     return href === "/" ? "/m" : `/m${href}`;
   };
 
+  const SUBMANAGER_PERMISSION_FIELDS = [
+    ["can_delete_post", "포스트 삭제"],
+    ["can_delete_comment", "댓글 삭제"],
+    ["can_manage_write", "작성 권한 지정"],
+    ["can_manage_guest_penalty", "비회원 불이익 설정"],
+    ["can_manage_tags", "태그 설정"],
+    ["can_manage_images", "이미지 차단/등록 권한"],
+    ["can_manage_notice", "공지 등록"],
+    ["can_manage_categories", "말머리 추가"],
+    ["can_manage_cover", "대문 변경"],
+    ["can_ban_user", "사용자 차단"],
+    ["can_manage_forbidden_word", "금지 단어"],
+    ["can_bump_post", "포스트 끌올"],
+    ["can_manage_concept", "개념글 지정/취소"],
+    ["can_manage_concept_cut", "개념컷 설정"],
+    ["can_manage_submanager", "부매니저 권한제어"]
+  ];
+
   const normalizePathname = (pathname) => {
     if (pathname === "/m") return "/";
     if (pathname.startsWith("/m/")) return pathname.slice(2) || "/";
@@ -1005,8 +1023,9 @@
             h(PermissionMatrix, { items: [
               { action: "게시글 목록 보기", required: "비회원 포함 전체 사용자", available: true },
               { action: "게시글 작성", required: settings?.allow_guest_post !== false ? "비회원 또는 로그인 사용자" : "로그인 사용자", available: settings?.allow_guest_post !== false || !!session?.loggedIn, note: "비회원 작성 시 이름과 비밀번호가 필요합니다." },
-              { action: "보드 설정 변경", required: "관리자, 보드 매니저, 부매니저", available: !!permissions.canManage },
-              { action: "부매니저 임명/해임", required: "관리자 또는 보드 매니저", available: !!permissions.canAppoint }
+              { action: "보드 설정 변경", required: "관리자, 보드 매니저, 부매니저", available: !!permissions.canEditSettings },
+              { action: "게시글·댓글 관리", required: "관리자, 보드 매니저, 부매니저", available: !!permissions.canModerate },
+              { action: "부매니저 임명/해임", required: "관리자 또는 보드 매니저", available: !!permissions.canAssignSubmanager }
             ] }),
             h("div", { className: "dc-board-head" },
               h("div", { className: "dc-board-title-row" },
@@ -1014,7 +1033,7 @@
                 h("span", { className: "dc-board-id" }, gid)
               ),
               h("div", { className: "dc-board-head-links" },
-                permissions.canManage ? h(Link, { href: `/board/${encodeURIComponent(gid)}/manage`, className: "dc-head-link" }, "설정") : null,
+                permissions.canEditSettings ? h(Link, { href: `/board/${encodeURIComponent(gid)}/manage`, className: "dc-head-link" }, "설정") : null,
                 canWritePost
                   ? h(Link, { href: `/board/${encodeURIComponent(gid)}/write`, className: "dc-head-link dc-head-link-strong" }, "글쓰기")
                   : h("button", { type: "button", className: "dc-head-link dc-head-link-strong", disabled: true }, "글쓰기")
@@ -1240,9 +1259,102 @@
     );
   }
 
-  function BoardManageView({ session, gid, board, manageData, feedback, onSaveSettings, onLogout, alarmCount }) {
+  function SubmanagerPermissionPanel({ submanagers = [], permissions = {}, feedback, onSave, onAppoint, onRevoke, onTransfer }) {
+    const [drafts, setDrafts] = useState({});
+    const [appointUid, setAppointUid] = useState("");
+    const [transferUid, setTransferUid] = useState("");
+
+    useEffect(() => {
+      const nextDrafts = {};
+      submanagers.forEach((sub) => {
+        nextDrafts[sub.uid] = Object.fromEntries(SUBMANAGER_PERMISSION_FIELDS.map(([key]) => [key, flagEnabled(sub[key])]));
+      });
+      setDrafts(nextDrafts);
+    }, [submanagers.map((sub) => `${sub.uid}:${SUBMANAGER_PERMISSION_FIELDS.map(([key]) => sub[key]).join(",")}`).join("|")]);
+
+    const canAssign = !!permissions.canAssignSubmanager || !!permissions.isAdmin;
+    const canEdit = canAssign || !!permissions.canManageSubmanager;
+    const canTransfer = !!permissions.canTransferManager || !!permissions.isAdmin;
+
+    return h("article", { className: "card board-settings-card" },
+      h(SectionHead, { eyebrow: "Submanager", title: "부매니저 임명/해제" }),
+      h("div", { className: "stack" },
+        canAssign ? h("section", { className: "mini-link-card" },
+          h("div", { className: "board-title" }, "부매니저 임명"),
+          h("div", { className: "muted" }, "대상 UID를 입력하면 해당 사용자에게 부매니저 임명 요청 알림을 보냅니다."),
+          h("div", { className: "staff-action-row" },
+            h("input", { type: "text", value: appointUid, onChange: (event) => setAppointUid(event.target.value), placeholder: "대상 UID" }),
+            h("button", {
+              type: "button",
+              className: "btn btn-primary btn-compact",
+              onClick() {
+                const uid = appointUid.trim();
+                if (!uid) return;
+                onAppoint(uid, () => setAppointUid(""));
+              }
+            }, "임명 요청")
+          )
+        ) : null,
+        canTransfer ? h("section", { className: "mini-link-card" },
+          h("div", { className: "board-title" }, "매니저 위임"),
+          h("div", { className: "muted" }, "현재 부매니저 중 한 명에게 매니저 권한 위임 요청을 보냅니다."),
+          h("div", { className: "staff-action-row" },
+            h("input", { type: "text", value: transferUid, onChange: (event) => setTransferUid(event.target.value), placeholder: "위임 대상 UID" }),
+            h("button", {
+              type: "button",
+              className: "btn btn-secondary btn-compact",
+              onClick() {
+                const uid = transferUid.trim();
+                if (!uid) return;
+                onTransfer(uid, () => setTransferUid(""));
+              }
+            }, "위임 요청")
+          )
+        ) : null,
+        submanagers.length
+          ? submanagers.map((sub) =>
+          h("section", { className: "mini-link-card", key: sub.uid },
+            h("div", { className: "board-title" }, `${sub.nick || sub.uid} (${sub.uid})`),
+            h("div", { className: "permission-grid" },
+              SUBMANAGER_PERMISSION_FIELDS.map(([key, label]) =>
+                h("label", { className: "check-row", key: `${sub.uid}-${key}` },
+                  h("input", {
+                    type: "checkbox",
+                    disabled: !canEdit,
+                    checked: !!drafts[sub.uid]?.[key],
+                    onChange: (event) => setDrafts((current) => ({
+                      ...current,
+                      [sub.uid]: { ...(current[sub.uid] || {}), [key]: event.target.checked }
+                    }))
+                  }),
+                  h("span", null, label)
+                )
+              )
+            ),
+            canEdit || canAssign ? h("div", { className: "inline-actions" },
+              canEdit ? h("button", {
+                type: "button",
+                className: "btn btn-secondary btn-compact",
+                onClick: () => onSave(sub.uid, drafts[sub.uid] || {})
+              }, "권한 저장") : null,
+              canAssign ? h("button", {
+                type: "button",
+                className: "btn btn-ghost btn-compact",
+                onClick: () => onRevoke(sub.uid)
+              }, "해제") : null
+            ) : null
+          )
+        )
+          : h("div", { className: "empty-box" }, "등록된 부매니저가 없습니다."),
+        h(Feedback, { feedback })
+      )
+    );
+  }
+
+  function BoardManageView({ session, gid, board, manageData, feedback, submanagerFeedback, onSaveSettings, onSaveSubmanagerPermissions, onAppointSubmanager, onRevokeSubmanager, onTransferManager, onLogout, alarmCount }) {
     const permissions = manageData?.permissions || {};
     const settings = manageData?.settings || { gall_id: gid, theme_color: "#ff8fab", concept_recommend_threshold: 10, allow_guest_post: true, allow_guest_comment: true };
+    const submanagers = Array.isArray(manageData?.submanagers) ? manageData.submanagers : [];
     return h(React.Fragment, null,
       h(TopbarV2, { session, onLogout, alarmCount }),
       h("main", { className: "shell" },
@@ -1254,13 +1366,15 @@
               action: h(Link, { href: `/board/${encodeURIComponent(gid)}`, className: "btn btn-secondary" }, "보드로 돌아가기")
             }),
             h(PermissionMatrix, { items: [
-              { action: "보드 설정 저장", required: "관리자, 보드 매니저, 부매니저", available: !!permissions.canManage },
-              { action: "매니저 요청/양도", required: "관리자 또는 현재 매니저", available: !!permissions.canAppoint || !!permissions.isAdmin },
-              { action: "부매니저 임명/해임", required: "관리자 또는 현재 매니저", available: !!permissions.canAppoint }
+              { action: "보드 설정 저장", required: "관리자, 보드 매니저, 부매니저", available: !!permissions.canEditSettings },
+              { action: "게시글·댓글 관리", required: "관리자, 보드 매니저, 부매니저", available: !!permissions.canModerate },
+              { action: "매니저 요청/양도", required: "관리자 또는 현재 매니저", available: !!permissions.canTransferManager },
+              { action: "부매니저 임명/해임", required: "관리자 또는 현재 매니저", available: !!permissions.canAssignSubmanager }
             ] }),
-            permissions.canManage
+            permissions.canEditSettings
               ? h(BoardSettingsPanel, { settings, feedback, onSave: onSaveSettings })
-              : h("article", { className: "card board-settings-card" }, h("div", { className: "error-box" }, "이 보드를 관리할 권한이 없습니다."))
+              : h("article", { className: "card board-settings-card" }, h("div", { className: "error-box" }, "이 보드 설정을 변경할 권한이 없습니다.")),
+            h(SubmanagerPermissionPanel, { submanagers, permissions, feedback: submanagerFeedback, onSave: onSaveSubmanagerPermissions, onAppoint: onAppointSubmanager, onRevoke: onRevokeSubmanager, onTransfer: onTransferManager })
           )
         )
       )
@@ -1306,7 +1420,7 @@
     );
   }
 
-  function PostView({ session, gid, post, comments, feedback, deleteFeedback, voteFeedback, voteState, manageData, onSubmitComment, onDeletePost, onDeleteComment, onVote, onScrapPost, onReportPost, onLikeComment, onReportComment, onCancelConcept, onLogout, alarmCount }) {
+  function PostView({ session, gid, post, comments, feedback, deleteFeedback, voteFeedback, voteState, manageData, onSubmitComment, onDeletePost, onDeleteComment, onVote, onScrapPost, onReportPost, onLikeComment, onReportComment, onCancelConcept, onSetConcept, onBumpPost, onSetNotice, onLogout, alarmCount }) {
     const [content, setContent] = useState("");
     const [guestName, setGuestName] = useState("");
     const [guestPassword, setGuestPassword] = useState("");
@@ -1316,7 +1430,13 @@
     const settings = manageData?.settings || null;
     const canComment = !!session?.loggedIn || flagEnabled(settings?.allow_guest_comment);
     const isOwnedBySession = (item) => session?.loggedIn && session?.uid && item?.writer_uid && String(item.writer_uid).trim() === String(session.uid).trim();
-    const canRenderDelete = (item) => item && (!session?.loggedIn ? !item.writer_uid : isOwnedBySession(item) || isAdmin || !!permissions.canManage);
+    const isDeletedComment = (item) => Number(item?.is_deleted || 0) === 1;
+    const commentDepth = (item) => Math.max(0, Math.min(2, Number(item?.reply_depth || (item?.parent_id ? 1 : 0)) || 0));
+    const isReplyComment = (item) => commentDepth(item) > 0 || !!item?.parent_id;
+    const deletedCommentHtml = (item) => isReplyComment(item) ? "<p>삭제된 답글입니다.</p>" : "<p>삭제된 댓글입니다.</p>";
+    const canDeleteByRole = (kind) => isAdmin || (kind === "post" ? !!permissions.canDeletePost : !!permissions.canDeleteComment);
+    const canRenderDelete = (item, kind) => item && !isDeletedComment(item) && (!session?.loggedIn ? !item.writer_uid : isOwnedBySession(item) || canDeleteByRole(kind));
+    const requiresDeletePassword = (item, kind) => item && !item.writer_uid && !(session?.loggedIn && canDeleteByRole(kind));
 
     if (!post) {
       return h(React.Fragment, null, h(TopbarV2, { session, onLogout, alarmCount }), h("main", { className: "shell" }, h("div", { className: "frame" }, h("div", { className: "error-box" }, "게시글을 찾을 수 없습니다."))));
@@ -1330,7 +1450,7 @@
             { action: "게시글 읽기", required: "비회원 포함 전체 사용자", available: true },
             { action: "추천/비추천", required: "비회원 포함 전체 사용자", available: voteState?.canVote !== false, note: "동일 게시글은 사용자 또는 IP 기준 하루 한 번만 투표할 수 있습니다." },
             { action: "댓글 작성", required: "보드 설정이 허용한 비회원 또는 로그인 사용자", available: true, note: "비회원 댓글은 이름과 비밀번호가 필요합니다." },
-            { action: "게시글 삭제", required: "작성자, 비회원 작성 비밀번호, 관리자 또는 보드 운영진", available: canRenderDelete(post) },
+            { action: "게시글 삭제", required: "작성자, 비회원 작성 비밀번호, 관리자 또는 보드 매니저/글 삭제 권한", available: canRenderDelete(post, "post") },
             { action: "댓글 삭제", required: "작성자, 비회원 작성 비밀번호, 관리자 또는 보드 운영진", note: "댓글마다 삭제 가능 여부가 다르게 표시됩니다." }
           ] }),
           h("article", { className: "card post-card" },
@@ -1359,9 +1479,15 @@
               h("div", { className: "inline-actions" },
                 session?.loggedIn ? h("button", { type: "button", className: "btn btn-secondary btn-compact", onClick: () => onScrapPost(post) }, "스크랩") : null,
                 h("button", { type: "button", className: "btn btn-secondary btn-compact", onClick: () => onReportPost(post) }, "신고"),
-                (permissions.canManage || isAdmin) && Number(post.is_concept || 0) === 1 ? h("button", { type: "button", className: "btn btn-ghost btn-compact", onClick: () => onCancelConcept(post) }, "개념글 취소") : null
+                permissions.canBumpPost || isAdmin ? h("button", { type: "button", className: "btn btn-ghost btn-compact", onClick: () => onBumpPost(post) }, "끌올") : null,
+                permissions.canManageNotice || isAdmin ? h("button", { type: "button", className: "btn btn-ghost btn-compact", onClick: () => onSetNotice(post, Number(post.is_notice || post.notice || 0) !== 1) }, Number(post.is_notice || post.notice || 0) === 1 ? "공지 해제" : "공지 등록") : null,
+                permissions.canManageConcept || isAdmin
+                  ? Number(post.is_concept || 0) === 1
+                    ? h("button", { type: "button", className: "btn btn-ghost btn-compact", onClick: () => onCancelConcept(post) }, "개념글 취소")
+                    : h("button", { type: "button", className: "btn btn-ghost btn-compact", onClick: () => onSetConcept(post) }, "개념글 지정")
+                  : null
               ),
-              canRenderDelete(post) ? h(PopupDeleteControl, { session, buttonLabel: "게시글 삭제", requirePassword: !post.writer_uid, onDelete: (password, reset) => onDeletePost({ gid, postNo: post.post_no, password }, reset) }) : null,
+              canRenderDelete(post, "post") ? h(PopupDeleteControl, { session, buttonLabel: "게시글 삭제", requirePassword: requiresDeletePassword(post, "post"), onDelete: (password, reset) => onDeletePost({ gid, postNo: post.post_no, password }, reset) }) : null,
               h(Feedback, { feedback: deleteFeedback })
             )
           ),
@@ -1369,14 +1495,16 @@
             h(SectionHead, { eyebrow: "Comments", title: "댓글" }),
             comments.length
               ? h("div", { className: "stack" }, comments.map((comment) =>
-                  h("article", { className: "card", key: comment.id || comment.comment_id || `${comment.created_at}-${comment.name}` },
-                    h("div", { className: "muted" }, h(MemberIdentity, { item: comment, className: "member-identity inline" }), h(ProfileInlineLink, { item: comment }), ` · ${formatDate(comment.writed_at || comment.created_at)}`),
-                    h("div", { className: "preview", dangerouslySetInnerHTML: { __html: comment.content || "" } }),
-                    h("div", { className: "inline-actions" },
+                  h("article", { className: ["card", "comment-card", `depth-${commentDepth(comment)}`, isDeletedComment(comment) ? "is-deleted" : "", isReplyComment(comment) ? "is-reply" : ""].filter(Boolean).join(" "), key: comment.id || comment.comment_id || `${comment.created_at}-${comment.name}` },
+                    isDeletedComment(comment)
+                      ? h("div", { className: "muted comment-deleted-label" }, isReplyComment(comment) ? "↳ 삭제된 답글" : "삭제된 댓글")
+                      : h("div", { className: "muted" }, h(MemberIdentity, { item: comment, className: "member-identity inline" }), h(ProfileInlineLink, { item: comment }), ` · ${formatDate(comment.writed_at || comment.created_at)}`),
+                    h("div", { className: "preview comment-preview", dangerouslySetInnerHTML: { __html: isDeletedComment(comment) ? deletedCommentHtml(comment) : (comment.content || "") } }),
+                    isDeletedComment(comment) ? null : h("div", { className: "inline-actions" },
                       h("button", { type: "button", className: "btn btn-secondary btn-compact", onClick: () => onLikeComment(comment) }, `공감 ${comment.like_count ?? 0}`),
                       h("button", { type: "button", className: "btn btn-ghost btn-compact", onClick: () => onReportComment(comment) }, "신고")
                     ),
-                    canRenderDelete(comment) ? h(PopupDeleteControl, { session, buttonLabel: "댓글 삭제", requirePassword: !comment.writer_uid, onDelete: (password, reset) => onDeleteComment({ commentId: comment.id || comment.comment_id, password }, reset) }) : null
+                    isDeletedComment(comment) ? null : (canRenderDelete(comment, "comment") ? h(PopupDeleteControl, { session, buttonLabel: "댓글 삭제", requirePassword: requiresDeletePassword(comment, "comment"), onDelete: (password, reset) => onDeleteComment({ commentId: comment.id || comment.comment_id, password }, reset) }) : null)
                   )))
               : h("div", { className: "empty-box" }, "아직 댓글이 없습니다."),
             h("article", { className: "card" },
@@ -1937,6 +2065,7 @@
     const [voteFeedback, setVoteFeedback] = useState(null);
     const [alarmFeedback, setAlarmFeedback] = useState(null);
     const [settingsFeedback, setSettingsFeedback] = useState(null);
+    const [submanagerFeedback, setSubmanagerFeedback] = useState(null);
     const [profileFeedback, setProfileFeedback] = useState(null);
     const [boardRequestFeedback, setBoardRequestFeedback] = useState(null);
     const [rankingFeedback, setRankingFeedback] = useState(null);
@@ -2329,8 +2458,50 @@
         .catch((error) => setVoteFeedback({ type: "error", message: error.message || "개념글 취소에 실패했습니다." }));
     }
 
+    function setConcept(post) {
+      if (!importantActionConfirm("개념글 지정", [
+        "운영 권한으로 이 글을 개념글 상태로 지정합니다.",
+        "보드 운영 기준에 맞는 글인지 확인해 주세요."
+      ])) return;
+      api(`/api/features/posts/${encodeURIComponent(post.gall_id)}/${encodeURIComponent(post.post_no)}/concept/set`, { method: "POST" })
+        .then((result) => {
+          setVoteFeedback({ type: result?.success ? "success" : "error", message: result?.message || "개념글로 지정했습니다." });
+          refreshCurrentPost();
+        })
+        .catch((error) => setVoteFeedback({ type: "error", message: error.message || "개념글 지정에 실패했습니다." }));
+    }
+
+    function bumpPost(post) {
+      if (!importantActionConfirm("포스트 끌올", [
+        "글 작성 시간이 현재 시각으로 갱신되어 목록 상단에 노출됩니다.",
+        "공지성 또는 운영상 필요한 글에만 사용해 주세요."
+      ])) return;
+      api(`/api/features/posts/${encodeURIComponent(post.gall_id)}/${encodeURIComponent(post.post_no)}/bump`, { method: "POST" })
+        .then((result) => {
+          setVoteFeedback({ type: result?.success ? "success" : "error", message: result?.message || "포스트를 끌올했습니다." });
+          refreshCurrentPost();
+          refreshBoardPosts(post.gall_id, boardPage);
+        })
+        .catch((error) => setVoteFeedback({ type: "error", message: error.message || "포스트 끌올에 실패했습니다." }));
+    }
+
+    function setNotice(post, notice) {
+      if (!importantActionConfirm(notice ? "공지 등록" : "공지 해제", [
+        notice ? "이 글을 보드 공지로 올립니다." : "이 글의 공지 상태를 해제합니다.",
+        "보드 목록 노출 순서가 바뀔 수 있습니다."
+      ])) return;
+      api(`/api/features/posts/${encodeURIComponent(post.gall_id)}/${encodeURIComponent(post.post_no)}/notice`, {
+        method: "POST",
+        body: JSON.stringify({ notice: String(!!notice) })
+      }).then((result) => {
+        setVoteFeedback({ type: result?.success ? "success" : "error", message: result?.message || (notice ? "공지로 등록했습니다." : "공지에서 해제했습니다.") });
+        refreshCurrentPost();
+        refreshBoardPosts(post.gall_id, boardPage);
+      }).catch((error) => setVoteFeedback({ type: "error", message: error.message || "공지 상태 변경에 실패했습니다." }));
+    }
+
     function submitBoardSettings(payload) {
-      if (!boardManageData?.permissions?.canManage) {
+      if (!boardManageData?.permissions?.canEditSettings) {
         setSettingsFeedback({ type: "error", message: "보드 설정을 변경할 권한이 없습니다." });
         return;
       }
@@ -2345,6 +2516,113 @@
         setBoardManageData((current) => current ? { ...current, settings: result.data } : { settings: result.data, permissions: {} });
         setSettingsFeedback({ type: "success", message: "설정을 저장했습니다." });
       }).catch((error) => setSettingsFeedback({ type: "error", message: error.message || "설정 저장에 실패했습니다." }));
+    }
+
+    function managerPasswordForStaffAction(actionName) {
+      const permissions = boardManageData?.permissions || {};
+      if (permissions.isAdmin) return "";
+      if (!permissions.isManager) return "";
+      const password = window.prompt(`${actionName}을 하려면 매니저 비밀번호를 다시 입력해 주세요.`);
+      if (password === null) return null;
+      if (!password.trim()) {
+        setSubmanagerFeedback({ type: "error", message: "매니저 비밀번호를 입력해 주세요." });
+        return null;
+      }
+      return password;
+    }
+
+    function appointSubmanager(targetUid, reset) {
+      if (!boardManageData?.permissions?.canAssignSubmanager) {
+        setSubmanagerFeedback({ type: "error", message: "부매니저를 임명할 권한이 없습니다." });
+        return;
+      }
+      if (!importantActionConfirm("부매니저 임명", [
+        "대상 사용자에게 부매니저 임명 요청 알림을 보냅니다.",
+        "매니저가 요청하는 경우 본인 비밀번호 재확인이 필요합니다."
+      ])) return;
+      const password = managerPasswordForStaffAction("부매니저 임명");
+      if (password === null) return;
+      api(`/api/board/manage/${encodeURIComponent(route.params.gid)}/submanager`, {
+        method: "POST",
+        body: JSON.stringify({ targetUid, password })
+      }).then((result) => {
+        if (!result?.success) {
+          setSubmanagerFeedback({ type: "error", message: result?.message || "부매니저 임명 요청에 실패했습니다." });
+          return;
+        }
+        reset?.();
+        setSubmanagerFeedback({ type: "success", message: "부매니저 임명 요청 알림을 보냈습니다." });
+        refreshBoardManage(route.params.gid);
+      }).catch((error) => setSubmanagerFeedback({ type: "error", message: error.message || "부매니저 임명 요청에 실패했습니다." }));
+    }
+
+    function revokeSubmanager(targetUid) {
+      if (!boardManageData?.permissions?.canAssignSubmanager) {
+        setSubmanagerFeedback({ type: "error", message: "부매니저를 해제할 권한이 없습니다." });
+        return;
+      }
+      if (!importantActionConfirm("부매니저 해제", [
+        "선택한 사용자의 부매니저 권한을 즉시 해제합니다.",
+        "매니저가 실행하는 경우 본인 비밀번호 재확인이 필요합니다."
+      ])) return;
+      const password = managerPasswordForStaffAction("부매니저 해제");
+      if (password === null) return;
+      api(`/api/board/manage/${encodeURIComponent(route.params.gid)}/submanager/${encodeURIComponent(targetUid)}`, {
+        method: "DELETE",
+        body: JSON.stringify({ password })
+      }).then((result) => {
+        if (!result?.success) {
+          setSubmanagerFeedback({ type: "error", message: result?.message || "부매니저 해제에 실패했습니다." });
+          return;
+        }
+        setSubmanagerFeedback({ type: "success", message: "부매니저를 해제했습니다." });
+        refreshBoardManage(route.params.gid);
+      }).catch((error) => setSubmanagerFeedback({ type: "error", message: error.message || "부매니저 해제에 실패했습니다." }));
+    }
+
+    function transferManager(targetUid, reset) {
+      if (!boardManageData?.permissions?.canTransferManager) {
+        setSubmanagerFeedback({ type: "error", message: "매니저를 위임할 권한이 없습니다." });
+        return;
+      }
+      if (!importantActionConfirm("매니저 위임", [
+        "대상 부매니저에게 매니저 위임 요청 알림을 보냅니다.",
+        "요청이 수락되면 현재 매니저 권한이 대상자에게 넘어갑니다."
+      ])) return;
+      const password = managerPasswordForStaffAction("매니저 위임");
+      if (password === null) return;
+      api(`/api/board/manage/${encodeURIComponent(route.params.gid)}/manager`, {
+        method: "POST",
+        body: JSON.stringify({ targetUid, password })
+      }).then((result) => {
+        if (!result?.success) {
+          setSubmanagerFeedback({ type: "error", message: result?.message || "매니저 위임 요청에 실패했습니다." });
+          return;
+        }
+        reset?.();
+        setSubmanagerFeedback({ type: "success", message: "매니저 위임 요청 알림을 보냈습니다." });
+        refreshBoardManage(route.params.gid);
+      }).catch((error) => setSubmanagerFeedback({ type: "error", message: error.message || "매니저 위임 요청에 실패했습니다." }));
+    }
+
+    function submitSubmanagerPermissions(targetUid, payload) {
+      if (!targetUid) return;
+      if (!boardManageData?.permissions?.canAssignSubmanager && !boardManageData?.permissions?.canManageSubmanager) {
+        setSubmanagerFeedback({ type: "error", message: "부매니저 권한을 변경할 권한이 없습니다." });
+        return;
+      }
+      const normalized = Object.fromEntries(Object.entries(payload || {}).map(([key, value]) => [key, String(!!value)]));
+      api(`/api/board/manage/${encodeURIComponent(route.params.gid)}/submanager/${encodeURIComponent(targetUid)}/permissions`, {
+        method: "POST",
+        body: JSON.stringify(normalized)
+      }).then((result) => {
+        if (!result?.success) {
+          setSubmanagerFeedback({ type: "error", message: result?.message || "부매니저 권한 저장에 실패했습니다." });
+          return;
+        }
+        setBoardManageData(result.data || boardManageData);
+        setSubmanagerFeedback({ type: "success", message: "부매니저 권한을 저장했습니다." });
+      }).catch((error) => setSubmanagerFeedback({ type: "error", message: error.message || "부매니저 권한 저장에 실패했습니다." }));
     }
 
     function submitProfileSettings(payload) {
@@ -2474,8 +2752,8 @@
     if (route.name === "search") return h(SearchResultsView, { session, boards, posts: searchResults, searchQuery, onLogout: handleLogout, alarmCount });
     if (route.name === "boardRequests") return h(BoardRequestsView, { session, feedback: boardRequestFeedback, onSubmitSideBoardRequest: submitSideBoardRequest, onLogout: handleLogout, alarmCount });
     if (route.name === "board") return h(BoardView, { session, gid: route.params.gid, board: currentBoard, posts: boardPosts, page, manageData: boardManageData, settingsFeedback, onPrevPage: () => navigate(`/board/${encodeURIComponent(route.params.gid)}?page=${Math.max(1, page - 1)}`), onNextPage: () => navigate(`/board/${encodeURIComponent(route.params.gid)}?page=${page + 1}`), onLogout: handleLogout, alarmCount });
-    if (route.name === "boardManage") return h(BoardManageView, { session, gid: route.params.gid, board: currentBoard, manageData: boardManageData, feedback: settingsFeedback, onSaveSettings: submitBoardSettings, onLogout: handleLogout, alarmCount });
-    if (route.name === "post") return h(PostView, { session, gid: route.params.gid, post: postData.post, comments: postData.comments, feedback: commentFeedback, deleteFeedback, voteFeedback, voteState: postData.voteState, manageData: boardManageData, onSubmitComment: submitComment, onDeletePost: submitDeletePost, onDeleteComment: submitDeleteComment, onVote: submitVote, onScrapPost: scrapPost, onReportPost: reportPost, onLikeComment: likeComment, onReportComment: reportComment, onCancelConcept: cancelConcept, onLogout: handleLogout, alarmCount });
+    if (route.name === "boardManage") return h(BoardManageView, { session, gid: route.params.gid, board: currentBoard, manageData: boardManageData, feedback: settingsFeedback, submanagerFeedback, onSaveSettings: submitBoardSettings, onSaveSubmanagerPermissions: submitSubmanagerPermissions, onAppointSubmanager: appointSubmanager, onRevokeSubmanager: revokeSubmanager, onTransferManager: transferManager, onLogout: handleLogout, alarmCount });
+    if (route.name === "post") return h(PostView, { session, gid: route.params.gid, post: postData.post, comments: postData.comments, feedback: commentFeedback, deleteFeedback, voteFeedback, voteState: postData.voteState, manageData: boardManageData, onSubmitComment: submitComment, onDeletePost: submitDeletePost, onDeleteComment: submitDeleteComment, onVote: submitVote, onScrapPost: scrapPost, onReportPost: reportPost, onLikeComment: likeComment, onReportComment: reportComment, onCancelConcept: cancelConcept, onSetConcept: setConcept, onBumpPost: bumpPost, onSetNotice: setNotice, onLogout: handleLogout, alarmCount });
     if (route.name === "profile") return h(ProfileView, { session, profileData, feedback: profileFeedback, onSaveProfile: submitProfileSettings, onFollowProfile: followProfile, onUnfollowProfile: unfollowProfile, onLogout: handleLogout, alarmCount });
     if (route.name === "write") return h(WriteView, { session, gid: route.params.gid, feedback: writeFeedback, manageData: boardManageData, onSubmitPost: submitPost, onLogout: handleLogout, alarmCount });
     if (route.name === "login") return h(AuthView, { mode: "login", feedback: authFeedback, onSubmitAuth: submitAuth, session, onLogout: handleLogout, alarmCount });

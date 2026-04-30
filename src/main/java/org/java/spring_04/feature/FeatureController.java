@@ -89,6 +89,44 @@ public class FeatureController {
         }
     }
 
+    @PostMapping("/posts/{gid}/{postNo}/concept/set")
+    public Map<String, Object> setConcept(@PathVariable("gid") String gid,
+                                          @PathVariable("postNo") Long postNo,
+                                          @SessionAttribute(name = "uid", required = false) String uid,
+                                          @SessionAttribute(name = "memberDivision", required = false) String memberDivision) {
+        try {
+            return featureService.setConcept(gid, postNo, uid, memberDivision);
+        } catch (Exception e) {
+            return Map.of("success", false, "message", e.getMessage());
+        }
+    }
+
+    @PostMapping("/posts/{gid}/{postNo}/bump")
+    public Map<String, Object> bumpPost(@PathVariable("gid") String gid,
+                                        @PathVariable("postNo") Long postNo,
+                                        @SessionAttribute(name = "uid", required = false) String uid,
+                                        @SessionAttribute(name = "memberDivision", required = false) String memberDivision) {
+        try {
+            return featureService.bumpPost(gid, postNo, uid, memberDivision);
+        } catch (Exception e) {
+            return Map.of("success", false, "message", e.getMessage());
+        }
+    }
+
+    @PostMapping("/posts/{gid}/{postNo}/notice")
+    public Map<String, Object> setNotice(@PathVariable("gid") String gid,
+                                         @PathVariable("postNo") Long postNo,
+                                         @RequestBody(required = false) Map<String, String> payload,
+                                         @SessionAttribute(name = "uid", required = false) String uid,
+                                         @SessionAttribute(name = "memberDivision", required = false) String memberDivision) {
+        try {
+            boolean notice = payload == null || !"false".equalsIgnoreCase(String.valueOf(payload.getOrDefault("notice", "true")));
+            return featureService.setNotice(gid, postNo, notice, uid, memberDivision);
+        } catch (Exception e) {
+            return Map.of("success", false, "message", e.getMessage());
+        }
+    }
+
     @PostMapping("/comments/{commentId}/like")
     public Map<String, Object> likeComment(@PathVariable("commentId") Long commentId,
                                            HttpServletRequest request,

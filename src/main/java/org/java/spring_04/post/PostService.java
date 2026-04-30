@@ -23,6 +23,10 @@ import java.util.Map;
 @Service
 public class PostService {
     private static final ZoneId SEOUL_ZONE = ZoneId.of("Asia/Seoul");
+    private static final String DELETED_POST_TITLE = "삭제된 게시글";
+    private static final String DELETED_POST_CONTENT = "<p>삭제된 게시글입니다.</p>";
+    private static final String DELETED_COMMENT_CONTENT = "<p>삭제된 댓글입니다.</p>";
+    private static final String DELETED_REPLY_CONTENT = "<p>삭제된 답글입니다.</p>";
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -121,7 +125,7 @@ public class PostService {
                   AND COALESCE(p.is_draft, 0) = 0
                   AND COALESCE(p.is_secret, 0) = 0
                   AND COALESCE(p.review_status, 'normal') <> 'review'
-                ORDER BY p.writed_at DESC, p.id DESC, p.post_no DESC
+                ORDER BY COALESCE(p.is_notice, 0) DESC, p.pinned_at DESC, p.writed_at DESC, p.id DESC, p.post_no DESC
                 LIMIT 20
                 """;
         return decorateListRows(sanitizeRowsContent(jdbcTemplate.queryForList(sql, gallId)));
@@ -256,7 +260,7 @@ public class PostService {
 
     public List<Map<String, Object>> getComments(String gallId, Long postNo) {
         String sql = """
-                SELECT c.id, c.writer_uid, c.name, c.ip, c.content, c.created_at AS writed_at,
+                SELECT c.id, c.writer_uid, c.name, c.ip, c.content, c.is_deleted, c.created_at AS writed_at,
                        c.parent_id, c.reply_depth, c.sort_key, c.like_count, c.report_count, c.review_status,
                        author.nick_type, author.nick_icon_type,
                        CASE
@@ -275,7 +279,12 @@ public class PostService {
                 LEFT JOIN user author ON author.uid = c.writer_uid
                 WHERE c.gall_id = ?
                   AND c.post_no = ?
-                  AND c.is_deleted = 0
+                  AND (c.is_deleted = 0 OR COALESCE(c.reply_depth, 0) > 0 OR EXISTS (
+                      SELECT 1
+                      FROM comment child
+                      WHERE child.parent_id = c.id
+                        AND child.is_deleted = 0
+                  ))
                   AND COALESCE(c.review_status, 'normal') <> 'review'
                   AND p.is_deleted = 0
                 ORDER BY COALESCE(c.sort_key, LPAD(c.id, 10, '0')) ASC, c.id ASC
@@ -487,18 +496,25 @@ public class PostService {
         if (post == null) {
             return Map.of("success", false, "message", "게시글을 찾을 수 없습니다.");
         }
+        if (toInt(post.get("is_deleted")) == 1) {
+            return Map.of("success", false, "message", "이미 삭제된 게시글입니다.");
+        }
 
-        if (!canDelete(post.get("writer_uid"), post.get("password"), uid, password, gallId, memberDivision)) {
+        boolean deleteAuthorized = authorizeDelete(post.get("writer_uid"), post.get("password"), uid, password, gallId, memberDivision, true);
+        if (!deleteAuthorized) {
             return Map.of("success", false, "message", "삭제 권한이 없습니다.");
         }
 
         Long postId = toLong(post.get("id"));
         jdbcTemplate.update(
-                "UPDATE post SET is_deleted = 1, title = '삭제된 게시글', content = '' WHERE id = ?",
+                "UPDATE post SET is_deleted = 1, title = ?, content = ? WHERE id = ? AND is_deleted = 0",
+                DELETED_POST_TITLE,
+                DELETED_POST_CONTENT,
                 postId
         );
         jdbcTemplate.update(
-                "UPDATE comment SET is_deleted = 1, content = '' WHERE gall_id = ? AND post_no = ?",
+                "UPDATE comment SET is_deleted = 1, content = ? WHERE gall_id = ? AND post_no = ? AND is_deleted = 0",
+                DELETED_COMMENT_CONTENT,
                 gallId,
                 postNo
         );
@@ -515,16 +531,21 @@ public class PostService {
         if (comment == null) {
             return Map.of("success", false, "message", "댓글을 찾을 수 없습니다.");
         }
+        if (toInt(comment.get("is_deleted")) == 1) {
+            return Map.of("success", false, "message", "이미 삭제된 댓글입니다.");
+        }
 
         String gallId = String.valueOf(comment.get("gall_id"));
 
-        if (!canDelete(comment.get("writer_uid"), comment.get("password"), uid, password, gallId, memberDivision)) {
+        if (!authorizeDelete(comment.get("writer_uid"), comment.get("password"), uid, password, gallId, memberDivision, false)) {
             return Map.of("success", false, "message", "삭제 권한이 없습니다.");
         }
         Long postNo = toLong(comment.get("post_no"));
+        String deletedContent = deletedCommentContent(comment);
 
         int updated = jdbcTemplate.update(
-                "UPDATE comment SET is_deleted = 1, content = '' WHERE id = ? AND is_deleted = 0",
+                "UPDATE comment SET is_deleted = 1, content = ? WHERE id = ? AND is_deleted = 0",
+                deletedContent,
                 commentId
         );
 
@@ -558,11 +579,10 @@ public class PostService {
         try {
             return jdbcTemplate.queryForMap(
                     """
-                    SELECT id, gall_id, post_no, writer_uid, ip, password, recommend_count, unrecommend_count, view_count
+                    SELECT id, gall_id, post_no, writer_uid, ip, password, recommend_count, unrecommend_count, view_count, is_deleted
                     FROM post
                     WHERE gall_id = ?
                       AND post_no = ?
-                      AND is_deleted = 0
                     """,
                     gallId,
                     postNo
@@ -586,7 +606,7 @@ public class PostService {
         try {
             return jdbcTemplate.queryForMap(
                     """
-                    SELECT id, gall_id, post_no, writer_uid, password, parent_id, reply_depth, sort_key
+                    SELECT id, gall_id, post_no, writer_uid, password, parent_id, reply_depth, sort_key, is_deleted
                     FROM comment
                     WHERE id = ?
                     """,
@@ -616,8 +636,11 @@ public class PostService {
         return new CommentParent(parentId, parentDepth + 1, parentSortKey);
     }
 
-    private boolean canDelete(Object writerUid, Object passwordHash, String sessionUid, String rawPassword, String gallId, String memberDivision) {
-        if (boardService.canManageBoard(gallId, sessionUid, memberDivision)) {
+    private boolean authorizeDelete(Object writerUid, Object passwordHash, String sessionUid, String rawPassword, String gallId, String memberDivision, boolean postDelete) {
+        boolean boardOperator = postDelete
+                ? boardService.canDeletePost(gallId, sessionUid, memberDivision)
+                : boardService.canDeleteComment(gallId, sessionUid, memberDivision);
+        if (boardOperator) {
             return true;
         }
 
@@ -800,14 +823,40 @@ public class PostService {
         if (value instanceof Number number) {
             return number.longValue();
         }
-        return Long.parseLong(String.valueOf(value));
+        if (value instanceof Boolean bool) {
+            return bool ? 1L : 0L;
+        }
+        String normalized = nullableTrim(value == null ? null : String.valueOf(value));
+        if (normalized == null) {
+            return 0L;
+        }
+        if ("true".equalsIgnoreCase(normalized) || "yes".equalsIgnoreCase(normalized) || "on".equalsIgnoreCase(normalized)) {
+            return 1L;
+        }
+        if ("false".equalsIgnoreCase(normalized) || "no".equalsIgnoreCase(normalized) || "off".equalsIgnoreCase(normalized)) {
+            return 0L;
+        }
+        return Long.parseLong(normalized);
     }
 
     private int toInt(Object value) {
         if (value instanceof Number number) {
             return number.intValue();
         }
-        return Integer.parseInt(String.valueOf(value));
+        if (value instanceof Boolean bool) {
+            return bool ? 1 : 0;
+        }
+        String normalized = nullableTrim(value == null ? null : String.valueOf(value));
+        if (normalized == null) {
+            return 0;
+        }
+        if ("true".equalsIgnoreCase(normalized) || "yes".equalsIgnoreCase(normalized) || "on".equalsIgnoreCase(normalized)) {
+            return 1;
+        }
+        if ("false".equalsIgnoreCase(normalized) || "no".equalsIgnoreCase(normalized) || "off".equalsIgnoreCase(normalized)) {
+            return 0;
+        }
+        return Integer.parseInt(normalized);
     }
 
     private String firstNonBlank(String... values) {
@@ -842,6 +891,17 @@ public class PostService {
         return String.format("%010d", commentId);
     }
 
+    private String deletedCommentContent(Map<String, Object> comment) {
+        return isReplyComment(comment) ? DELETED_REPLY_CONTENT : DELETED_COMMENT_CONTENT;
+    }
+
+    private boolean isReplyComment(Map<String, Object> comment) {
+        if (comment == null) {
+            return false;
+        }
+        return toInt(comment.get("reply_depth")) > 0 || comment.get("parent_id") != null;
+    }
+
     private List<Map<String, Object>> sanitizeRowsContent(List<Map<String, Object>> rows) {
         rows.forEach(this::sanitizeRowContent);
         return rows;
@@ -850,6 +910,9 @@ public class PostService {
     private Map<String, Object> sanitizeRowContent(Map<String, Object> row) {
         if (row == null) {
             return null;
+        }
+        if (toInt(row.get("is_deleted")) == 1 && (row.containsKey("reply_depth") || row.containsKey("parent_id"))) {
+            row.put("content", deletedCommentContent(row));
         }
         Object rawContent = row.get("content");
         if (rawContent != null) {
