@@ -27,7 +27,7 @@
     return payload;
   };
 
-  async function uploadImageFile(file) {
+  async function uploadImageFile(file, gallId = "") {
     if (!file) {
       throw new Error("업로드할 파일이 없습니다.");
     }
@@ -36,6 +36,9 @@
     }
     const formData = new FormData();
     formData.append("file", file);
+    if (gallId) {
+      formData.append("gallId", gallId);
+    }
     const result = await api("/api/upload/image", { method: "POST", body: formData });
     if (!result?.success || !result?.url) {
       throw new Error(result?.message || "이미지 업로드에 실패했습니다.");
@@ -86,18 +89,33 @@
 
   const displayCategory = (item) => item?.display_category || item?.category || "일반";
 
+  const normalizeBoardRole = (value) => {
+    const normalized = String(value || "").trim().toLowerCase();
+    if (normalized === "manager") return "manager";
+    if (normalized === "submanager") return "submanager";
+    return "";
+  };
+  const boardRoleLabel = (value) => value === "manager" ? "매" : value === "submanager" ? "부" : "";
+
   function NickTypeBadge({ nickType }) {
     const normalized = normalizeNickType(nickType);
     return h("span", { className: `nick-type-badge ${normalized === "fixed" ? "is-fixed" : "is-variable"}` }, nickTypeLabel(normalized));
+  }
+
+  function BoardRoleBadge({ role }) {
+    const normalized = normalizeBoardRole(role);
+    if (!normalized) return null;
+    return h("span", { className: `nick-type-badge is-${normalized}` }, boardRoleLabel(normalized));
   }
 
   function MemberIdentity({ item, name, uid, nickType, className = "member-identity" }) {
     const resolvedName = name || authorLabel(item) || uid || "익명";
     const resolvedUid = uid || item?.writer_uid || "";
     const resolvedNickType = nickType || item?.nick_type || item?.nickType || "variable";
+    const resolvedRole = item?.author_board_role || item?.board_role || item?.role || "";
     return h("span", { className },
       h("span", { className: "member-name" }, resolvedName),
-      resolvedUid ? h(NickTypeBadge, { nickType: resolvedNickType }) : null
+      resolvedUid ? (resolvedRole ? h(BoardRoleBadge, { role: resolvedRole }) : h(NickTypeBadge, { nickType: resolvedNickType })) : null
     );
   }
 
@@ -385,11 +403,12 @@
     );
   }
 
-  function HtmlEditor({ id, value, onChange, placeholder }) {
+  function HtmlEditor({ id, value, onChange, placeholder, gallId, canUploadImage = window.__boardWriteCanUploadImage !== false }) {
     const editorRef = useRef(null);
     const fileInputRef = useRef(null);
     const [uploadFeedback, setUploadFeedback] = useState(null);
     const [imageUploading, setImageUploading] = useState(false);
+    const resolvedGallId = gallId || window.location.pathname.split("/")[2] || "";
 
     useEffect(() => {
       if (editorRef.current && editorRef.current.innerHTML !== value) {
@@ -408,6 +427,11 @@
       const file = event.target.files?.[0];
       if (!file) return;
       setUploadFeedback(null);
+      if (!canUploadImage) {
+        setUploadFeedback({ type: "error", message: "현재 권한에서는 이미지 첨부를 사용할 수 없습니다." });
+        event.target.value = "";
+        return;
+      }
       if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
         setUploadFeedback({ type: "error", message: "이미지는 최대 50MB까지 업로드할 수 있습니다." });
         event.target.value = "";
@@ -415,11 +439,10 @@
       }
       setImageUploading(true);
       try {
-        const formData = new FormData();
-        formData.append("file", file);
-        const result = await api("/api/upload/image", { method: "POST", body: formData });
+        const imageUrl = await uploadImageFile(file, resolvedGallId);
+        const result = { success: true, url: imageUrl };
         if (!result?.success || !result?.url) throw new Error(result?.message || "이미지 업로드에 실패했습니다.");
-        insertImage(result.url);
+        insertImage(imageUrl);
         setUploadFeedback({ type: "success", message: "이미지를 업로드했습니다." });
       } catch (error) {
         setUploadFeedback({ type: "error", message: error.message || "이미지 업로드에 실패했습니다." });
@@ -929,6 +952,7 @@
     const permissions = manageData?.permissions || {};
     const manager = manageData?.manager || null;
     const boardInfo = manageData?.board || board || {};
+    const isMainBoard = String(boardInfo?.gall_type || "").trim().toLowerCase() === "main";
     const submanagers = Array.isArray(manageData?.submanagers) ? manageData.submanagers : [];
     const roleLabels = Array.isArray(manageData?.roleLabels) ? manageData.roleLabels : [];
     const roleLabel = roleLabels.length ? roleLabels.join(", ") : session?.loggedIn ? "member" : "guest";
@@ -1004,10 +1028,10 @@
                     settings?.welcome_message ? h("p", null, settings.welcome_message) : h("p", null, `${boardInfo?.gall_name || gid} 게시판입니다.`),
                     settings?.board_notice ? h("p", { className: "dc-board-notice-line" }, settings.board_notice) : null
                   ),
-                  h("div", { className: "dc-board-staff" },
+                  !isMainBoard ? h("div", { className: "dc-board-staff" },
                     h("strong", null, "운영진"),
                     h("div", { className: "dc-board-staff-list" }, staffItems.length ? staffItems.join(" · ") : "운영진 정보 없음")
-                  )
+                  ) : null
                 )
               ),
               settings?.cover_image_url
@@ -1067,67 +1091,6 @@
   }
 
   function BoardSettingsPanel({ settings, feedback, onSave }) {
-    const [boardNotice, setBoardNotice] = useState(settings?.board_notice || "");
-    const [welcomeMessage, setWelcomeMessage] = useState(settings?.welcome_message || "");
-    const [coverImageUrl, setCoverImageUrl] = useState(settings?.cover_image_url || "");
-    const [themeColor, setThemeColor] = useState(settings?.theme_color || "#ff8fab");
-    const [categoryOptions, setCategoryOptions] = useState(settings?.category_options || "일반");
-    const [conceptRecommendThreshold, setConceptRecommendThreshold] = useState(String(settings?.concept_recommend_threshold || 10));
-    const [allowGuestPost, setAllowGuestPost] = useState(settings?.allow_guest_post !== false);
-    const [allowGuestComment, setAllowGuestComment] = useState(settings?.allow_guest_comment !== false);
-    const [joinPolicy, setJoinPolicy] = useState(settings?.join_policy || "free");
-    const [visibility, setVisibility] = useState(settings?.visibility || "public");
-    const [pinnedNoticeCount, setPinnedNoticeCount] = useState(String(settings?.pinned_notice_count ?? 3));
-    const [allowedAttachmentTypes, setAllowedAttachmentTypes] = useState(settings?.allowed_attachment_types || "");
-    const [attachmentMaxBytes, setAttachmentMaxBytes] = useState(String(settings?.attachment_max_bytes || 10485760));
-
-    useEffect(() => {
-      setBoardNotice(settings?.board_notice || "");
-      setWelcomeMessage(settings?.welcome_message || "");
-      setCoverImageUrl(settings?.cover_image_url || "");
-      setThemeColor(settings?.theme_color || "#ff8fab");
-      setCategoryOptions(settings?.category_options || "일반");
-      setConceptRecommendThreshold(String(settings?.concept_recommend_threshold || 10));
-      setAllowGuestPost(settings?.allow_guest_post !== false);
-      setAllowGuestComment(settings?.allow_guest_comment !== false);
-      setJoinPolicy(settings?.join_policy || "free");
-      setVisibility(settings?.visibility || "public");
-      setPinnedNoticeCount(String(settings?.pinned_notice_count ?? 3));
-      setAllowedAttachmentTypes(settings?.allowed_attachment_types || "");
-      setAttachmentMaxBytes(String(settings?.attachment_max_bytes || 10485760));
-    }, [settings]);
-
-    return h("article", { className: "card board-settings-card" },
-      h(SectionHead, { eyebrow: "Manager", title: "보드 설정" }),
-      h("div", { className: "stack" },
-        h("div", { className: "field" }, h("label", { htmlFor: "board-setting-notice" }, "공지"), h("textarea", { id: "board-setting-notice", rows: 3, value: boardNotice, onChange: (event) => setBoardNotice(event.target.value) })),
-        h("div", { className: "field" }, h("label", { htmlFor: "board-setting-welcome" }, "환영 문구"), h("textarea", { id: "board-setting-welcome", rows: 4, value: welcomeMessage, onChange: (event) => setWelcomeMessage(event.target.value) })),
-        h("div", { className: "field" }, h("label", { htmlFor: "board-setting-categories" }, "말머리 목록"), h("textarea", { id: "board-setting-categories", rows: 4, value: categoryOptions, onChange: (event) => setCategoryOptions(event.target.value), placeholder: "한 줄에 하나씩 입력하거나 쉼표로 구분" })),
-        h("div", { className: "field" }, h("label", { htmlFor: "board-setting-color" }, "테마 색상"), h("input", { id: "board-setting-color", type: "color", value: themeColor, onChange: (event) => setThemeColor(event.target.value || "#ff8fab") })),
-        h("div", { className: "field" }, h("label", { htmlFor: "board-setting-concept-threshold" }, "개념글 추천 기준"), h("input", { id: "board-setting-concept-threshold", type: "number", min: 1, step: 1, value: conceptRecommendThreshold, onChange: (event) => setConceptRecommendThreshold(event.target.value) })),
-        h("div", { className: "field" }, h("label", { htmlFor: "board-setting-join" }, "가입 방식"), h("select", { id: "board-setting-join", value: joinPolicy, onChange: (event) => setJoinPolicy(event.target.value) }, h("option", { value: "free" }, "자유 가입"), h("option", { value: "approval" }, "승인 가입"))),
-        h("div", { className: "field" }, h("label", { htmlFor: "board-setting-visibility" }, "공개 범위"), h("select", { id: "board-setting-visibility", value: visibility, onChange: (event) => setVisibility(event.target.value) }, h("option", { value: "public" }, "공개"), h("option", { value: "private" }, "비공개"), h("option", { value: "members" }, "멤버 전용"))),
-        h("div", { className: "field" }, h("label", { htmlFor: "board-setting-pin-count" }, "상단 고정 공지 수"), h("input", { id: "board-setting-pin-count", type: "number", min: 0, step: 1, value: pinnedNoticeCount, onChange: (event) => setPinnedNoticeCount(event.target.value) })),
-        h("div", { className: "field" }, h("label", { htmlFor: "board-setting-attachment-types" }, "허용 첨부 형식"), h("input", { id: "board-setting-attachment-types", type: "text", value: allowedAttachmentTypes, onChange: (event) => setAllowedAttachmentTypes(event.target.value), placeholder: "예: image/png,image/jpeg" })),
-        h("div", { className: "field" }, h("label", { htmlFor: "board-setting-attachment-size" }, "첨부 최대 용량(bytes)"), h("input", { id: "board-setting-attachment-size", type: "number", min: 0, step: 1, value: attachmentMaxBytes, onChange: (event) => setAttachmentMaxBytes(event.target.value) })),
-        h("label", { className: "check-row" }, h("input", { type: "checkbox", checked: allowGuestPost, onChange: (event) => setAllowGuestPost(event.target.checked) }), h("span", null, "비회원 글쓰기 허용")),
-        h("label", { className: "check-row" }, h("input", { type: "checkbox", checked: allowGuestComment, onChange: (event) => setAllowGuestComment(event.target.checked) }), h("span", null, "비회원 댓글 허용")),
-        h("div", { className: "field" }, h("label", { htmlFor: "board-setting-cover-image" }, "Cover image URL"), h("input", { id: "board-setting-cover-image", type: "text", value: coverImageUrl, onChange: (event) => setCoverImageUrl(event.target.value), placeholder: "https://..." })),
-        h(Feedback, { feedback }),
-        h("div", { className: "inline-actions" },
-          h("button", {
-            type: "button",
-            className: "btn btn-primary",
-            onClick() {
-              onSave({ boardNotice, welcomeMessage, coverImageUrl, categoryOptions, themeColor, conceptRecommendThreshold, allowGuestPost, allowGuestComment, joinPolicy, visibility, pinnedNoticeCount, allowedAttachmentTypes, attachmentMaxBytes });
-            }
-          }, "설정 저장")
-        )
-      )
-    );
-  }
-
-  function BoardSettingsPanel({ settings, feedback, onSave }) {
     const fileInputRef = useRef(null);
     const [boardNotice, setBoardNotice] = useState(settings?.board_notice || "");
     const [welcomeMessage, setWelcomeMessage] = useState(settings?.welcome_message || "");
@@ -1144,6 +1107,9 @@
     const [attachmentMaxBytes, setAttachmentMaxBytes] = useState(String(settings?.attachment_max_bytes || 10485760));
     const [coverUploadFeedback, setCoverUploadFeedback] = useState(null);
     const [coverUploading, setCoverUploading] = useState(false);
+    // ✅ 추가된 state
+    const [allowMemberImage, setAllowMemberImage] = useState(settings?.allow_member_image !== false);
+    const [allowGuestImage, setAllowGuestImage] = useState(settings?.allow_guest_image !== false);
 
     useEffect(() => {
       setBoardNotice(settings?.board_notice || "");
@@ -1161,6 +1127,9 @@
       setAttachmentMaxBytes(String(settings?.attachment_max_bytes || 10485760));
       setCoverUploadFeedback(null);
       setCoverUploading(false);
+      // ✅ 추가된 초기화
+      setAllowMemberImage(settings?.allow_member_image !== false);
+      setAllowGuestImage(settings?.allow_guest_image !== false);
     }, [settings]);
 
     async function handleCoverFileChange(event) {
@@ -1183,6 +1152,14 @@
     return h("article", { className: "card board-settings-card" },
       h(SectionHead, { eyebrow: "Manager", title: "보드 설정" }),
       h("div", { className: "stack" },
+        h("label", { className: "check-row" },
+          h("input", { type: "checkbox", checked: allowMemberImage, onChange: (event) => setAllowMemberImage(event.target.checked) }),
+          h("span", null, "회원 이미지 첨부 허용")
+        ),
+        h("label", { className: "check-row" },
+          h("input", { type: "checkbox", checked: allowGuestImage, onChange: (event) => setAllowGuestImage(event.target.checked) }),
+          h("span", null, "비회원 이미지 첨부 허용")
+        ),
         h("div", { className: "field" },
           h("label", { htmlFor: "board-setting-notice-v2" }, "공지"),
           h("textarea", { id: "board-setting-notice-v2", rows: 3, value: boardNotice, onChange: (event) => setBoardNotice(event.target.value) })
@@ -1254,7 +1231,8 @@
             type: "button",
             className: "btn btn-primary",
             onClick() {
-              onSave({ boardNotice, welcomeMessage, coverImageUrl, categoryOptions, themeColor, conceptRecommendThreshold, allowGuestPost, allowGuestComment, joinPolicy, visibility, pinnedNoticeCount, allowedAttachmentTypes, attachmentMaxBytes });
+              // ✅ onSave에 두 값 추가
+              onSave({ boardNotice, welcomeMessage, coverImageUrl, categoryOptions, themeColor, conceptRecommendThreshold, allowGuestPost, allowGuestComment, joinPolicy, visibility, pinnedNoticeCount, allowedAttachmentTypes, attachmentMaxBytes, allowMemberImage, allowGuestImage });
             }
           }, "설정 저장")
         )
@@ -1446,6 +1424,8 @@
     const [writeAgreed, setWriteAgreed] = useState(false);
     const settings = manageData?.settings || null;
     const canWritePost = !!session?.loggedIn || flagEnabled(settings?.allow_guest_post);
+    const canUploadImage = session?.loggedIn ? flagEnabled(settings?.allow_member_image) : flagEnabled(settings?.allow_guest_image);
+    window.__boardWriteCanUploadImage = canUploadImage;
     const categoryOptions = categoryOptionsFromSettings(settings);
     useEffect(() => {
       if (!category && categoryOptions.length) {

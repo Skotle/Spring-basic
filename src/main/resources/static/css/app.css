@@ -1318,6 +1318,18 @@ button {
   color: #667085;
 }
 
+.nick-type-badge.is-manager {
+  border-color: rgba(228, 92, 35, 0.22);
+  background: rgba(228, 92, 35, 0.1);
+  color: #c44a16;
+}
+
+.nick-type-badge.is-submanager {
+  border-color: rgba(46, 120, 221, 0.22);
+  background: rgba(46, 120, 221, 0.1);
+  color: #1f5fb7;
+}
+
 .signup-policy-ok,
 .signup-policy-pending {
   position: relative;

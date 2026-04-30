@@ -12,6 +12,7 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -23,6 +24,12 @@ public class GcsImageService {
             "image/png",
             "image/gif",
             "image/webp"
+    );
+    private static final Map<String, String> EXTENSION_BY_CONTENT_TYPE = Map.of(
+            "image/jpeg", "jpg",
+            "image/png", "png",
+            "image/gif", "gif",
+            "image/webp", "webp"
     );
 
     private final Storage storage;
@@ -55,11 +62,12 @@ public class GcsImageService {
             throw new IllegalArgumentException("Only JPG, PNG, GIF, and WEBP image uploads are allowed.");
         }
 
-        String originalFilename = file.getOriginalFilename() == null ? "image" : file.getOriginalFilename().replaceAll("[^A-Za-z0-9._-]", "_");
-        String objectName = "uploads/" + LocalDate.now() + "/" + UUID.randomUUID() + "-" + originalFilename;
+        String extension = EXTENSION_BY_CONTENT_TYPE.get(contentType);
+        String objectName = "uploads/images/" + LocalDate.now() + "/" + UUID.randomUUID() + "." + extension;
 
         BlobInfo blobInfo = BlobInfo.newBuilder(bucketName, objectName)
                 .setContentType(contentType)
+                .setCacheControl("public, max-age=31536000, immutable")
                 .build();
 
         storage.create(blobInfo, bytes);

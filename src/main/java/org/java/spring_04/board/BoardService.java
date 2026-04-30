@@ -84,6 +84,8 @@ public class BoardService {
                     concept_recommend_threshold INT NOT NULL DEFAULT 10,
                     allow_guest_post TINYINT(1) NOT NULL DEFAULT 1,
                     allow_guest_comment TINYINT(1) NOT NULL DEFAULT 1,
+                    allow_member_image TINYINT(1) NOT NULL DEFAULT 1,
+                    allow_guest_image TINYINT(1) NOT NULL DEFAULT 0,
                     updated_by VARCHAR(50) NULL,
                     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY (gall_id)
@@ -171,6 +173,12 @@ public class BoardService {
         }
         if (!columnExists("gallery_setting", "category_options")) {
             jdbcTemplate.execute("ALTER TABLE gallery_setting ADD COLUMN category_options TEXT NULL");
+        }
+        if (!columnExists("gallery_setting", "allow_member_image")) {
+            jdbcTemplate.execute("ALTER TABLE gallery_setting ADD COLUMN allow_member_image TINYINT(1) NOT NULL DEFAULT 1");
+        }
+        if (!columnExists("gallery_setting", "allow_guest_image")) {
+            jdbcTemplate.execute("ALTER TABLE gallery_setting ADD COLUMN allow_guest_image TINYINT(1) NOT NULL DEFAULT 0");
         }
         if (!columnExists("post", "category")) {
             jdbcTemplate.execute("ALTER TABLE post ADD COLUMN category VARCHAR(50) NULL");
@@ -292,6 +300,16 @@ public class BoardService {
                 SELECT p.*, g.gall_name, g.manager_uid,
                        author.nick_type,
                        author.nick_icon_type,
+                       CASE
+                           WHEN p.writer_uid IS NOT NULL AND p.writer_uid = g.manager_uid THEN 'manager'
+                           WHEN p.writer_uid IS NOT NULL AND EXISTS (
+                               SELECT 1
+                               FROM board_submanager bs
+                               WHERE bs.gall_id = p.gall_id
+                                 AND bs.uid = p.writer_uid
+                           ) THEN 'submanager'
+                           ELSE NULL
+                       END AS author_board_role,
                        (
                            SELECT COUNT(*)
                            FROM comment c
@@ -318,6 +336,16 @@ public class BoardService {
                 SELECT p.*, g.gall_name, g.manager_uid,
                        author.nick_type,
                        author.nick_icon_type,
+                       CASE
+                           WHEN p.writer_uid IS NOT NULL AND p.writer_uid = g.manager_uid THEN 'manager'
+                           WHEN p.writer_uid IS NOT NULL AND EXISTS (
+                               SELECT 1
+                               FROM board_submanager bs
+                               WHERE bs.gall_id = p.gall_id
+                                 AND bs.uid = p.writer_uid
+                           ) THEN 'submanager'
+                           ELSE NULL
+                       END AS author_board_role,
                        (
                            SELECT COUNT(*)
                            FROM comment c
@@ -382,6 +410,8 @@ public class BoardService {
                            concept_recommend_threshold,
                            allow_guest_post,
                            allow_guest_comment,
+                           allow_member_image,
+                           allow_guest_image,
                            join_policy,
                            visibility,
                            pinned_notice_count,
@@ -402,6 +432,8 @@ public class BoardService {
             defaults.put("concept_recommend_threshold", normalizeConceptThreshold(row.get("concept_recommend_threshold")));
             defaults.put("allow_guest_post", toBooleanFlag(row.get("allow_guest_post")));
             defaults.put("allow_guest_comment", toBooleanFlag(row.get("allow_guest_comment")));
+            defaults.put("allow_member_image", toBooleanFlag(row.get("allow_member_image")));
+            defaults.put("allow_guest_image", toBooleanFlag(row.get("allow_guest_image")));
             defaults.put("join_policy", firstNonBlank(nullableText(row.get("join_policy")), "free"));
             defaults.put("visibility", firstNonBlank(nullableText(row.get("visibility")), "public"));
             defaults.put("pinned_notice_count", normalizeConceptThreshold(row.get("pinned_notice_count")));
@@ -433,6 +465,8 @@ public class BoardService {
         int conceptRecommendThreshold = normalizeConceptThreshold(payload.get("conceptRecommendThreshold"));
         int allowGuestPost = parseBooleanFlag(payload.get("allowGuestPost"));
         int allowGuestComment = parseBooleanFlag(payload.get("allowGuestComment"));
+        int allowMemberImage = parseBooleanFlag(payload.get("allowMemberImage"));
+        int allowGuestImage = parseBooleanFlag(payload.get("allowGuestImage"));
         String joinPolicy = normalizeChoice(payload.get("joinPolicy"), List.of("free", "approval"), "free");
         String visibility = normalizeChoice(payload.get("visibility"), List.of("public", "private", "members"), "public");
         int pinnedNoticeCount = normalizeNonNegativeInt(payload.get("pinnedNoticeCount"), 3);
@@ -444,12 +478,12 @@ public class BoardService {
         jdbcTemplate.update("""
                 INSERT INTO gallery_setting (
                     gall_id, board_notice, welcome_message, cover_image_url, theme_color, concept_recommend_threshold,
-                    allow_guest_post, allow_guest_comment, category_options,
+                    allow_guest_post, allow_guest_comment, allow_member_image, allow_guest_image, category_options,
                     join_policy, visibility, pinned_notice_count, allowed_attachment_types,
                     attachment_max_bytes, side_board_approval_policy, dormant_after_days,
                     updated_by, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
                 ON DUPLICATE KEY UPDATE
                     board_notice = VALUES(board_notice),
                     welcome_message = VALUES(welcome_message),
@@ -458,6 +492,8 @@ public class BoardService {
                     concept_recommend_threshold = VALUES(concept_recommend_threshold),
                     allow_guest_post = VALUES(allow_guest_post),
                     allow_guest_comment = VALUES(allow_guest_comment),
+                    allow_member_image = VALUES(allow_member_image),
+                    allow_guest_image = VALUES(allow_guest_image),
                     category_options = VALUES(category_options),
                     join_policy = VALUES(join_policy),
                     visibility = VALUES(visibility),
@@ -477,6 +513,8 @@ public class BoardService {
                 conceptRecommendThreshold,
                 allowGuestPost,
                 allowGuestComment,
+                allowMemberImage,
+                allowGuestImage,
                 categoryOptions,
                 joinPolicy,
                 visibility,
@@ -489,6 +527,14 @@ public class BoardService {
         );
 
         return getBoardSettings(boardId);
+    }
+
+    public boolean canUploadImage(String gallId, String uid) {
+        Map<String, Object> settings = getBoardSettings(gallId);
+        if (uid != null && !uid.isBlank()) {
+            return toBooleanFlag(settings.get("allow_member_image"));
+        }
+        return toBooleanFlag(settings.get("allow_guest_image"));
     }
 
     @Transactional
@@ -1634,6 +1680,8 @@ public class BoardService {
         settings.put("concept_recommend_threshold", 10);
         settings.put("allow_guest_post", true);
         settings.put("allow_guest_comment", true);
+        settings.put("allow_member_image", true);
+        settings.put("allow_guest_image", false);
         settings.put("join_policy", "free");
         settings.put("visibility", "public");
         settings.put("pinned_notice_count", 3);

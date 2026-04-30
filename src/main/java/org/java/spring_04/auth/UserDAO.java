@@ -78,6 +78,12 @@ public class UserDAO {
     }
 
     public void save(UserEntity user) {
+        String normalizedNickType = user.getNickType() == null || user.getNickType().isBlank()
+                ? "variable"
+                : user.getNickType().trim().toLowerCase();
+        String normalizedNickIconType = user.getNickIconType() == null || user.getNickIconType().isBlank()
+                ? "default"
+                : user.getNickIconType().trim().toLowerCase();
         String sql = """
                 INSERT INTO user (uid, nick, password_hash, email, nick_type, nick_icon_type, member_division)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -89,8 +95,8 @@ public class UserDAO {
                 user.getNick(),
                 user.getPasswordHash(),
                 user.getEmail(),
-                user.getNickType() == null || user.getNickType().isBlank() ? "variable" : user.getNickType(),
-                "default",
+                normalizedNickType,
+                normalizedNickIconType,
                 "user"
         );
     }

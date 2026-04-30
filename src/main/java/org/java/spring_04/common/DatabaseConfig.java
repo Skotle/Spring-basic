@@ -7,11 +7,16 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.net.URI;
 import java.util.Properties;
 
 @Configuration
 public class DatabaseConfig {
+    private static final Logger log = LoggerFactory.getLogger(DatabaseConfig.class);
+
     @Value("${spring.datasource.url}")
     private String datasourceUrl;
 
@@ -49,18 +54,32 @@ public class DatabaseConfig {
         if (driverClassName.contains("mysql")) {
             Properties properties = new Properties();
             properties.setProperty("useUnicode", "true");
-            properties.setProperty("characterEncoding", "utf8");
+            properties.setProperty("characterEncoding", "UTF-8");
             properties.setProperty("characterSetResults", "utf8mb4");
             properties.setProperty("connectionCollation", "utf8mb4_unicode_ci");
             dataSource.setConnectionProperties(properties);
         }
 
-        System.out.println("[Config] datasource url = " + configuredUrl);
+        log.info("Datasource configured. driver={} database={}", driverClassName, databaseName(configuredUrl));
         return dataSource;
     }
 
     @Bean
     public JdbcTemplate jdbcTemplate(DataSource dataSource) {
         return new JdbcTemplate(dataSource);
+    }
+
+    private String databaseName(String jdbcUrl) {
+        try {
+            String uriText = jdbcUrl.replaceFirst("^jdbc:", "");
+            URI uri = URI.create(uriText);
+            String path = uri.getPath();
+            if (path == null || path.length() <= 1) {
+                return "unknown";
+            }
+            return path.substring(1);
+        } catch (Exception ignored) {
+            return "unknown";
+        }
     }
 }

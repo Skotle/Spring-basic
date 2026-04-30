@@ -31,7 +31,14 @@ public class AuthController {
         session.setAttribute("nickIconType", user.getNickIconType());
         session.setAttribute("memberDivision", user.getMemberDivision());
 
-        return Map.of("success", true, "nick", user.getNick());
+        return Map.of(
+                "success", true,
+                "nick", user.getNick(),
+                "uid", user.getUid(),
+                "nickType", user.getNickType() == null ? "variable" : user.getNickType(),
+                "nickIconType", user.getNickIconType() == null ? "default" : user.getNickIconType(),
+                "memberDivision", user.getMemberDivision() == null ? "user" : user.getMemberDivision()
+        );
     }
 
     @PostMapping("/api/signup/request")

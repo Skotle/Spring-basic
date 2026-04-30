@@ -6,13 +6,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.Map;
-
-import static org.springframework.http.HttpStatus.FORBIDDEN;
-import static org.springframework.http.HttpStatus.UNAUTHORIZED;
 
 @Controller
 public class AdminController {
@@ -22,6 +18,9 @@ public class AdminController {
 
     @Autowired
     private BoardService boardService;
+
+    @Autowired
+    private AdminAccessService adminAccessService;
 
     @GetMapping("/admin/boards")
     public String boardManagerPage(HttpSession session) {
@@ -89,7 +88,7 @@ public class AdminController {
             } else if ("submanager".equalsIgnoreCase(role)) {
                 boardService.appointSubmanager(gid, payload.get("targetUid"), uid, "admin");
             } else {
-                return Map.of("success", false, "message", "role은 manager 또는 submanager만 가능합니다.");
+                return Map.of("success", false, "message", "Only manager or submanager can be requested.");
             }
             return Map.of("success", true);
         } catch (RuntimeException e) {
@@ -170,16 +169,6 @@ public class AdminController {
     }
 
     private void ensureAdmin(HttpSession session) {
-        Object division = session.getAttribute("memberDivision");
-        if (division == null) {
-            throw new ResponseStatusException(UNAUTHORIZED, "로그인이 필요합니다.");
-        }
-
-        String normalized = String.valueOf(division).trim();
-        if (!normalized.equals("1")
-                && !normalized.equalsIgnoreCase("admin")
-                && !normalized.equalsIgnoreCase("operator")) {
-            throw new ResponseStatusException(FORBIDDEN, "어드민 권한이 필요합니다.");
-        }
+        adminAccessService.assertAdmin(session);
     }
 }

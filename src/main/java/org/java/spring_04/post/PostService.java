@@ -96,6 +96,16 @@ public class PostService {
                 SELECT p.*, g.gall_name,
                        author.nick_type,
                        author.nick_icon_type,
+                       CASE
+                           WHEN p.writer_uid IS NOT NULL AND p.writer_uid = g.manager_uid THEN 'manager'
+                           WHEN p.writer_uid IS NOT NULL AND EXISTS (
+                               SELECT 1
+                               FROM board_submanager bs
+                               WHERE bs.gall_id = p.gall_id
+                                 AND bs.uid = p.writer_uid
+                           ) THEN 'submanager'
+                           ELSE NULL
+                       END AS author_board_role,
                        (
                            SELECT COUNT(*)
                            FROM comment c
@@ -122,6 +132,16 @@ public class PostService {
                 SELECT p.*, g.gall_name,
                        author.nick_type,
                        author.nick_icon_type,
+                       CASE
+                           WHEN p.writer_uid IS NOT NULL AND p.writer_uid = g.manager_uid THEN 'manager'
+                           WHEN p.writer_uid IS NOT NULL AND EXISTS (
+                               SELECT 1
+                               FROM board_submanager bs
+                               WHERE bs.gall_id = p.gall_id
+                                 AND bs.uid = p.writer_uid
+                           ) THEN 'submanager'
+                           ELSE NULL
+                       END AS author_board_role,
                        (
                            SELECT COUNT(*)
                            FROM comment c
@@ -154,6 +174,16 @@ public class PostService {
             SELECT p.*, g.gall_name,
                    author.nick_type,
                    author.nick_icon_type,
+                   CASE
+                       WHEN p.writer_uid IS NOT NULL AND p.writer_uid = g.manager_uid THEN 'manager'
+                       WHEN p.writer_uid IS NOT NULL AND EXISTS (
+                           SELECT 1
+                           FROM board_submanager bs
+                           WHERE bs.gall_id = p.gall_id
+                             AND bs.uid = p.writer_uid
+                       ) THEN 'submanager'
+                       ELSE NULL
+                   END AS author_board_role,
                    (
                        SELECT COUNT(*)
                        FROM comment c
@@ -190,6 +220,16 @@ public class PostService {
             SELECT p.*, g.gall_name,
                    author.nick_type,
                    author.nick_icon_type,
+                   CASE
+                       WHEN p.writer_uid IS NOT NULL AND p.writer_uid = g.manager_uid THEN 'manager'
+                       WHEN p.writer_uid IS NOT NULL AND EXISTS (
+                           SELECT 1
+                           FROM board_submanager bs
+                           WHERE bs.gall_id = p.gall_id
+                             AND bs.uid = p.writer_uid
+                       ) THEN 'submanager'
+                       ELSE NULL
+                   END AS author_board_role,
                    (
                        SELECT COUNT(*)
                        FROM comment c
@@ -218,9 +258,20 @@ public class PostService {
         String sql = """
                 SELECT c.id, c.writer_uid, c.name, c.ip, c.content, c.created_at AS writed_at,
                        c.parent_id, c.reply_depth, c.sort_key, c.like_count, c.report_count, c.review_status,
-                       author.nick_type, author.nick_icon_type
+                       author.nick_type, author.nick_icon_type,
+                       CASE
+                           WHEN c.writer_uid IS NOT NULL AND c.writer_uid = b.manager_uid THEN 'manager'
+                           WHEN c.writer_uid IS NOT NULL AND EXISTS (
+                               SELECT 1
+                               FROM board_submanager bs
+                               WHERE bs.gall_id = c.gall_id
+                                 AND bs.uid = c.writer_uid
+                           ) THEN 'submanager'
+                           ELSE NULL
+                       END AS author_board_role
                 FROM comment c
                 JOIN post p ON p.gall_id = c.gall_id AND p.post_no = c.post_no
+                JOIN board b ON b.gall_id = c.gall_id
                 LEFT JOIN user author ON author.uid = c.writer_uid
                 WHERE c.gall_id = ?
                   AND c.post_no = ?
@@ -317,6 +368,7 @@ public class PostService {
         String category = normalizePostCategory(gallId, payload.get("category"));
 
         featureService.assertBoardWritable(gallId, uid, memberDivision, clientIp);
+        assertImageWriteAllowed(gallId, uid, content);
         featureService.validateTextPolicy(gallId, title + "\n" + content);
         WriterInfo writer = resolveWriter(payload, uid, nick, clientIp);
 
@@ -383,6 +435,7 @@ public class PostService {
         }
 
         featureService.assertBoardWritable(gallId, uid, memberDivision, clientIp);
+        assertImageWriteAllowed(gallId, uid, content);
         featureService.validateTextPolicy(gallId, content);
         WriterInfo writer = resolveWriter(payload, uid, nick, clientIp);
         CommentParent parent = resolveCommentParent(gallId, postNo, parentId);
@@ -624,6 +677,17 @@ public class PostService {
         }
 
         return normalized;
+    }
+
+    private void assertImageWriteAllowed(String gallId, String uid, String content) {
+        if (content == null || !content.toLowerCase().contains("<img")) {
+            return;
+        }
+        if (!boardService.canUploadImage(gallId, uid)) {
+            throw new RuntimeException(uid != null && !uid.isBlank()
+                    ? "이 보드에서는 회원 이미지 첨부가 비활성화되어 있습니다."
+                    : "이 보드에서는 비회원 이미지 첨부가 비활성화되어 있습니다.");
+        }
     }
 
     private String normalizedIp(String clientIp) {

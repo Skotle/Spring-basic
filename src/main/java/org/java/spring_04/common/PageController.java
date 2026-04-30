@@ -1,5 +1,6 @@
 package org.java.spring_04.common;
 
+import jakarta.servlet.http.HttpSession;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 
@@ -7,6 +8,11 @@ import java.time.LocalDateTime;
 
 @Controller
 public class PageController {
+    private final AdminAccessService adminAccessService;
+
+    public PageController(AdminAccessService adminAccessService) {
+        this.adminAccessService = adminAccessService;
+    }
 
     private void logRequest(String pageName) {
         System.out.printf("[%s] GET %s PAGE%n", LocalDateTime.now(), pageName);
@@ -85,13 +91,15 @@ public class PageController {
     }
 
     @GetMapping("/test")
-    public String test() {
+    public String test(HttpSession session) {
+        adminAccessService.assertAdmin(session);
         logRequest("TEST");
         return "test";
     }
 
     @GetMapping("/admin")
-    public String admin() {
+    public String admin(HttpSession session) {
+        adminAccessService.assertAdmin(session);
         logRequest("ADMIN");
         return "admin";
     }
