@@ -12,9 +12,9 @@ html, body {
 
 body {
   background:
-    radial-gradient(circle at top left, rgba(29, 78, 216, 0.12), transparent 26%),
-    radial-gradient(circle at right top, rgba(15, 118, 110, 0.10), transparent 22%),
-    linear-gradient(180deg, #f7f9fc 0%, #eef3f9 100%);
+    radial-gradient(circle at top left, rgba(255, 127, 157, 0.14), transparent 26%),
+    radial-gradient(circle at right top, rgba(255, 91, 134, 0.10), transparent 22%),
+    linear-gradient(180deg, #fff8fb 0%, #f8f3f7 100%);
   color: var(--text);
   font-family: var(--sans);
   -webkit-font-smoothing: antialiased;
@@ -106,7 +106,7 @@ nav {
 .panel {
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 20px;
+  border-radius: 0;
   box-shadow: var(--shadow);
 }
 
@@ -124,7 +124,7 @@ nav {
   align-items: center;
   gap: 8px;
   padding: 6px 12px;
-  border-radius: 999px;
+  border-radius: 0;
   background: var(--accent-soft);
   color: var(--accent);
   font-family: var(--mono);
@@ -152,7 +152,7 @@ nav {
   justify-content: center;
   gap: 8px;
   padding: 10px 16px;
-  border-radius: 10px;
+  border-radius: 0;
   border: 1px solid transparent;
   transition: transform 0.15s ease, opacity 0.15s ease, border-color 0.15s ease;
 }
@@ -166,7 +166,7 @@ nav {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  background: var(--accent);
   color: #fff;
 }
 
@@ -177,9 +177,9 @@ nav {
 }
 
 .btn-muted {
-  background: rgba(15, 118, 110, 0.08);
+  background: var(--accent-soft);
   color: var(--accent2);
-  border-color: rgba(15, 118, 110, 0.16);
+  border-color: #ffd2df;
 }
 
 .status-badge {
@@ -189,7 +189,7 @@ nav {
   min-height: 36px;
   padding: 8px 12px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: 0;
   color: var(--sub);
   font-family: var(--mono);
   font-size: 0.78rem;
@@ -228,7 +228,7 @@ textarea {
   width: 100%;
   padding: 14px 16px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 0;
   background: #fff;
   color: var(--text);
   outline: none;
@@ -236,8 +236,8 @@ textarea {
 
 input:focus,
 textarea:focus {
-  border-color: rgba(29, 78, 216, 0.4);
-  box-shadow: 0 0 0 4px rgba(29, 78, 216, 0.08);
+  border-color: color-mix(in srgb, var(--accent) 62%, #fff);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
 textarea {

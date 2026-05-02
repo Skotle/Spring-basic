@@ -57,6 +57,9 @@ public class DatabaseConfig {
             properties.setProperty("characterEncoding", "UTF-8");
             properties.setProperty("characterSetResults", "utf8mb4");
             properties.setProperty("connectionCollation", "utf8mb4_unicode_ci");
+            properties.setProperty("connectionTimeZone", "Asia/Seoul");
+            properties.setProperty("forceConnectionTimeZoneToSession", "true");
+            properties.setProperty("serverTimezone", "Asia/Seoul");
             dataSource.setConnectionProperties(properties);
         }
 

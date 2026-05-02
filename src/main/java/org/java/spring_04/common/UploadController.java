@@ -34,14 +34,14 @@ public class UploadController {
         String normalizedGallId = gallId == null ? "" : gallId.trim();
         if (normalizedGallId.isEmpty()) {
             if (uid == null || uid.isBlank()) {
-                return ResponseEntity.status(401).body(Map.of("success", false, "message", "Login is required."));
+                return ResponseEntity.status(401).body(Map.of("success", false, "message", "로그인이 필요합니다."));
             }
         } else if (!boardService.canUploadImage(normalizedGallId, uid)) {
             return ResponseEntity.status(403).body(Map.of(
                     "success", false,
                     "message", uid == null || uid.isBlank()
-                            ? "Guest image upload is disabled for this board."
-                            : "Member image upload is disabled for this board."
+                            ? "이 보드는 비회원 이미지 업로드가 비활성화되어 있습니다."
+                            : "이 보드는 회원 이미지 업로드가 비활성화되어 있습니다."
             ));
         } else {
             try {
@@ -58,7 +58,7 @@ public class UploadController {
             return ResponseEntity.badRequest().body(Map.of("success", false, "message", e.getMessage()));
         } catch (Exception e) {
             log.warn("Image upload failed. actor={} gallId={} reason={}", uid == null || uid.isBlank() ? "guest" : uid, normalizedGallId, e.getMessage());
-            return ResponseEntity.internalServerError().body(Map.of("success", false, "message", "Image upload failed."));
+            return ResponseEntity.internalServerError().body(Map.of("success", false, "message", "이미지 업로드에 실패했습니다."));
         }
     }
 }

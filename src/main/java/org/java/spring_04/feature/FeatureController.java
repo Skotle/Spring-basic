@@ -127,6 +127,19 @@ public class FeatureController {
         }
     }
 
+    @PostMapping("/posts/{gid}/{postNo}/category")
+    public Map<String, Object> setPostCategory(@PathVariable("gid") String gid,
+                                               @PathVariable("postNo") Long postNo,
+                                               @RequestBody(required = false) Map<String, String> payload,
+                                               @SessionAttribute(name = "uid", required = false) String uid,
+                                               @SessionAttribute(name = "memberDivision", required = false) String memberDivision) {
+        try {
+            return featureService.setPostCategory(gid, postNo, payload == null ? null : payload.get("category"), uid, memberDivision);
+        } catch (Exception e) {
+            return Map.of("success", false, "message", e.getMessage());
+        }
+    }
+
     @PostMapping("/comments/{commentId}/like")
     public Map<String, Object> likeComment(@PathVariable("commentId") Long commentId,
                                            HttpServletRequest request,

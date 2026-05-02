@@ -1,9 +1,11 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>보드</title>
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5128462008892004"
+          crossorigin="anonymous"></script>
   <link rel="stylesheet" href="/css/app.css">
   <link rel="stylesheet" href="/css/boardsheet.css">
 </head>
@@ -11,36 +13,121 @@
 <header class="topbar">
   <div class="frame">
     <div class="topbar-inner">
-      <a class="brand" href="/">
-        <span class="brand-mark"></span>
-        <span>irisen web</span>
-      </a>
-      <div class="nav-actions">
-        <a class="btn btn-ghost" href="/">홈</a>
-        <a class="btn btn-primary" href="/signin">로그인</a>
+      <div class="topbar-main">
+        <a class="brand" href="/">
+          <span class="brand-mark">/</span>
+          <span>Irisen</span>
+        </a>
+        <form class="topbar-search" action="/search" method="get">
+          <button type="button" class="topbar-menu" aria-label="메뉴"><span></span><span></span><span></span></button>
+          <input class="topbar-search-input" type="search" name="q" placeholder="보드 & 게시글 검색">
+          <button class="topbar-search-submit" type="submit" aria-label="검색"><span class="topbar-search-icon" aria-hidden="true"></span></button>
+        </form>
+        <div class="topbar-account">
+          <span class="status-badge" th:if="${loggedIn}" th:text="${sessionNick != null and !#strings.isEmpty(sessionNick) ? sessionNick : sessionUid}">회원</span>
+          <a class="btn btn-secondary btn-compact" th:if="${!loggedIn}" href="/signin">로그인</a>
+          <a class="btn btn-primary btn-compact" th:if="${!loggedIn}" href="/nid">가입</a>
+          <form th:if="${loggedIn}" action="/logout" method="post">
+            <button class="btn btn-secondary btn-compact" type="submit">로그아웃</button>
+          </form>
+        </div>
       </div>
+      <nav class="topbar-nav" aria-label="주요 메뉴">
+        <a href="/">홈</a>
+        <a th:classappend="${currentType == 'main'} ? ' is-active'" href="/boards?type=main">보드</a>
+        <a th:classappend="${currentType == 'side'} ? ' is-active'" href="/boards?type=side">사이드 보드</a>
+        <span class="topbar-nav-divider" aria-hidden="true">||</span>
+        <a href="/feed">피드</a>
+        <a href="/profile" class="topbar-nav-auth">프로필</a>
+      </nav>
     </div>
   </div>
 </header>
 
 <main class="page-shell section-shell">
-  <section class="panel">
-    <div class="eyebrow">BOARD</div>
-    <h1 class="title-md" style="margin-top: 14px;">보드 목록</h1>
+  <section class="panel board-ssr-hero">
+    <div>
+      <div class="eyebrow">BOARD</div>
+      <h1 class="title-md">보드 목록</h1>
+      <p class="muted">보드, 사이드보드, 기타 목록은 서버에서 렌더링된 HTML로 먼저 전송됩니다.</p>
+    </div>
+    <div class="board-count-strip" aria-label="보드 수">
+      <a th:classappend="${currentType == 'all'} ? ' is-active'" href="/boards">
+        전체 <strong th:text="${totalBoardCount}">0</strong>
+      </a>
+      <a th:classappend="${currentType == 'main'} ? ' is-active'" href="/boards?type=main">
+        보드 <strong th:text="${mainBoardCount}">0</strong>
+      </a>
+      <a th:classappend="${currentType == 'side'} ? ' is-active'" href="/boards?type=side">
+        사이드보드 <strong th:text="${sideBoardCount}">0</strong>
+      </a>
+      <a th:classappend="${currentType == 'other'} ? ' is-active'" href="/boards?type=other">
+        기타 <strong th:text="${otherBoardCount}">0</strong>
+      </a>
+    </div>
     <div class="search-row">
       <input id="boardSearchInput" type="text" placeholder="보드 검색" oninput="filterBoards(this.value)">
+      <a class="btn btn-primary btn-compact" href="/board-request">사이드 보드 개설 신청</a>
     </div>
   </section>
 
-  <section id="boardList" class="board-grid"></section>
+  <section class="board-section"
+           th:if="${currentType == 'all' or currentType == 'main'}"
+           data-board-section="main">
+    <div class="board-section-head">
+      <h2>보드</h2>
+      <span th:text="${mainBoardCount + '개'}">0개</span>
+    </div>
+    <div class="board-grid board-table-list" id="mainBoardList">
+      <a class="board-card"
+         th:each="board : ${mainBoards}"
+         th:href="@{/board/{gid}(gid=${board.gall_id})}"
+         th:data-search="${#strings.toLowerCase((board.gall_id != null ? board.gall_id : '') + ' ' + (board.gall_name != null ? board.gall_name : '') + ' ' + (board.board_tags != null ? board.board_tags : ''))}">
+        <div class="board-name" th:text="${board.gall_name != null ? board.gall_name : board.gall_id}">보드</div>
+      </a>
+      <div th:if="${#lists.isEmpty(mainBoards)}" class="empty-state">표시할 메인 보드가 없습니다.</div>
+    </div>
+  </section>
+
+  <section class="board-section"
+           th:if="${currentType == 'all' or currentType == 'side'}"
+           data-board-section="side">
+    <div class="board-section-head">
+      <h2>사이드보드</h2>
+      <span th:text="${sideBoardCount + '개'}">0개</span>
+    </div>
+    <div class="board-grid board-table-list" id="sideBoardList">
+      <a class="board-card"
+         th:each="board : ${sideBoards}"
+         th:href="@{/board/{gid}(gid=${board.gall_id})}"
+         th:data-search="${#strings.toLowerCase((board.gall_id != null ? board.gall_id : '') + ' ' + (board.gall_name != null ? board.gall_name : '') + ' ' + (board.board_tags != null ? board.board_tags : ''))}">
+        <div class="board-name" th:text="${board.gall_name != null ? board.gall_name : board.gall_id}">사이드보드</div>
+      </a>
+      <div th:if="${#lists.isEmpty(sideBoards)}" class="empty-state">표시할 사이드보드가 없습니다.</div>
+    </div>
+  </section>
+
+  <section class="board-section"
+           th:if="${currentType == 'all' or currentType == 'other'}"
+           data-board-section="other">
+    <div class="board-section-head">
+      <h2>기타</h2>
+      <span th:text="${otherBoardCount + '개'}">0개</span>
+    </div>
+    <div class="board-grid board-table-list" id="otherBoardList">
+      <a class="board-card"
+         th:each="board : ${otherBoards}"
+         th:href="@{/board/{gid}(gid=${board.gall_id})}"
+         th:data-search="${#strings.toLowerCase((board.gall_id != null ? board.gall_id : '') + ' ' + (board.gall_name != null ? board.gall_name : '') + ' ' + (board.board_tags != null ? board.board_tags : ''))}">
+        <div class="board-name" th:text="${board.gall_name != null ? board.gall_name : board.gall_id}">기타 보드</div>
+      </a>
+      <div th:if="${#lists.isEmpty(otherBoards)}" class="empty-state">표시할 기타 보드가 없습니다.</div>
+    </div>
+  </section>
+
+  <div id="boardSearchEmpty" class="empty-state" hidden>조건에 맞는 보드가 없습니다.</div>
 </main>
 
-<script src="/js/security-request.js"></script>
-<script src="/js/common.js"></script>
 <script src="/js/board-list.js"></script>
-<script src="/js/page-init.js"></script>
-<script>
-  initBoardsPage();
-</script>
 </body>
 </html>

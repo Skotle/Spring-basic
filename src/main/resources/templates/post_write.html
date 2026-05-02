@@ -11,14 +11,29 @@
 <header class="topbar">
     <div class="frame">
         <div class="topbar-inner">
-            <a class="brand" href="/">
-                <span class="brand-mark"></span>
-                <span>irisen web</span>
-            </a>
-            <div class="nav-actions">
-                <span id="currentWriteGid" class="chip"></span>
-                <a class="btn btn-ghost" id="backToBoardLink" href="/boards">보드</a>
+            <div class="topbar-main">
+                <a class="brand" href="/">
+                    <span class="brand-mark">/</span>
+                    <span>Irisen</span>
+                </a>
+                <form class="topbar-search" action="/search" method="get">
+                    <button type="button" class="topbar-menu" aria-label="메뉴"><span></span><span></span><span></span></button>
+                    <input class="topbar-search-input" type="search" name="q" placeholder="보드 & 게시글 검색">
+                    <button class="topbar-search-submit" type="submit" aria-label="검색"><span class="topbar-search-icon" aria-hidden="true"></span></button>
+                </form>
+                <div class="topbar-account">
+                    <span id="currentWriteGid" class="chip"></span>
+                    <a class="btn btn-secondary btn-compact" id="backToBoardLink" href="/boards">보드</a>
+                </div>
             </div>
+            <nav class="topbar-nav" aria-label="주요 메뉴">
+                <a href="/">홈</a>
+                <a class="is-active" href="/boards?type=main">보드</a>
+                <a href="/boards?type=side">사이드 보드</a>
+                <span class="topbar-nav-divider" aria-hidden="true">||</span>
+                <a href="/feed">피드</a>
+                <a href="/profile" class="topbar-nav-auth">프로필</a>
+            </nav>
         </div>
     </div>
 </header>

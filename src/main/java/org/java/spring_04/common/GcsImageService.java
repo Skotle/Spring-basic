@@ -12,6 +12,7 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
@@ -23,13 +24,19 @@ public class GcsImageService {
             "image/jpeg",
             "image/png",
             "image/gif",
-            "image/webp"
+            "image/webp",
+            "image/avif",
+            "image/heic",
+            "image/heif"
     );
-    private static final Map<String, String> EXTENSION_BY_CONTENT_TYPE = Map.of(
-            "image/jpeg", "jpg",
-            "image/png", "png",
-            "image/gif", "gif",
-            "image/webp", "webp"
+    private static final Map<String, String> EXTENSION_BY_CONTENT_TYPE = Map.ofEntries(
+            Map.entry("image/jpeg", "jpg"),
+            Map.entry("image/png", "png"),
+            Map.entry("image/gif", "gif"),
+            Map.entry("image/webp", "webp"),
+            Map.entry("image/avif", "avif"),
+            Map.entry("image/heic", "heic"),
+            Map.entry("image/heif", "heif")
     );
 
     private final Storage storage;
@@ -47,19 +54,19 @@ public class GcsImageService {
 
     public String uploadImage(MultipartFile file) throws IOException {
         if (bucketName.isBlank()) {
-            throw new IllegalStateException("GCS bucket name is not configured.");
+            throw new IllegalStateException("GCS 버킷 이름이 설정되지 않았습니다.");
         }
         if (file == null || file.isEmpty()) {
-            throw new IllegalArgumentException("Image file is required.");
+            throw new IllegalArgumentException("이미지 파일이 필요합니다.");
         }
         if (file.getSize() > MAX_IMAGE_BYTES) {
-            throw new IllegalArgumentException("Image file exceeds the 50MB limit.");
+            throw new IllegalArgumentException("이미지 파일은 최대 50MB까지 업로드할 수 있습니다.");
         }
 
         byte[] bytes = file.getBytes();
         String contentType = detectContentType(bytes);
         if (!ALLOWED_CONTENT_TYPES.contains(contentType)) {
-            throw new IllegalArgumentException("Only JPG, PNG, GIF, and WEBP image uploads are allowed.");
+            throw new IllegalArgumentException("JPG, PNG, GIF, WEBP, AVIF, HEIC, HEIF 이미지만 업로드할 수 있습니다.");
         }
 
         String extension = EXTENSION_BY_CONTENT_TYPE.get(contentType);
@@ -92,7 +99,27 @@ public class GcsImageService {
                 && bytes[8] == 'W' && bytes[9] == 'E' && bytes[10] == 'B' && bytes[11] == 'P') {
             return "image/webp";
         }
+        String brand = isoBaseMediaBrand(bytes);
+        if ("avif".equals(brand) || "avis".equals(brand)) {
+            return "image/avif";
+        }
+        if (List.of("heic", "heix", "hevc", "hevx").contains(brand)) {
+            return "image/heic";
+        }
+        if (List.of("mif1", "msf1").contains(brand)) {
+            return "image/heif";
+        }
         return "";
+    }
+
+    private String isoBaseMediaBrand(byte[] bytes) {
+        if (bytes == null || bytes.length < 12) {
+            return null;
+        }
+        if (bytes[4] == 'f' && bytes[5] == 't' && bytes[6] == 'y' && bytes[7] == 'p') {
+            return new String(bytes, 8, 4, StandardCharsets.US_ASCII).toLowerCase(Locale.ROOT);
+        }
+        return null;
     }
 
     private String buildPublicUrl(String objectName) {

@@ -54,6 +54,7 @@ public class PostService {
         if (!columnExists("post", "category")) {
             jdbcTemplate.execute("ALTER TABLE post ADD COLUMN category VARCHAR(50) NULL");
         }
+        ensurePostDisplayColumns();
         if (!columnExists("comment", "parent_id")) {
             jdbcTemplate.execute("ALTER TABLE comment ADD COLUMN parent_id INT NULL");
         }
@@ -93,16 +94,120 @@ public class PostService {
                     PRIMARY KEY (gall_id)
                 )
                 """);
+        initializePostContentSchema();
+        migrateLegacyPostContent();
+    }
+
+    private void ensurePostDisplayColumns() {
+        addPostColumnIfMissing("is_draft", "TINYINT(1) NOT NULL DEFAULT 0");
+        addPostColumnIfMissing("is_secret", "TINYINT(1) NOT NULL DEFAULT 0");
+        addPostColumnIfMissing("is_concept", "TINYINT(1) NOT NULL DEFAULT 0");
+        addPostColumnIfMissing("is_notice", "TINYINT(1) NOT NULL DEFAULT 0");
+        addPostColumnIfMissing("concept_target_count", "INT NULL");
+        addPostColumnIfMissing("concept_manual_state", "VARCHAR(20) NOT NULL DEFAULT 'auto'");
+        addPostColumnIfMissing("review_status", "VARCHAR(20) NOT NULL DEFAULT 'normal'");
+        addPostColumnIfMissing("report_count", "INT NOT NULL DEFAULT 0");
+        addPostColumnIfMissing("pinned_at", "DATETIME NULL");
+        addPostColumnIfMissing("pin_order", "INT NULL");
+        addPostColumnIfMissing("attachment_urls", "TEXT NULL");
+    }
+
+    private void addPostColumnIfMissing(String columnName, String definition) {
+        if (!columnExists("post", columnName)) {
+            jdbcTemplate.execute("ALTER TABLE post ADD COLUMN " + columnName + " " + definition);
+        }
+    }
+
+    private void initializePostContentSchema() {
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS post_content (
+                    id BIGINT NOT NULL AUTO_INCREMENT,
+                    post_id BIGINT NOT NULL,
+                    gall_id VARCHAR(50) NOT NULL,
+                    post_no BIGINT NOT NULL,
+                    content MEDIUMTEXT NULL,
+                    content_format VARCHAR(30) NOT NULL DEFAULT 'html',
+                    render_policy VARCHAR(30) NOT NULL DEFAULT 'trusted_html',
+                    allow_images TINYINT(1) NOT NULL DEFAULT 1,
+                    image_count INT NOT NULL DEFAULT 0,
+                    word_count INT NOT NULL DEFAULT 0,
+                    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (id),
+                    UNIQUE KEY uq_post_content_post_id (post_id),
+                    UNIQUE KEY uq_post_content_gall_post (gall_id, post_no),
+                    INDEX idx_post_content_gall (gall_id, post_no)
+                )
+                """);
+        ensurePostContentColumns();
+    }
+
+    private void ensurePostContentColumns() {
+        addPostContentColumnIfMissing("post_id", "BIGINT NULL");
+        addPostContentColumnIfMissing("gall_id", "VARCHAR(50) NULL");
+        addPostContentColumnIfMissing("post_no", "BIGINT NULL");
+        addPostContentColumnIfMissing("content", "MEDIUMTEXT NULL");
+        addPostContentColumnIfMissing("content_format", "VARCHAR(30) NOT NULL DEFAULT 'html'");
+        addPostContentColumnIfMissing("render_policy", "VARCHAR(30) NOT NULL DEFAULT 'trusted_html'");
+        addPostContentColumnIfMissing("allow_images", "TINYINT(1) NOT NULL DEFAULT 1");
+        addPostContentColumnIfMissing("image_count", "INT NOT NULL DEFAULT 0");
+        addPostContentColumnIfMissing("word_count", "INT NOT NULL DEFAULT 0");
+        addPostContentColumnIfMissing("updated_at", "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP");
+        addPostContentColumnIfMissing("created_at", "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP");
+    }
+
+    private void addPostContentColumnIfMissing(String columnName, String definition) {
+        if (!columnExists("post_content", columnName)) {
+            jdbcTemplate.execute("ALTER TABLE post_content ADD COLUMN " + columnName + " " + definition);
+        }
+    }
+
+    private void migrateLegacyPostContent() {
+        jdbcTemplate.update("""
+                INSERT INTO post_content (
+                    post_id,
+                    gall_id,
+                    post_no,
+                    content,
+                    content_format,
+                    render_policy,
+                    allow_images,
+                    image_count,
+                    word_count
+                )
+                SELECT p.id,
+                       p.gall_id,
+                       p.post_no,
+                       p.content,
+                       'html',
+                       'trusted_html',
+                       CASE WHEN LOWER(COALESCE(p.content, '')) LIKE '%<img%' THEN 1 ELSE 0 END,
+                       CAST((CHAR_LENGTH(LOWER(COALESCE(p.content, ''))) - CHAR_LENGTH(REPLACE(LOWER(COALESCE(p.content, '')), '<img', ''))) / 4 AS UNSIGNED),
+                       CASE
+                           WHEN TRIM(COALESCE(p.content, '')) = '' THEN 0
+                           ELSE 1 + CHAR_LENGTH(TRIM(p.content)) - CHAR_LENGTH(REPLACE(TRIM(p.content), ' ', ''))
+                       END
+                FROM post p
+                LEFT JOIN post_content pc ON pc.post_id = p.id
+                WHERE pc.post_id IS NULL
+                  AND p.content IS NOT NULL
+                """);
     }
 
     public List<Map<String, Object>> getPostsByGallery(String gallId) {
         String sql = """
                 SELECT p.*, g.gall_name,
+                       pc.content AS post_content_body,
+                       pc.content_format,
+                       pc.render_policy,
+                       pc.allow_images,
+                       pc.image_count,
+                       pc.word_count,
                        author.nick_type,
                        author.nick_icon_type,
                        CASE
-                           WHEN p.writer_uid IS NOT NULL AND p.writer_uid = g.manager_uid THEN 'manager'
-                           WHEN p.writer_uid IS NOT NULL AND EXISTS (
+                           WHEN LOWER(COALESCE(g.gall_type, '')) <> 'main' AND p.writer_uid IS NOT NULL AND p.writer_uid = g.manager_uid THEN 'manager'
+                           WHEN LOWER(COALESCE(g.gall_type, '')) <> 'main' AND p.writer_uid IS NOT NULL AND EXISTS (
                                SELECT 1
                                FROM board_submanager bs
                                WHERE bs.gall_id = p.gall_id
@@ -119,6 +224,7 @@ public class PostService {
                        ) AS comment_count
                 FROM post p
                 JOIN board g ON g.gall_id = p.gall_id
+                LEFT JOIN post_content pc ON pc.post_id = p.id
                 LEFT JOIN user author ON author.uid = p.writer_uid
                 WHERE p.gall_id = ?
                   AND p.is_deleted = 0
@@ -134,11 +240,17 @@ public class PostService {
     public List<Map<String, Object>> getTopRecommendedPosts() {
         String sql = """
                 SELECT p.*, g.gall_name,
+                       pc.content AS post_content_body,
+                       pc.content_format,
+                       pc.render_policy,
+                       pc.allow_images,
+                       pc.image_count,
+                       pc.word_count,
                        author.nick_type,
                        author.nick_icon_type,
                        CASE
-                           WHEN p.writer_uid IS NOT NULL AND p.writer_uid = g.manager_uid THEN 'manager'
-                           WHEN p.writer_uid IS NOT NULL AND EXISTS (
+                           WHEN LOWER(COALESCE(g.gall_type, '')) <> 'main' AND p.writer_uid IS NOT NULL AND p.writer_uid = g.manager_uid THEN 'manager'
+                           WHEN LOWER(COALESCE(g.gall_type, '')) <> 'main' AND p.writer_uid IS NOT NULL AND EXISTS (
                                SELECT 1
                                FROM board_submanager bs
                                WHERE bs.gall_id = p.gall_id
@@ -155,6 +267,7 @@ public class PostService {
                        ) AS comment_count
                 FROM post p
                 JOIN board g ON g.gall_id = p.gall_id
+                LEFT JOIN post_content pc ON pc.post_id = p.id
                 LEFT JOIN user author ON author.uid = p.writer_uid
                 WHERE p.is_deleted = 0
                   AND COALESCE(p.is_draft, 0) = 0
@@ -176,11 +289,17 @@ public class PostService {
 
         String selectSql = """
             SELECT p.*, g.gall_name,
+                   pc.content AS post_content_body,
+                   pc.content_format,
+                   pc.render_policy,
+                   pc.allow_images,
+                   pc.image_count,
+                   pc.word_count,
                    author.nick_type,
                    author.nick_icon_type,
                    CASE
-                       WHEN p.writer_uid IS NOT NULL AND p.writer_uid = g.manager_uid THEN 'manager'
-                       WHEN p.writer_uid IS NOT NULL AND EXISTS (
+                       WHEN LOWER(COALESCE(g.gall_type, '')) <> 'main' AND p.writer_uid IS NOT NULL AND p.writer_uid = g.manager_uid THEN 'manager'
+                       WHEN LOWER(COALESCE(g.gall_type, '')) <> 'main' AND p.writer_uid IS NOT NULL AND EXISTS (
                            SELECT 1
                            FROM board_submanager bs
                            WHERE bs.gall_id = p.gall_id
@@ -197,6 +316,7 @@ public class PostService {
                    ) AS comment_count
             FROM post p
             JOIN board g ON g.gall_id = p.gall_id
+            LEFT JOIN post_content pc ON pc.post_id = p.id
             LEFT JOIN user author ON author.uid = p.writer_uid
             WHERE p.id = ?
               AND p.is_deleted = 0
@@ -222,11 +342,17 @@ public class PostService {
 
         String selectSql = """
             SELECT p.*, g.gall_name,
+                   pc.content AS post_content_body,
+                   pc.content_format,
+                   pc.render_policy,
+                   pc.allow_images,
+                   pc.image_count,
+                   pc.word_count,
                    author.nick_type,
                    author.nick_icon_type,
                    CASE
-                       WHEN p.writer_uid IS NOT NULL AND p.writer_uid = g.manager_uid THEN 'manager'
-                       WHEN p.writer_uid IS NOT NULL AND EXISTS (
+                       WHEN LOWER(COALESCE(g.gall_type, '')) <> 'main' AND p.writer_uid IS NOT NULL AND p.writer_uid = g.manager_uid THEN 'manager'
+                       WHEN LOWER(COALESCE(g.gall_type, '')) <> 'main' AND p.writer_uid IS NOT NULL AND EXISTS (
                            SELECT 1
                            FROM board_submanager bs
                            WHERE bs.gall_id = p.gall_id
@@ -243,6 +369,7 @@ public class PostService {
                    ) AS comment_count
             FROM post p
             JOIN board g ON g.gall_id = p.gall_id
+            LEFT JOIN post_content pc ON pc.post_id = p.id
             LEFT JOIN user author ON author.uid = p.writer_uid
             WHERE p.gall_id = ?
               AND p.post_no = ?
@@ -264,8 +391,8 @@ public class PostService {
                        c.parent_id, c.reply_depth, c.sort_key, c.like_count, c.report_count, c.review_status,
                        author.nick_type, author.nick_icon_type,
                        CASE
-                           WHEN c.writer_uid IS NOT NULL AND c.writer_uid = b.manager_uid THEN 'manager'
-                           WHEN c.writer_uid IS NOT NULL AND EXISTS (
+                           WHEN LOWER(COALESCE(b.gall_type, '')) <> 'main' AND c.writer_uid IS NOT NULL AND c.writer_uid = b.manager_uid THEN 'manager'
+                           WHEN LOWER(COALESCE(b.gall_type, '')) <> 'main' AND c.writer_uid IS NOT NULL AND EXISTS (
                                SELECT 1
                                FROM board_submanager bs
                                WHERE bs.gall_id = c.gall_id
@@ -279,11 +406,21 @@ public class PostService {
                 LEFT JOIN user author ON author.uid = c.writer_uid
                 WHERE c.gall_id = ?
                   AND c.post_no = ?
-                  AND (c.is_deleted = 0 OR COALESCE(c.reply_depth, 0) > 0 OR EXISTS (
+                  AND (c.is_deleted = 0 OR EXISTS (
                       SELECT 1
                       FROM comment child
                       WHERE child.parent_id = c.id
-                        AND child.is_deleted = 0
+                        AND COALESCE(child.review_status, 'normal') <> 'review'
+                        AND (
+                            child.is_deleted = 0
+                            OR EXISTS (
+                                SELECT 1
+                                FROM comment grandchild
+                                WHERE grandchild.parent_id = child.id
+                                  AND grandchild.is_deleted = 0
+                                  AND COALESCE(grandchild.review_status, 'normal') <> 'review'
+                            )
+                        )
                   ))
                   AND COALESCE(c.review_status, 'normal') <> 'review'
                   AND p.is_deleted = 0
@@ -427,6 +564,13 @@ public class PostService {
                 writer.ip(),
                 writer.passwordHash()
         );
+        Long postId = jdbcTemplate.queryForObject(
+                "SELECT id FROM post WHERE gall_id = ? AND post_no = ?",
+                Long.class,
+                gallId,
+                createdPostNo
+        );
+        upsertPostContent(postId, gallId, createdPostNo.longValue(), content);
 
         featureService.afterPostCreated(gallId, createdPostNo, uid, payload);
         return Map.of("success", true, "postNo", createdPostNo);
@@ -512,6 +656,7 @@ public class PostService {
                 DELETED_POST_CONTENT,
                 postId
         );
+        upsertPostContent(postId, gallId, postNo, DELETED_POST_CONTENT);
         jdbcTemplate.update(
                 "UPDATE comment SET is_deleted = 1, content = ? WHERE gall_id = ? AND post_no = ? AND is_deleted = 0",
                 DELETED_COMMENT_CONTENT,
@@ -902,6 +1047,63 @@ public class PostService {
         return toInt(comment.get("reply_depth")) > 0 || comment.get("parent_id") != null;
     }
 
+    private void upsertPostContent(Long postId, String gallId, Long postNo, String content) {
+        if (postId == null || gallId == null || postNo == null) {
+            return;
+        }
+        String safeContent = content == null ? "" : content;
+        int imageCount = countImageTags(safeContent);
+        int wordCount = countTextWords(safeContent);
+        jdbcTemplate.update("""
+                INSERT INTO post_content (
+                    post_id,
+                    gall_id,
+                    post_no,
+                    content,
+                    content_format,
+                    render_policy,
+                    allow_images,
+                    image_count,
+                    word_count
+                )
+                VALUES (?, ?, ?, ?, 'html', 'trusted_html', ?, ?, ?)
+                ON DUPLICATE KEY UPDATE
+                    content = VALUES(content),
+                    content_format = VALUES(content_format),
+                    render_policy = VALUES(render_policy),
+                    allow_images = VALUES(allow_images),
+                    image_count = VALUES(image_count),
+                    word_count = VALUES(word_count)
+                """,
+                postId,
+                gallId,
+                postNo,
+                safeContent,
+                imageCount > 0 ? 1 : 0,
+                imageCount,
+                wordCount
+        );
+    }
+
+    private int countImageTags(String content) {
+        String lower = content.toLowerCase(java.util.Locale.ROOT);
+        int count = 0;
+        int index = lower.indexOf("<img");
+        while (index >= 0) {
+            count++;
+            index = lower.indexOf("<img", index + 4);
+        }
+        return count;
+    }
+
+    private int countTextWords(String content) {
+        String text = content.replaceAll("<[^>]*>", " ").trim();
+        if (text.isEmpty()) {
+            return 0;
+        }
+        return text.split("\\s+").length;
+    }
+
     private List<Map<String, Object>> sanitizeRowsContent(List<Map<String, Object>> rows) {
         rows.forEach(this::sanitizeRowContent);
         return rows;
@@ -914,7 +1116,10 @@ public class PostService {
         if (toInt(row.get("is_deleted")) == 1 && (row.containsKey("reply_depth") || row.containsKey("parent_id"))) {
             row.put("content", deletedCommentContent(row));
         }
-        Object rawContent = row.get("content");
+        Object rawContent = row.get("post_content_body");
+        if (rawContent == null) {
+            rawContent = row.get("content");
+        }
         if (rawContent != null) {
             String sanitized = htmlSanitizerService.sanitize(String.valueOf(rawContent));
             row.put("content", sanitized);
@@ -927,6 +1132,10 @@ public class PostService {
             row.put("display_category", displayCategory);
             row.put("category", displayCategory);
         }
+        boolean concept = toInt(row.get("is_concept")) == 1 || Boolean.TRUE.equals(row.get("is_concept"));
+        boolean notice = toInt(row.get("is_notice")) == 1 || Boolean.TRUE.equals(row.get("is_notice"));
+        row.put("is_concept_flag", concept);
+        row.put("is_notice_flag", notice);
         return row;
     }
 

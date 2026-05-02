@@ -1,10 +1,12 @@
 package org.java.spring_04.auth;
 
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
+import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.Map;
 
@@ -110,9 +112,23 @@ public class AuthController {
     }
 
     @PostMapping("/logout")
-    public Map<String, String> logout(HttpServletRequest request) {
+    public Map<String, String> logout(HttpServletRequest request, HttpServletResponse response) throws IOException {
         clearSession(request);
+        if (!isAjax(request)) {
+            response.sendRedirect("/");
+            return null;
+        }
         return Map.of("message", "로그아웃이 완료되었습니다.");
+    }
+
+    @GetMapping("/logout")
+    public void logoutByNavigation(HttpServletRequest request, HttpServletResponse response) throws IOException {
+        clearSession(request);
+        response.sendRedirect("/");
+    }
+
+    private boolean isAjax(HttpServletRequest request) {
+        return "XMLHttpRequest".equals(request.getHeader("X-Requested-With"));
     }
 
     private void clearSession(HttpServletRequest request) {

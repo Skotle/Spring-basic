@@ -219,7 +219,13 @@ public class AuthService {
             return "variable";
         }
         String normalized = value.trim().toLowerCase();
-        if (normalized.equals("fixed") || normalized.equals("\uace0\uc815")) {
+        if (normalized.equals("fixed")
+                || normalized.equals("fix")
+                || normalized.equals("f")
+                || normalized.equals("1")
+                || normalized.equals("true")
+                || normalized.equals("\uace0\uc815")
+                || normalized.equals("\uace0\uc815\ub2c9")) {
             return "fixed";
         }
         return "variable";

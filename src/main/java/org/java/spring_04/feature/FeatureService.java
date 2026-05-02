@@ -226,9 +226,16 @@ public class FeatureService {
     public void assertBoardReadable(String gallId, String uid, String memberDivision) {
         Map<String, Object> settings = getBoardSettings(gallId);
         String visibility = text(settings.get("visibility"), "public");
-        if ("public".equalsIgnoreCase(visibility)) return;
-        if (isAdmin(memberDivision) || isBoardStaff(gallId, uid) || isBoardMember(gallId, uid)) return;
+        if ("public".equalsIgnoreCase(visibility)) {
+            return;
+        }
+        if (isAdmin(memberDivision) || isBoardStaff(gallId, uid) || isBoardMember(gallId, uid)) {
+            return;
+        }
         if ("members".equalsIgnoreCase(visibility)) {
+            if (uid != null && !uid.isBlank()) {
+                return;
+            }
             throw new RuntimeException("멤버 전용 보드입니다.");
         }
         throw new RuntimeException("비공개 보드입니다.");
@@ -386,7 +393,8 @@ public class FeatureService {
 
     @Transactional
     public Map<String, Object> cancelConcept(String gallId, long postNo, String uid, String memberDivision) {
-        if (!boardService.hasBoardPermission(gallId, uid, memberDivision, BoardService.PERMISSION_MANAGE_CONCEPT)) {
+        if (!boardService.hasBoardPermission(gallId, uid, memberDivision, BoardService.PERMISSION_MANAGE_CONCEPT)
+                && !boardService.hasBoardPermission(gallId, uid, memberDivision, BoardService.PERMISSION_MANAGE_CONCEPT_CUT)) {
             return Map.of("success", false, "message", "개념글을 취소할 권한이 없습니다.");
         }
         jdbcTemplate.update("""
@@ -448,6 +456,27 @@ public class FeatureService {
                 """, notice ? 1 : 0, notice ? 1 : 0, gallId, postNo);
         logModeration(gallId, uid, null, null, notice ? "notice_set" : "notice_unset", "manual");
         return Map.of("success", true);
+    }
+
+    @Transactional
+    public Map<String, Object> setPostCategory(String gallId, long postNo, String category, String uid, String memberDivision) {
+        if (!boardService.hasBoardPermission(gallId, uid, memberDivision, BoardService.PERMISSION_MANAGE_CATEGORIES)) {
+            return Map.of("success", false, "message", "말머리를 변경할 권한이 없습니다.");
+        }
+        addColumnIfMissing("post", "category", "VARCHAR(50) NULL");
+        String normalized = normalizePostCategoryForManage(category);
+        int updated = jdbcTemplate.update("""
+                UPDATE post
+                SET category = ?
+                WHERE gall_id = ?
+                  AND post_no = ?
+                  AND is_deleted = 0
+                """, normalized, gallId, postNo);
+        if (updated == 0) {
+            return Map.of("success", false, "message", "게시글을 찾을 수 없습니다.");
+        }
+        logModeration(gallId, uid, null, null, "category_set", normalized == null ? "clear" : normalized);
+        return Map.of("success", true, "category", normalized == null ? "" : normalized);
     }
 
     @Transactional
@@ -902,6 +931,20 @@ public class FeatureService {
     private String required(String value, String message) {
         String normalized = nullable(value);
         if (normalized == null) throw new RuntimeException(message);
+        return normalized;
+    }
+
+    private String normalizePostCategoryForManage(String value) {
+        String normalized = nullable(value);
+        if (normalized == null) {
+            return null;
+        }
+        if (normalized.length() > 20) {
+            throw new RuntimeException("말머리는 20자 이하로 입력해 주세요.");
+        }
+        if (normalized.startsWith(":")) {
+            throw new RuntimeException("사용할 수 없는 말머리입니다.");
+        }
         return normalized;
     }
 

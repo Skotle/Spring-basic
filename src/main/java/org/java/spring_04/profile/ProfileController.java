@@ -3,6 +3,7 @@ package org.java.spring_04.profile;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 @RestController
@@ -19,9 +20,9 @@ public class ProfileController {
     public Map<String, Object> getMyProfile(@SessionAttribute(name = "uid", required = false) String uid) {
         System.out.println("[" + LocalDateTime.now() + "] API /api/profile/me");
         try {
-            return Map.of("success", true, "data", profileService.getProfile(uid, uid));
+            return success(profileService.getProfile(uid, uid));
         } catch (Exception e) {
-            return Map.of("success", false, "message", e.getMessage());
+            return failure(e);
         }
     }
 
@@ -30,9 +31,9 @@ public class ProfileController {
                                           @SessionAttribute(name = "uid", required = false) String viewerUid) {
         System.out.println("[" + LocalDateTime.now() + "] API /api/profile/" + targetUid);
         try {
-            return Map.of("success", true, "data", profileService.getProfile(targetUid, viewerUid));
+            return success(profileService.getProfile(targetUid, viewerUid));
         } catch (Exception e) {
-            return Map.of("success", false, "message", e.getMessage());
+            return failure(e);
         }
     }
 
@@ -41,9 +42,9 @@ public class ProfileController {
                                                      @SessionAttribute(name = "uid", required = false) String uid) {
         System.out.println("[" + LocalDateTime.now() + "] API /api/profile/me/settings uid=" + uid);
         try {
-            return Map.of("success", true, "data", profileService.saveProfileSettings(uid, payload));
+            return success(profileService.saveProfileSettings(uid, payload));
         } catch (Exception e) {
-            return Map.of("success", false, "message", e.getMessage());
+            return failure(e);
         }
     }
 
@@ -52,9 +53,9 @@ public class ProfileController {
                                       @SessionAttribute(name = "uid", required = false) String uid) {
         System.out.println("[" + LocalDateTime.now() + "] API /api/profile/" + targetUid + "/follow actor=" + uid);
         try {
-            return Map.of("success", true, "data", profileService.follow(uid, targetUid));
+            return success(profileService.follow(uid, targetUid));
         } catch (Exception e) {
-            return Map.of("success", false, "message", e.getMessage());
+            return failure(e);
         }
     }
 
@@ -63,9 +64,23 @@ public class ProfileController {
                                         @SessionAttribute(name = "uid", required = false) String uid) {
         System.out.println("[" + LocalDateTime.now() + "] API /api/profile/" + targetUid + "/unfollow actor=" + uid);
         try {
-            return Map.of("success", true, "data", profileService.unfollow(uid, targetUid));
+            return success(profileService.unfollow(uid, targetUid));
         } catch (Exception e) {
-            return Map.of("success", false, "message", e.getMessage());
+            return failure(e);
         }
+    }
+
+    private Map<String, Object> success(Object data) {
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("success", true);
+        response.put("data", data);
+        return response;
+    }
+
+    private Map<String, Object> failure(Exception e) {
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("success", false);
+        response.put("message", e.getMessage() == null ? "프로필 처리 중 오류가 발생했습니다." : e.getMessage());
+        return response;
     }
 }

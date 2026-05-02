@@ -6,6 +6,8 @@ import org.java.spring_04.common.RequestIpResolver;
 import org.java.spring_04.feature.FeatureService;
 import org.java.spring_04.post.PostService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.web.bind.annotation.*;
 
@@ -36,14 +38,23 @@ public class BoardController {
     }
 
     @GetMapping("/posts/{gid}")
-    public List<Map<String, Object>> getPosts(
-            @PathVariable("gid") String gid,
-            @RequestParam(value = "page", defaultValue = "1") int page,
-            @SessionAttribute(name = "uid", required = false) String uid,
-            @SessionAttribute(name = "memberDivision", required = false) String memberDivision) {
-        System.out.println("[" + LocalDateTime.now() + "] API /api/board/posts/" + gid + "?page=" + page);
-        featureService.assertBoardReadable(gid, uid, memberDivision);
-        return boardService.getPostsByGallery(gid, page);
+    public ResponseEntity<?> getPosts(@PathVariable("gid") String gid,
+                                      @RequestParam(value = "page", defaultValue = "1") int page,
+                                      @SessionAttribute(name = "uid", required = false) String uid,
+                                      @SessionAttribute(name = "memberDivision", required = false) String memberDivision) {
+
+        try {
+            System.out.println("[" + LocalDateTime.now() + "] API /api/board/posts/" + gid + "?page=" + page);
+            featureService.assertBoardReadable(gid, uid, memberDivision);
+            return ResponseEntity.ok(boardService.getPostsByGallery(gid, page));
+
+        } catch (Exception e) {
+            String message = e.getMessage() == null ? "게시글 목록을 불러오지 못했습니다." : e.getMessage();
+            boolean accessDenied = message.contains("전용 보드") || message.contains("비공개");
+            System.out.println("[" + LocalDateTime.now() + "] API DENY /api/board/posts/" + gid + " message=" + message);
+            return ResponseEntity.status(accessDenied ? HttpStatus.FORBIDDEN : HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("success", false, "message", message));
+        }
     }
 
     @GetMapping("/posts/{gid}/{postNo}")

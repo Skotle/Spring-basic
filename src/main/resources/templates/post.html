@@ -3,21 +3,38 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title th:text="${post != null ? post.title : 'Post'}">Post</title>
+    <title th:text="${post != null ? post.title : '게시글'}">게시글</title>
     <link rel="stylesheet" href="/css/app.css">
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5128462008892004"
+            crossorigin="anonymous"></script>
 </head>
 <body>
 <header class="topbar">
     <div class="frame">
         <div class="topbar-inner">
-            <a class="brand" href="/">
-                <span class="brand-mark"></span>
-                <span>irisen web</span>
-            </a>
-            <div class="nav-actions">
-                <a class="btn btn-ghost" th:href="@{/board/{gid}(gid=${gid})}">보드</a>
-                <a class="btn btn-primary" th:href="@{/board/{gid}/write(gid=${gid})}">글쓰기</a>
+            <div class="topbar-main">
+                <a class="brand" href="/">
+                    <span class="brand-mark">/</span>
+                    <span>Irisen</span>
+                </a>
+                <form class="topbar-search" action="/search" method="get">
+                    <button type="button" class="topbar-menu" aria-label="메뉴"><span></span><span></span><span></span></button>
+                    <input class="topbar-search-input" type="search" name="q" placeholder="보드 & 게시글 검색">
+                    <button class="topbar-search-submit" type="submit" aria-label="검색"><span class="topbar-search-icon" aria-hidden="true"></span></button>
+                </form>
+                <div class="topbar-account">
+                    <a class="btn btn-secondary btn-compact" th:href="@{/board/{gid}(gid=${gid})}">보드</a>
+                    <a class="btn btn-primary btn-compact" th:href="@{/board/{gid}/write(gid=${gid})}">글쓰기</a>
+                </div>
             </div>
+            <nav class="topbar-nav" aria-label="주요 메뉴">
+                <a href="/">홈</a>
+                <a class="is-active" href="/boards?type=main">보드</a>
+                <a href="/boards?type=side">사이드 보드</a>
+                <span class="topbar-nav-divider" aria-hidden="true">||</span>
+                <a href="/feed">피드</a>
+                <a href="/profile" class="topbar-nav-auth">프로필</a>
+            </nav>
         </div>
     </div>
 </header>
@@ -30,22 +47,40 @@
             <span th:text="${flashMessage}">message</span>
         </div>
 
-        <div th:if="${post == null}" class="error-box" th:text="${errorMessage}">Post not found.</div>
+        <div th:if="${post == null}" class="error-box" th:text="${errorMessage}">게시글을 찾을 수 없습니다.</div>
 
         <div th:if="${post != null}" class="post-detail">
-            <article class="card post-card">
+            <article class="card post-card"
+                     th:classappend="${post.is_concept_flag == true} ? ' is-concept'">
                 <div class="post-card-main">
                     <div class="post-meta-bar">
                         <span class="post-board-name" th:text="${post.gall_name}">gallery</span>
+                        <span class="post-state-badge is-concept"
+                              th:if="${post.is_concept_flag == true}">개념글</span>
+                        <span class="post-state-badge is-notice"
+                              th:if="${post.is_notice_flag == true}">공지</span>
                     </div>
 
                     <div class="post-title-block">
-                        <h1 class="post-heading" th:text="${post.title}">Post title</h1>
+                        <h1 class="post-heading">
+                            <span class="post-heading-badge"
+                                  th:if="${post.is_concept_flag == true}">개념</span>
+                            <span th:text="${post.title}">제목</span>
+                        </h1>
                         <div class="post-info-row">
-                            <span th:text="${post.name}">author</span>
-                            <a th:if="${post.writer_uid != null}"
-                               class="profile-inline-link"
-                               th:href="@{/profile/{uid}(uid=${post.writer_uid})}">○</a>
+                            <span class="member-identity inline">
+                                <span class="member-name" th:text="${post.name}">author</span>
+                                <a th:href="@{/profile/{uid}(uid=${post.writer_uid})}"
+                                   th:title="${post.writer_uid + ' 프로필'}"
+                                   th:with="postNickType=${post.nick_type != null ? #strings.toLowerCase(#strings.trim(post.nick_type)) : 'variable'}, postFixedNick=${postNickType == 'fixed' or postNickType == 'fix' or postNickType == 'f' or postNickType == '1' or postNickType == 'true' or postNickType == '고정' or postNickType == '고정닉'}"
+                                   th:if="${post.writer_uid != null and post.author_board_role == null}"
+                                   th:class="${'nick-type-badge ' + (postFixedNick ? 'is-fixed' : 'is-variable')}"
+                                   th:text="${postFixedNick ? '고정닉' : '비고정닉'}">고정닉</a>
+                                <span th:if="${post.author_board_role != null}"
+                                      th:class="${'board-role-icon is-' + post.author_board_role}"
+                                      th:title="${post.author_board_role == 'manager' ? '매니저' : '부매니저'}"
+                                      th:text="${post.author_board_role == 'manager' ? 'M' : 'S'}">M</span>
+                            </span>
                             <span class="post-info-sep">|</span>
                             <span th:text="${post.writed_at}">date</span>
                             <span class="post-info-sep">|</span>
@@ -56,7 +91,7 @@
                     </div>
 
                     <section class="post-content-panel">
-                        <div class="post-content-label">Content</div>
+                        <div class="post-content-label">본문</div>
                         <div class="preview post-content-fill" th:utext="${post.content}">content</div>
                     </section>
                 </div>
@@ -107,7 +142,7 @@
             <section class="section-stack comment-section">
                 <div class="section-head">
                     <div>
-                        <span class="eyebrow">Comments</span>
+                        <span class="eyebrow">COMMENTS</span>
                         <h2 class="section-title">댓글</h2>
                     </div>
                 </div>
@@ -144,10 +179,19 @@
                              th:classappend="${' depth-' + comment.reply_depth + (comment.is_deleted == 1 ? ' is-deleted' : '') + ((comment.reply_depth != null and comment.reply_depth > 0) ? ' is-reply' : '')}">
                         <div class="comment-card-head">
                             <div class="muted" th:if="${comment.is_deleted != 1}">
-                                <span th:text="${comment.name}">comment author</span>
-                                <a th:if="${comment.writer_uid != null}"
-                                   class="profile-inline-link"
-                                   th:href="@{/profile/{uid}(uid=${comment.writer_uid})}">○</a>
+                                <span class="member-identity inline">
+                                    <span class="member-name" th:text="${comment.name}">comment author</span>
+                                    <a th:href="@{/profile/{uid}(uid=${comment.writer_uid})}"
+                                       th:title="${comment.writer_uid + ' 프로필'}"
+                                       th:with="commentNickType=${comment.nick_type != null ? #strings.toLowerCase(#strings.trim(comment.nick_type)) : 'variable'}, commentFixedNick=${commentNickType == 'fixed' or commentNickType == 'fix' or commentNickType == 'f' or commentNickType == '1' or commentNickType == 'true' or commentNickType == '고정' or commentNickType == '고정닉'}"
+                                       th:if="${comment.writer_uid != null and comment.author_board_role == null}"
+                                       th:class="${'nick-type-badge ' + (commentFixedNick ? 'is-fixed' : 'is-variable')}"
+                                       th:text="${commentFixedNick ? '고정닉' : '비고정닉'}">고정닉</a>
+                                    <span th:if="${comment.author_board_role != null}"
+                                          th:class="${'board-role-icon is-' + comment.author_board_role}"
+                                          th:title="${comment.author_board_role == 'manager' ? '매니저' : '부매니저'}"
+                                          th:text="${comment.author_board_role == 'manager' ? 'M' : 'S'}">M</span>
+                                </span>
                                 <span th:text="${' · ' + comment.writed_at}">comment meta</span>
                             </div>
                             <div class="comment-card-tools">
@@ -167,8 +211,8 @@
                         </div>
                         <div class="muted comment-deleted-label"
                              th:if="${comment.is_deleted == 1}"
-                             th:text="${(comment.reply_depth != null and comment.reply_depth > 0) ? '↳ 삭제된 답글' : '삭제된 댓글'}">deleted comment</div>
-                        <div class="preview comment-preview" th:utext="${comment.content}">comment</div>
+                             th:text="'삭제된 댓글'">삭제된 댓글</div>
+                        <div th:if="${comment.is_deleted != 1}" class="preview comment-preview" th:utext="${comment.content}">comment</div>
                         <form th:if="${comment.is_deleted != 1 and comment.reply_depth < 2}"
                               th:id="'reply-form-' + ${comment.id}"
                               th:action="@{/board/{gid}/{postNo}/comment(gid=${gid},postNo=${post.post_no})}"
@@ -201,8 +245,8 @@
             <section class="section-stack">
                 <div class="section-head">
                     <div>
-                        <span class="eyebrow">Board Page</span>
-                        <h2 class="section-title" th:text="${'Page ' + currentPage}">Page 1</h2>
+                        <span class="eyebrow">BOARD PAGE</span>
+                        <h2 class="section-title" th:text="${currentPage + '페이지'}">1페이지</h2>
                     </div>
                     <a class="btn btn-ghost" th:href="@{/board/{gid}(gid=${gid})}">보드로</a>
                 </div>

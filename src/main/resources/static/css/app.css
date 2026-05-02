@@ -12,7 +12,7 @@
   --accent-deep: #ff5b86;
   --accent-soft: #fff0f5;
   --accent-fog: rgba(255, 127, 157, 0.18);
-  --blue: #3b4890;
+  --blue: #ff5b86;
   --dc-navy: #ff7f9d;
   --dc-navy-deep: #ff5b86;
   --dc-navy-soft: #fff0f5;
@@ -300,7 +300,7 @@ button {
 
   .topbar-search {
     min-height: 58px;
-    border: 4px solid var(--dc-navy);
+    border: 4px solid var(--accent-deep);
     border-radius: 0;
     box-shadow: 0 0 0 4px rgba(255, 127, 157, 0.08);
   }
@@ -315,7 +315,7 @@ button {
     overflow: visible;
     padding: 0 18px;
     border: 0;
-    background: var(--dc-navy);
+    background: linear-gradient(90deg, var(--accent-deep), var(--accent));
   }
 
   .topbar-nav a {
@@ -353,7 +353,7 @@ button {
     align-items: center;
     gap: 20px;
     padding-bottom: 12px;
-    border-bottom: 8px solid var(--dc-navy);
+    border-bottom: 8px solid var(--accent-deep);
   }
 }
 
@@ -1320,11 +1320,12 @@ button {
   font-size: 0.74rem;
   font-weight: 800;
   line-height: 1;
+  text-decoration: none;
 }
 
 .nick-type-badge.is-fixed {
-  border-color: rgba(59, 72, 144, 0.2);
-  background: rgba(59, 72, 144, 0.08);
+  border-color: rgba(255, 102, 128, 0.28);
+  background: rgba(255, 143, 171, 0.16);
   color: var(--accent-deep);
 }
 
@@ -1334,16 +1335,34 @@ button {
   color: #667085;
 }
 
-.nick-type-badge.is-manager {
-  border-color: rgba(228, 92, 35, 0.22);
-  background: rgba(228, 92, 35, 0.1);
-  color: #c44a16;
+a.nick-type-badge:hover,
+a.m-nick-type:hover {
+  filter: brightness(0.97);
+  text-decoration: none;
 }
 
-.nick-type-badge.is-submanager {
-  border-color: rgba(46, 120, 221, 0.22);
-  background: rgba(46, 120, 221, 0.1);
-  color: #1f5fb7;
+.board-role-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  clip-path: polygon(50% 0, 91% 18%, 84% 72%, 50% 100%, 16% 72%, 9% 18%);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 950;
+  line-height: 1;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.18);
+}
+
+.board-role-icon.is-manager {
+  background: linear-gradient(135deg, #ff5b86, #ff9a3d);
+  box-shadow: 0 0 0 1px rgba(255, 91, 134, 0.25);
+}
+
+.board-role-icon.is-submanager {
+  background: linear-gradient(135deg, #ff8fab, #9b5cff);
+  box-shadow: 0 0 0 1px rgba(155, 92, 255, 0.22);
 }
 
 .signup-policy-ok,
@@ -1392,11 +1411,11 @@ button {
 }
 
 .signup-strength-fill.strength-2 {
-  background: #4f7cf0;
+  background: #ff8fab;
 }
 
 .signup-strength-fill.strength-3 {
-  background: #2563eb;
+  background: #ff5b86;
 }
 
 .signup-mail-btn {
@@ -1738,6 +1757,11 @@ button {
   align-items: center;
 }
 
+.dc-post-table-head.board-post-table-head,
+.dc-post-row.board-post-row {
+  grid-template-columns: 76px 92px minmax(220px, 1fr) 132px 120px 72px 72px minmax(220px, auto);
+}
+
 .dc-post-table-head {
   padding: 14px 24px;
   border-bottom: 1px solid #cfd6ea;
@@ -1760,12 +1784,191 @@ button {
   background: #f8faff;
 }
 
+.dc-post-row.is-concept {
+  position: relative;
+  border-left: 4px solid #ff5d86;
+  background:
+    linear-gradient(90deg, rgba(255, 93, 134, 0.13), rgba(255, 255, 255, 0) 38%),
+    #fff;
+}
+
+.dc-post-row.is-concept::before {
+  content: "개념글";
+  position: absolute;
+  left: 8px;
+  top: -10px;
+  padding: 2px 7px;
+  border: 1px solid #ff9ab5;
+  background: #fff5f8;
+  color: #d83f68;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+}
+
+.dc-post-row.is-concept:hover {
+  background:
+    linear-gradient(90deg, rgba(255, 93, 134, 0.18), rgba(255, 255, 255, 0) 42%),
+    #fff8fb;
+}
+
+.dc-post-row.is-concept .dc-col-number,
+.dc-post-row.is-concept .dc-col-title strong {
+  color: #d83f68;
+}
+
 .dc-col-title {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 700;
+}
+
+.dc-col-title a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.dc-col-title a:hover {
+  color: var(--board-accent);
+}
+
+.board-row-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 6px;
+  padding: 2px 6px;
+  border: 1px solid #f3bfd0;
+  background: #fff5f8;
+  color: #d83f68;
+  font-size: 0.74rem;
+  font-weight: 900;
+  vertical-align: 1px;
+}
+
+.board-row-badge.is-notice {
+  border-color: #f2d9b5;
+  background: #fffaf3;
+  color: #b26a21;
+}
+
+.board-admin-toolbar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 12px 16px;
+  border-top: 1px solid #f3cfda;
+  border-bottom: 1px solid #f3cfda;
+  background: #fff8fb;
+  color: #44516f;
+  font-size: 0.9rem;
+}
+
+.board-admin-toolbar strong {
+  color: var(--board-accent);
+}
+
+.board-post-admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  position: relative;
+}
+
+.board-post-admin-actions .btn {
+  padding: 7px 9px;
+  font-size: 0.78rem;
+  line-height: 1;
+}
+
+.board-admin-state {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 8px;
+  border: 1px solid #f2d4df;
+  background: #fff8fb;
+  color: #9a6072;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.board-post-more {
+  position: relative;
+}
+
+.board-post-more summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.board-post-more summary::-webkit-details-marker {
+  display: none;
+}
+
+.board-post-more-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 20;
+  display: grid;
+  gap: 6px;
+  min-width: 116px;
+  padding: 8px;
+  border: 1px solid #f3bfd0;
+  background: #fff;
+  box-shadow: 0 12px 24px rgba(42, 50, 75, 0.14);
+}
+
+.post-state-badge,
+.post-heading-badge {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #f3bfd0;
+  background: #fff5f8;
+  color: #d83f68;
+  font-weight: 900;
+}
+
+.post-state-badge {
+  min-height: 24px;
+  padding: 0 8px;
+  font-size: 0.78rem;
+}
+
+.post-state-badge.is-notice {
+  background: #fffaf3;
+  border-color: #f2d9b5;
+  color: #b26a21;
+}
+
+.post-heading-badge {
+  margin-right: 8px;
+  padding: 4px 8px;
+  transform: translateY(-3px);
+  font-size: 0.86rem;
+  vertical-align: middle;
+}
+
+.board-inline-flash {
+  margin: 12px 16px 0;
+  padding: 11px 13px;
+  border-radius: 0;
+  font-size: 0.92rem;
+}
+
+.board-inline-flash.is-success {
+  border: 1px solid #f3bfd0;
+  background: #fff5f8;
+  color: #d83f68;
+}
+
+.board-inline-flash.is-error {
+  border: 1px solid #f1c2c2;
+  background: #fff3f2;
+  color: var(--danger);
 }
 
 .dc-col-writer,
@@ -1940,6 +2143,24 @@ button {
   display: grid;
   gap: 20px;
   min-height: 0;
+}
+
+.post-card.is-concept {
+  border-color: #ff9ab5;
+  background:
+    radial-gradient(circle at top right, rgba(255, 93, 134, 0.15), transparent 32%),
+    linear-gradient(180deg, #fff8fb 0%, #ffffff 38%);
+  box-shadow: 0 22px 44px rgba(255, 93, 134, 0.16);
+}
+
+.post-card.is-concept .post-card-main {
+  padding: 18px;
+  border: 1px solid #f3bfd0;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.post-card.is-concept .post-meta-bar {
+  border-bottom-color: #f3bfd0;
 }
 
 .post-card .muted {
@@ -2227,6 +2448,45 @@ button {
   align-items: start;
 }
 
+.profile-banner {
+  min-height: 180px;
+  margin: -24px -26px 22px;
+  border-bottom: 1px solid var(--line);
+  background:
+    linear-gradient(135deg, rgba(255, 143, 171, 0.8), rgba(255, 228, 236, 0.35)),
+    radial-gradient(circle at 18% 20%, rgba(255, 255, 255, 0.9), transparent 28%);
+  background-position: center;
+  background-size: cover;
+}
+
+.profile-identity-row {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.profile-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 92px;
+  width: 92px;
+  height: 92px;
+  overflow: hidden;
+  border: 3px solid #fff;
+  background: var(--accent);
+  color: #fff;
+  font-size: 2.3rem;
+  font-weight: 900;
+  box-shadow: 0 8px 18px rgba(255, 102, 128, 0.25);
+}
+
+.profile-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .profile-status-text {
   font-size: 1.02rem;
   color: var(--text);
@@ -2265,6 +2525,54 @@ button {
 .profile-stat-card span {
   color: var(--muted);
   font-size: 0.9rem;
+}
+
+.profile-follow-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.profile-upload-grid,
+.profile-follow-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.profile-follow-details {
+  border: 1px solid var(--line);
+  background: #fff;
+}
+
+.profile-follow-details summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  cursor: pointer;
+  color: var(--text);
+  font-weight: 900;
+}
+
+.profile-follow-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.profile-follow-details summary::after {
+  content: "+";
+  color: var(--accent-deep);
+  font-weight: 900;
+}
+
+.profile-follow-details[open] summary::after {
+  content: "-";
+}
+
+.profile-follow-details > .compact-stack,
+.profile-follow-details > .empty-box {
+  margin: 0 14px 14px;
 }
 
 .profile-color-field input[type="color"] {
@@ -2545,6 +2853,15 @@ textarea#comment-content {
     grid-template-columns: 1fr;
   }
 
+  .profile-follow-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-upload-grid,
+  .profile-follow-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
   .board-directory-hero-head,
   .board-directory-layout,
   .board-directory-columns,
@@ -2574,6 +2891,32 @@ textarea#comment-content {
   .dc-post-table-head,
   .dc-post-row {
     grid-template-columns: 64px 64px minmax(0, 1fr) 96px 90px 58px 58px;
+  }
+
+  .dc-post-table-head.board-post-table-head,
+  .dc-post-row.board-post-row {
+    grid-template-columns: 56px 64px minmax(0, 1fr);
+  }
+
+  .board-post-table-head > div:nth-child(n + 4),
+  .board-post-row > div:nth-child(n + 4):not(.board-post-admin-actions) {
+    display: none;
+  }
+
+  .board-post-admin-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+    padding-top: 4px;
+  }
+
+  .board-post-more-menu {
+    left: 0;
+    right: auto;
+  }
+
+  .board-admin-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .topbar-main {

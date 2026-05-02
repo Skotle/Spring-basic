@@ -18,19 +18,34 @@ public class ProfileService {
 
     @PostConstruct
     public void initializeProfileSchema() {
+        ensureUserProfileColumns();
         jdbcTemplate.execute("""
                 CREATE TABLE IF NOT EXISTS user_profile_setting (
                     uid VARCHAR(50) NOT NULL,
                     status_message VARCHAR(160) NULL,
                     bio TEXT NULL,
                     accent_color VARCHAR(20) NOT NULL DEFAULT '#ff8fab',
+                    avatar_url VARCHAR(500) NULL,
+                    banner_url VARCHAR(500) NULL,
                     show_posts TINYINT(1) NOT NULL DEFAULT 1,
                     show_comments TINYINT(1) NOT NULL DEFAULT 1,
+                    show_followers TINYINT(1) NOT NULL DEFAULT 1,
+                    show_following TINYINT(1) NOT NULL DEFAULT 1,
                     show_birthdate TINYINT(1) NOT NULL DEFAULT 1,
                     show_gender TINYINT(1) NOT NULL DEFAULT 1,
                     show_sns TINYINT(1) NOT NULL DEFAULT 1,
                     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY (uid)
+                )
+                """);
+        ensureProfileSettingColumns();
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS user_block (
+                    blocker_uid VARCHAR(50) NOT NULL,
+                    blocked_uid VARCHAR(50) NOT NULL,
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (blocker_uid, blocked_uid),
+                    INDEX idx_user_block_blocked (blocked_uid, created_at)
                 )
                 """);
         jdbcTemplate.execute("""
@@ -42,6 +57,49 @@ public class ProfileService {
                     INDEX idx_user_follow_following (following_uid, created_at)
                 )
                 """);
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS post_scrap (
+                    uid VARCHAR(50) NOT NULL,
+                    gall_id VARCHAR(50) NOT NULL,
+                    post_no BIGINT NOT NULL,
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (uid, gall_id, post_no),
+                    INDEX idx_post_scrap_uid_created (uid, created_at)
+                )
+                """);
+    }
+
+    private void ensureProfileSettingColumns() {
+        addProfileSettingColumnIfMissing("avatar_url", "VARCHAR(500) NULL");
+        addProfileSettingColumnIfMissing("banner_url", "VARCHAR(500) NULL");
+        addProfileSettingColumnIfMissing("show_followers", "TINYINT(1) NOT NULL DEFAULT 1");
+        addProfileSettingColumnIfMissing("show_following", "TINYINT(1) NOT NULL DEFAULT 1");
+    }
+
+    private void addProfileSettingColumnIfMissing(String columnName, String definition) {
+        if (!columnExists("user_profile_setting", columnName)) {
+            jdbcTemplate.execute("ALTER TABLE user_profile_setting ADD COLUMN " + columnName + " " + definition);
+        }
+    }
+
+    private void ensureUserProfileColumns() {
+        if (!columnExists("user", "nick_type")) {
+            jdbcTemplate.execute("ALTER TABLE user ADD COLUMN nick_type VARCHAR(20) NOT NULL DEFAULT 'variable'");
+        }
+        if (!columnExists("user", "nick_icon_type")) {
+            jdbcTemplate.execute("ALTER TABLE user ADD COLUMN nick_icon_type VARCHAR(40) NULL");
+        }
+    }
+
+    private boolean columnExists(String tableName, String columnName) {
+        Integer count = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM information_schema.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE()
+                  AND TABLE_NAME = ?
+                  AND COLUMN_NAME = ?
+                """, Integer.class, tableName, columnName);
+        return count != null && count > 0;
     }
 
     public Map<String, Object> getProfile(String targetUid, String viewerUid) {
@@ -56,6 +114,8 @@ public class ProfileService {
         Map<String, Object> settings = getProfileSettings(resolvedTarget);
         boolean showPosts = !blockedView && (ownerView || toBooleanFlag(settings.get("show_posts")));
         boolean showComments = !blockedView && (ownerView || toBooleanFlag(settings.get("show_comments")));
+        boolean showFollowers = !blockedView && (ownerView || toBooleanFlag(settings.get("show_followers")));
+        boolean showFollowing = !blockedView && (ownerView || toBooleanFlag(settings.get("show_following")));
 
         Map<String, Object> profile = new LinkedHashMap<>();
         profile.put("uid", user.get("uid"));
@@ -72,10 +132,14 @@ public class ProfileService {
         profile.put("statusMessage", nullableText(settings.get("status_message")));
         profile.put("bio", nullableText(settings.get("bio")));
         profile.put("accentColor", firstNonBlank(nullableText(settings.get("accent_color")), "#ff8fab"));
+        profile.put("avatarUrl", nullableText(settings.get("avatar_url")));
+        profile.put("bannerUrl", nullableText(settings.get("banner_url")));
         profile.put("ownerView", ownerView);
         profile.put("canEdit", ownerView);
         profile.put("showPosts", toBooleanFlag(settings.get("show_posts")));
         profile.put("showComments", toBooleanFlag(settings.get("show_comments")));
+        profile.put("showFollowers", toBooleanFlag(settings.get("show_followers")));
+        profile.put("showFollowing", toBooleanFlag(settings.get("show_following")));
         profile.put("stats", Map.of(
                 "postCount", countPosts(resolvedTarget),
                 "commentCount", countComments(resolvedTarget),
@@ -85,15 +149,17 @@ public class ProfileService {
                 "followerCount", countFollowers(resolvedTarget),
                 "followingCount", countFollowing(resolvedTarget)
         ));
-        profile.put("follow", Map.of(
-                "viewerUid", nullableText(viewerUid),
-                "isFollowing", isFollowing(viewerUid, resolvedTarget),
-                "isFollowedBy", isFollowing(resolvedTarget, viewerUid)
-        ));
-        profile.put("followers", getFollowers(resolvedTarget));
-        profile.put("following", getFollowing(resolvedTarget));
+        Map<String, Object> follow = new LinkedHashMap<>();
+        follow.put("viewerUid", nullableText(viewerUid));
+        follow.put("isFollowing", isFollowing(viewerUid, resolvedTarget));
+        follow.put("isFollowedBy", isFollowing(resolvedTarget, viewerUid));
+        profile.put("follow", follow);
+        profile.put("followers", showFollowers ? getFollowers(resolvedTarget) : List.of());
+        profile.put("following", showFollowing ? getFollowing(resolvedTarget) : List.of());
         profile.put("postsHidden", !showPosts);
         profile.put("commentsHidden", !showComments);
+        profile.put("followersHidden", !showFollowers);
+        profile.put("followingHidden", !showFollowing);
         profile.put("posts", showPosts ? getPostsByUser(resolvedTarget) : List.of());
         profile.put("comments", showComments ? getCommentsByUser(resolvedTarget) : List.of());
         profile.put("blockedView", blockedView);
@@ -135,8 +201,12 @@ public class ProfileService {
         String statusMessage = nullableTrim(payload.get("statusMessage"));
         String bio = nullableTrim(payload.get("bio"));
         String accentColor = normalizeThemeColor(payload.get("accentColor"));
+        String avatarUrl = normalizeOptionalUrl(payload.get("avatarUrl"), "프로필 사진 URL");
+        String bannerUrl = normalizeOptionalUrl(payload.get("bannerUrl"), "프로필 배너 URL");
         int showPosts = parseBooleanFlag(payload.get("showPosts"));
         int showComments = parseBooleanFlag(payload.get("showComments"));
+        int showFollowers = parseBooleanFlag(payload.get("showFollowers"));
+        int showFollowing = parseBooleanFlag(payload.get("showFollowing"));
 
         if (statusMessage != null && statusMessage.length() > 160) {
             throw new RuntimeException("상태 메시지는 160자까지 입력할 수 있습니다.");
@@ -147,24 +217,33 @@ public class ProfileService {
 
         jdbcTemplate.update("""
                 INSERT INTO user_profile_setting (
-                    uid, status_message, bio, accent_color, show_posts, show_comments,
+                    uid, status_message, bio, accent_color, avatar_url, banner_url,
+                    show_posts, show_comments, show_followers, show_following,
                     show_birthdate, show_gender, show_sns, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, 1, 1, 1, NOW())
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 1, NOW())
                 ON DUPLICATE KEY UPDATE
                     status_message = VALUES(status_message),
                     bio = VALUES(bio),
                     accent_color = VALUES(accent_color),
+                    avatar_url = VALUES(avatar_url),
+                    banner_url = VALUES(banner_url),
                     show_posts = VALUES(show_posts),
                     show_comments = VALUES(show_comments),
+                    show_followers = VALUES(show_followers),
+                    show_following = VALUES(show_following),
                     updated_at = NOW()
                 """,
                 actorUid,
                 statusMessage,
                 bio,
                 accentColor,
+                avatarUrl,
+                bannerUrl,
                 showPosts,
-                showComments
+                showComments,
+                showFollowers,
+                showFollowing
         );
 
         return getProfile(actorUid, actorUid);
@@ -176,14 +255,19 @@ public class ProfileService {
         defaults.put("status_message", null);
         defaults.put("bio", null);
         defaults.put("accent_color", "#ff8fab");
+        defaults.put("avatar_url", null);
+        defaults.put("banner_url", null);
         defaults.put("show_posts", true);
         defaults.put("show_comments", true);
+        defaults.put("show_followers", true);
+        defaults.put("show_following", true);
         defaults.put("show_birthdate", true);
         defaults.put("show_gender", true);
         defaults.put("show_sns", true);
         try {
             Map<String, Object> row = jdbcTemplate.queryForMap("""
-                    SELECT uid, status_message, bio, accent_color, show_posts, show_comments,
+                    SELECT uid, status_message, bio, accent_color, avatar_url, banner_url,
+                           show_posts, show_comments, show_followers, show_following,
                            show_birthdate, show_gender, show_sns, updated_at
                     FROM user_profile_setting
                     WHERE uid = ?
@@ -450,6 +534,20 @@ public class ProfileService {
             throw new RuntimeException("프로필 색상 형식이 올바르지 않습니다.");
         }
         return normalized.toLowerCase();
+    }
+
+    private String normalizeOptionalUrl(String value, String label) {
+        String normalized = nullableTrim(value);
+        if (normalized == null) {
+            return null;
+        }
+        if (normalized.length() > 500) {
+            throw new RuntimeException(label + "은 500자까지 입력할 수 있습니다.");
+        }
+        if (!normalized.startsWith("https://") && !normalized.startsWith("http://")) {
+            throw new RuntimeException(label + "은 http 또는 https 주소여야 합니다.");
+        }
+        return normalized;
     }
 
     private String firstNonBlank(String first, String second) {

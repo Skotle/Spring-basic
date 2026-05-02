@@ -116,6 +116,7 @@ public class MobileRedirectFilter extends OncePerRequestFilter {
     }
 
     private String mapMobilePath(String path) {
+        path = normalizeMatrixPath(path);
         if (path == null || path.isBlank() || "/".equals(path)) {
             return "/m";
         }
@@ -150,5 +151,23 @@ public class MobileRedirectFilter extends OncePerRequestFilter {
         }
 
         return null;
+    }
+
+    private String normalizeMatrixPath(String path) {
+        if (path == null) {
+            return null;
+        }
+        String[] parts = path.split("/", -1);
+        for (int i = 0; i < parts.length; i++) {
+            int matrixIndex = parts[i].indexOf(';');
+            if (matrixIndex >= 0) {
+                parts[i] = parts[i].substring(0, matrixIndex);
+            }
+        }
+        String normalized = String.join("/", parts);
+        if (normalized.length() > 1 && normalized.endsWith("/")) {
+            return normalized.substring(0, normalized.length() - 1);
+        }
+        return normalized;
     }
 }

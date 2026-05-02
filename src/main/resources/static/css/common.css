@@ -1,19 +1,19 @@
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=DM+Mono:wght@400;500&display=swap');
 
 :root {
-  --bg: #f3f5f9;
+  --bg: #f8f3f7;
   --panel: rgba(255, 255, 255, 0.92);
   --panel-strong: #ffffff;
-  --border: rgba(28, 41, 61, 0.12);
-  --accent: #1d4ed8;
-  --accent2: #0f766e;
-  --accent-soft: rgba(29, 78, 216, 0.08);
-  --text: #172033;
-  --sub: #667085;
+  --border: #ead6df;
+  --accent: #ff7f9d;
+  --accent2: #ff5b86;
+  --accent-soft: #fff0f5;
+  --text: #1f2430;
+  --sub: #6f6070;
   --err: #dc2626;
   --success: #16a34a;
   --mono: 'DM Mono', monospace;
   --sans: 'Noto Sans KR', sans-serif;
-  --bar: rgba(255, 255, 255, 0.82);
-  --shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
+  --bar: rgba(255, 255, 255, 0.9);
+  --shadow: 0 10px 28px rgba(255, 91, 134, 0.08);
 }

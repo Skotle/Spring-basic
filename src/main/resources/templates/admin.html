@@ -2,34 +2,49 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>권한 관리 - Admin</title>
-    <link rel="stylesheet" href="/css/global.css">
-    <link rel="stylesheet" href="/css/boardsheet.css">
+    <title>권한 관리</title>
+    <link rel="stylesheet" href="/css/app.css">
     <style>
-        .admin-table { width: 100%; border-collapse: collapse; margin-top: 2rem; background: var(--card-bg); border-radius: 8px; overflow: hidden; }
-        .admin-table th, .admin-table td { padding: 1rem; text-align: left; border-bottom: 1px solid var(--border); }
-        .admin-table th { background: rgba(0,0,0,0.05); font-family: var(--mono); color: var(--accent); }
-        .badge { padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; background: var(--accent); color: white; }
+        .admin-table { width: 100%; border-collapse: collapse; margin-top: 2rem; background: var(--panel); border: 1px solid var(--line); overflow: hidden; }
+        .admin-table th, .admin-table td { padding: 1rem; text-align: left; border-bottom: 1px solid var(--line); }
+        .admin-table th { background: var(--accent-soft); color: var(--accent-deep); }
+        .badge { padding: 4px 8px; font-size: 0.8rem; background: var(--accent); color: white; }
     </style>
 </head>
 <body>
-<nav>
-    <a class="nav-logo" href="/"><span>irisen admin</span></a>
-</nav>
+<header class="topbar">
+    <div class="frame">
+        <div class="topbar-inner">
+            <div class="topbar-main">
+                <a class="brand" href="/">
+                    <span class="brand-mark">/</span>
+                    <span>Irisen</span>
+                </a>
+            </div>
+            <nav class="topbar-nav" aria-label="주요 메뉴">
+                <a href="/">홈</a>
+                <a href="/boards?type=main">보드</a>
+                <a href="/boards?type=side">사이드 보드</a>
+                <span class="topbar-nav-divider" aria-hidden="true">||</span>
+                <a href="/feed">피드</a>
+            </nav>
+        </div>
+    </div>
+</header>
 
-<div class="page">
-    <div class="container">
+<main class="shell">
+    <div class="frame">
         <header>
-            <h1>Role Management</h1>
-            <p class="subtitle">// Access restricted to memberDivision: 1</p>
+            <h1>권한 관리</h1>
+            <p class="muted">관리자 권한이 있는 사용자만 접근할 수 있습니다.</p>
         </header>
 
         <table class="admin-table">
             <thead>
             <tr>
-                <th>Role Name</th>
-                <th>Description</th>
-                <th>Active Users</th>
+                <th>권한명</th>
+                <th>설명</th>
+                <th>사용자 수</th>
             </tr>
             </thead>
             <tbody id="roleList">
@@ -37,11 +52,11 @@
         </table>
 
         <div id="errorBox" style="display:none; color: #ff4d4d; margin-top: 2rem; text-align: center;">
-            <h3>Access Denied</h3>
+            <h3>접근 권한이 없습니다.</h3>
             <p>이 페이지를 볼 수 있는 권한이 없습니다.</p>
         </div>
     </div>
-</div>
+</main>
 
 <script src="/js/security-request.js"></script>
 <script src="/js/common.js"></script>

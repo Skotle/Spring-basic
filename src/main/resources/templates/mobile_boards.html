@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>모바일 보드</title>
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5128462008892004"
+          crossorigin="anonymous"></script>
+  <link rel="stylesheet" href="/css/mobile-app.css">
+</head>
+<body>
+<header class="m-topbar">
+  <form class="m-top-searchbar" action="/m/search" method="get">
+    <a class="m-mobile-logo" href="/m" aria-label="모바일 홈">Irisen</a>
+    <div class="m-search-panel">
+      <button type="button" class="m-menu-btn" aria-label="보드 목록"><span></span><span></span><span></span></button>
+      <input class="m-search-input" type="search" name="q" placeholder="보드와 게시글 검색">
+      <button class="m-search-submit" type="submit" aria-label="검색"><span class="m-search-symbol" aria-hidden="true"></span></button>
+      <a class="m-recent-visit" th:href="${loggedIn} ? '/m/boards' : '/m/signin'" th:text="${loggedIn} ? '최근 보드' : '로그인'">로그인</a>
+    </div>
+  </form>
+  <nav class="m-primary-tabs" aria-label="모바일 주요 메뉴">
+    <a href="/m">홈</a>
+    <a class="is-active" href="/m/boards">보드</a>
+    <a href="/m/feed">피드</a>
+    <a th:href="${loggedIn} ? '/m/profile' : '/m/signin'" th:text="${loggedIn} ? '프로필' : '로그인'">로그인</a>
+    <a th:href="${loggedIn} ? '/m/alarms' : '/m/nid'" th:text="${loggedIn} ? '알림' : '가입'">가입</a>
+  </nav>
+  <div class="m-session-strip">
+    <span th:if="${loggedIn}" class="m-session-name" th:text="${sessionNick != null and !#strings.isEmpty(sessionNick) ? sessionNick : sessionUid}">회원</span>
+    <form th:if="${loggedIn}" action="/logout" method="post">
+      <button type="submit" class="m-session-link">로그아웃</button>
+    </form>
+    <a th:if="${!loggedIn}" href="/m/signin" class="m-session-link">로그인</a>
+    <a th:if="${!loggedIn}" href="/m/nid" class="m-session-link">가입</a>
+  </div>
+</header>
+
+<main class="m-shell m-category-page">
+  <section class="m-category-intro">
+    <a href="/m/boards" class="m-under-link">Irisen 보드</a>
+    <a th:href="${loggedIn} ? '/m/board-request' : '/m/signin'" class="m-create-board-btn">개설 신청</a>
+  </section>
+
+  <section class="m-running-board">
+    <strong>운영 중 보드 </strong>
+    <span th:text="${'(' + totalBoardCount + ')'}">(0)</span>
+  </section>
+
+  <section class="m-category-note">
+    <span th:if="${loggedIn}" th:text="${(sessionNick != null and !#strings.isEmpty(sessionNick) ? sessionNick : sessionUid) + ' 계정으로 이용 중입니다.'}">회원 계정으로 이용 중입니다.</span>
+    <a th:if="${!loggedIn}" href="/m/signin">로그인 후 이용 가능합니다.</a>
+  </section>
+
+  <section class="m-board-promo">
+    <strong>모바일 보드 탐색</strong>
+    <p>메인 보드와 사이드 보드를 빠르게 나눠 볼 수 있습니다.</p>
+  </section>
+
+  <section class="m-board-directory">
+    <div class="m-directory-head">
+      <strong>통합 보드</strong>
+      <a th:class="${currentType == 'all' ? 'm-mini-more is-active' : 'm-mini-more'}" href="/m/boards">전체</a>
+      <a th:class="${currentType == 'main' ? 'm-mini-more is-active' : 'm-mini-more'}" href="/m/boards?type=main">메인</a>
+      <a th:class="${currentType == 'side' ? 'm-mini-more is-active' : 'm-mini-more'}" href="/m/boards?type=side">사이드</a>
+    </div>
+
+    <input id="mobileBoardSearchInput" class="m-directory-search" type="search" placeholder="보드 이름 또는 ID" oninput="filterMobileBoards(this.value)">
+
+    <div class="m-board-columns">
+      <div class="m-board-column" th:if="${currentType == 'all' or currentType == 'main'}" data-mobile-board-section="main">
+        <a class="m-board-line m-board-ssr-card"
+           th:each="board, stat : ${mainBoards}"
+           th:href="@{/m/board/{gid}(gid=${board.gall_id})}"
+           th:data-search="${#strings.toLowerCase((board.gall_id != null ? board.gall_id : '') + ' ' + (board.gall_name != null ? board.gall_name : '') + ' ' + (board.board_tags != null ? board.board_tags : ''))}">
+          <strong th:text="${board.gall_name != null ? board.gall_name : board.gall_id}">보드</strong>
+        </a>
+        <div th:if="${#lists.isEmpty(mainBoards)}" class="m-empty">표시할 메인 보드가 없습니다.</div>
+      </div>
+
+      <div class="m-board-column" th:if="${currentType == 'all' or currentType == 'side'}" data-mobile-board-section="side">
+        <a class="m-board-line m-board-ssr-card"
+           th:each="board, stat : ${sideBoards}"
+           th:href="@{/m/board/{gid}(gid=${board.gall_id})}"
+           th:data-search="${#strings.toLowerCase((board.gall_id != null ? board.gall_id : '') + ' ' + (board.gall_name != null ? board.gall_name : '') + ' ' + (board.board_tags != null ? board.board_tags : ''))}">
+          <strong th:text="${board.gall_name != null ? board.gall_name : board.gall_id}">사이드보드</strong>
+        </a>
+        <div th:if="${#lists.isEmpty(sideBoards)}" class="m-empty">표시할 사이드보드가 없습니다.</div>
+      </div>
+
+      <div class="m-board-column" th:if="${currentType == 'other'}" data-mobile-board-section="other">
+        <a class="m-board-line m-board-ssr-card"
+           th:each="board, stat : ${otherBoards}"
+           th:href="@{/m/board/{gid}(gid=${board.gall_id})}"
+           th:data-search="${#strings.toLowerCase((board.gall_id != null ? board.gall_id : '') + ' ' + (board.gall_name != null ? board.gall_name : '') + ' ' + (board.board_tags != null ? board.board_tags : ''))}">
+          <strong th:text="${board.gall_name != null ? board.gall_name : board.gall_id}">기타</strong>
+        </a>
+        <div th:if="${#lists.isEmpty(otherBoards)}" class="m-empty">표시할 기타 보드가 없습니다.</div>
+      </div>
+    </div>
+
+    <div id="mobileBoardSearchEmpty" class="m-empty" hidden>조건에 맞는 보드가 없습니다.</div>
+  </section>
+</main>
+
+<script src="/js/mobile-board-list.js"></script>
+</body>
+</html>

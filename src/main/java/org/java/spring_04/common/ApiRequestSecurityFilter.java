@@ -73,8 +73,7 @@ public class ApiRequestSecurityFilter extends OncePerRequestFilter {
         }
         String uri = request.getRequestURI();
         return uri.startsWith("/api/")
-                || "/login".equals(uri)
-                || "/logout".equals(uri);
+                || "/login".equals(uri);
     }
 
     private boolean isUnsafeMethod(String method) {

@@ -1,0 +1,19 @@
+2026-05-01 22:14:17 [main] INFO  o.java.spring_04.Spring04Application - Starting Spring04Application using Java 23.0.2 with PID 6952 (C:\Users\skotl\OneDrive\바탕 화면\Spring-basic\target\classes started by skotl in C:\Users\skotl\OneDrive\바탕 화면\Spring-basic)
+2026-05-01 22:14:17 [main] INFO  o.java.spring_04.Spring04Application - No active profile set, falling back to 1 default profile: "default"
+2026-05-01 22:14:19 [main] INFO  o.s.boot.tomcat.TomcatWebServer - Tomcat initialized with port 8080 (http)
+2026-05-01 22:14:19 [main] INFO  o.a.catalina.core.StandardService - Starting service [Tomcat]
+2026-05-01 22:14:19 [main] INFO  o.a.catalina.core.StandardEngine - Starting Servlet engine: [Apache Tomcat/11.0.20]
+2026-05-01 22:14:19 [main] INFO  o.s.b.w.c.s.WebApplicationContextInitializer - Root WebApplicationContext: initialization completed in 1871 ms
+2026-05-01 22:14:20 [main] INFO  o.j.spring_04.common.DatabaseConfig - Datasource configured. driver=com.mysql.cj.jdbc.Driver database=service_schema
+2026-05-01 22:15:22 [main] INFO  o.s.b.w.a.WelcomePageHandlerMapping - Adding welcome page template: index
+2026-05-01 22:15:23 [main] INFO  o.s.boot.tomcat.TomcatWebServer - Tomcat started on port 8080 (http) with context path '/'
+2026-05-01 22:15:23 [main] INFO  o.java.spring_04.Spring04Application - Started Spring04Application in 65.756 seconds (process running for 66.608)
+2026-05-01 22:15:26 [http-nio-8080-exec-1] INFO  o.a.c.c.C.[Tomcat].[localhost].[/] - Initializing Spring DispatcherServlet 'dispatcherServlet'
+2026-05-01 22:15:26 [http-nio-8080-exec-1] INFO  o.s.web.servlet.DispatcherServlet - Initializing Servlet 'dispatcherServlet'
+2026-05-01 22:15:26 [http-nio-8080-exec-1] INFO  o.s.web.servlet.DispatcherServlet - Completed initialization in 1 ms
+2026-05-01 22:15:27 [http-nio-8080-exec-3] INFO  o.j.spring_04.common.IpLogController - Client activity logged. ip=127.0.0.*** userAgent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36
+2026-05-01 22:16:12 [http-nio-8080-exec-10] INFO  o.j.spring_04.common.IpLogController - Client activity logged. ip=127.0.0.*** userAgent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36
+2026-05-01 22:17:11 [http-nio-8080-exec-1] WARN  o.s.w.s.m.s.DefaultHandlerExceptionResolver - Ignoring exception, response committed already: org.springframework.http.converter.HttpMessageNotWritableException: Could not write JSON: ServletOutputStream failed to write: java.io.IOException: 현재 연결은 사용자의 호스트 시스템의 소프트웨어의 의해 중단되었습니다
+2026-05-01 22:19:11 [http-nio-8080-exec-10] INFO  o.j.spring_04.common.IpLogController - Client activity logged. ip=127.0.0.*** userAgent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36
+2026-05-01 22:24:20 [SpringApplicationShutdownHook] INFO  o.s.boot.tomcat.GracefulShutdown - Commencing graceful shutdown. Waiting for active requests to complete
+2026-05-01 22:24:20 [tomcat-shutdown] INFO  o.s.boot.tomcat.GracefulShutdown - Graceful shutdown complete

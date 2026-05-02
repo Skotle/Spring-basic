@@ -3,25 +3,47 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title th:text="${boardInfo.gall_name != null ? boardInfo.gall_name : gid}">Board</title>
+    <title th:text="${boardInfo.gall_name != null ? boardInfo.gall_name : gid}">보드</title>
     <link rel="stylesheet" href="/css/app.css">
+    <script src="/js/security-request.js"></script>
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5128462008892004"
+            crossorigin="anonymous"></script>
 </head>
 <body>
 <header class="topbar">
     <div class="frame">
         <div class="topbar-inner">
-            <a class="brand" href="/">
-                <span class="brand-mark"></span>
-                <span>irisen web</span>
-            </a>
-            <div class="nav-actions">
-                <a class="btn btn-ghost" href="/">Home</a>
-                <a class="btn btn-ghost" href="/boards">Boards</a>
-                <a class="btn btn-ghost" href="/feed">Feed</a>
-                <a class="btn btn-primary"
-                   th:if="${canWritePost}"
-                   th:href="@{/board/{gid}/write(gid=${gid})}">Write</a>
+            <div class="topbar-main">
+                <a class="brand" href="/">
+                    <span class="brand-mark">/</span>
+                    <span>Irisen</span>
+                </a>
+                <form class="topbar-search" action="/search" method="get">
+                    <button type="button" class="topbar-menu" aria-label="메뉴"><span></span><span></span><span></span></button>
+                    <input class="topbar-search-input" type="search" name="q" placeholder="보드 & 게시글 검색">
+                    <button class="topbar-search-submit" type="submit" aria-label="검색"><span class="topbar-search-icon" aria-hidden="true"></span></button>
+                </form>
+                <div class="topbar-account">
+                    <a class="btn btn-primary btn-compact"
+                       th:if="${canWritePost}"
+                       th:href="@{/board/{gid}/write(gid=${gid})}">글쓰기</a>
+                    <span class="status-badge"
+                          th:if="${loggedIn}"
+                          th:text="${sessionNick != null and !#strings.isEmpty(sessionNick) ? sessionNick : sessionUid}">회원</span>
+                    <form th:if="${loggedIn}" action="/logout" method="post">
+                        <button class="btn btn-secondary btn-compact" type="submit">로그아웃</button>
+                    </form>
+                    <a class="btn btn-secondary btn-compact" th:if="${!loggedIn}" href="/signin">로그인</a>
+                </div>
             </div>
+            <nav class="topbar-nav" aria-label="주요 메뉴">
+                <a href="/">홈</a>
+                <a class="is-active" href="/boards?type=main">보드</a>
+                <a href="/boards?type=side">사이드 보드</a>
+                <span class="topbar-nav-divider" aria-hidden="true">||</span>
+                <a href="/feed">피드</a>
+                <a href="/profile" class="topbar-nav-auth">프로필</a>
+            </nav>
         </div>
     </div>
 </header>
@@ -29,57 +51,62 @@
 <main class="shell">
     <div class="frame">
         <section class="dc-board-shell"
-                 th:with="accent=${settings.theme_color != null ? settings.theme_color : '#ff8fab'}"
+                 th:with="accent=${settings.theme_color != null ? settings.theme_color : '#ff8fab'}, isMainBoard=${boardInfo.gall_type != null and #strings.toLowerCase(#strings.trim(boardInfo.gall_type)) == 'main'}"
                  th:style="'--board-accent:' + ${accent}">
+            <div id="boardFlash" class="board-inline-flash" hidden></div>
+
             <div class="dc-board-head">
                 <div class="dc-board-title-row">
-                    <h1 class="dc-board-title" th:text="${boardInfo.gall_name != null ? boardInfo.gall_name : gid}">Board</h1>
+                    <h1 class="dc-board-title" th:text="${boardInfo.gall_name != null ? boardInfo.gall_name : gid}">보드</h1>
                     <span class="dc-board-id" th:text="${gid}">gid</span>
                 </div>
                 <div class="dc-board-head-links">
-                    <a class="dc-head-link" href="/boards">Board list</a>
+                    <a class="dc-head-link" href="/boards">보드 목록</a>
                     <a class="dc-head-link"
-                       th:if="${permissions.canManage == true}"
-                       th:href="@{/board/{gid}/manage(gid=${gid})}">Manage</a>
+                       th:if="${permissions.canManage == true and !isMainBoard}"
+                       th:href="@{/board/{gid}/manage(gid=${gid})}">운영진 관리</a>
+                    <a class="dc-head-link"
+                       th:if="${permissions.canEditSettings == true}"
+                       th:href="@{/board/{gid}/settings(gid=${gid})}">보드 설정</a>
                     <a class="dc-head-link dc-head-link-strong"
                        th:if="${canWritePost}"
-                       th:href="@{/board/{gid}/write(gid=${gid})}">Write</a>
+                       th:href="@{/board/{gid}/write(gid=${gid})}">글쓰기</a>
                 </div>
             </div>
 
             <div class="dc-board-summary">
                 <div class="dc-board-summary-main">
                     <div class="dc-board-badge">
-                        <img th:if="${boardBadgeImage != null}" th:src="${boardBadgeImage}" alt="board badge cover">
+                        <img th:if="${boardBadgeImage != null}" th:src="${boardBadgeImage}" alt="보드 대표 이미지">
                         <span th:if="${boardBadgeImage == null}"
-                              th:text="${boardInfo.gall_type != null ? boardInfo.gall_type : 'BOARD'}">BOARD</span>
+                              th:text="${boardInfo.gall_type != null ? boardInfo.gall_type : '보드'}">보드</span>
                     </div>
                     <div class="dc-board-summary-copy">
                         <div class="dc-board-summary-lines">
-                            <p th:text="${settings.welcome_message != null ? settings.welcome_message : (boardInfo.gall_name != null ? boardInfo.gall_name : gid)}">welcome</p>
+                            <p th:text="${settings.welcome_message != null ? settings.welcome_message : (boardInfo.gall_name != null ? boardInfo.gall_name : gid)}">보드 안내</p>
                             <p class="dc-board-notice-line"
                                th:if="${settings.board_notice != null and !#strings.isEmpty(settings.board_notice)}"
-                               th:text="${settings.board_notice}">notice</p>
+                               th:text="${settings.board_notice}">공지</p>
                         </div>
-                        <div class="dc-board-staff">
-                            <strong>Staff</strong>
+                        <div class="dc-board-staff" th:if="${!isMainBoard}">
+                            <strong>운영진</strong>
                             <div class="dc-board-staff-list">
                                 <span th:if="${manager != null}"
-                                      th:text="${'manager ' + (manager.nick != null and manager.nick != manager.uid ? manager.nick + ' (' + manager.uid + ')' : manager.uid)}">manager</span>
-                                <span th:if="${manager == null}">manager none</span>
+                                      th:text="${'매니저 ' + (manager.nick != null and manager.nick != manager.uid ? manager.nick + ' (' + manager.uid + ')' : manager.uid)}">매니저</span>
+                                <span th:if="${manager == null}">매니저 없음</span>
                                 <span th:each="submanager : ${submanagers}"
-                                      th:text="${' / submanager ' + (submanager.nick != null and submanager.nick != submanager.uid ? submanager.nick + ' (' + submanager.uid + ')' : submanager.uid)}">submanager</span>
+                                      th:text="${' / 부매니저 ' + (submanager.nick != null and submanager.nick != submanager.uid ? submanager.nick + ' (' + submanager.uid + ')' : submanager.uid)}">부매니저</span>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 <div class="dc-board-policy">
-                    <h3 class="dc-side-heading">Policy</h3>
+                    <h3 class="dc-side-heading">보드 권한</h3>
                     <ul class="dc-policy-list">
-                        <li th:text="${'write ' + (canWritePost ? 'open' : 'restricted')}">write open</li>
-                        <li th:text="${'guest comment ' + ((settings.allow_guest_comment == true or settings.allow_guest_comment == 1) ? 'open' : 'restricted')}">guest comment open</li>
-                        <li th:text="${'concept threshold ' + (settings.concept_recommend_threshold != null ? settings.concept_recommend_threshold : 10)}">concept threshold 10</li>
+                        <li th:text="${'글쓰기 ' + (canWritePost ? '허용' : '제한')}">글쓰기 허용</li>
+                        <li th:text="${'비회원 댓글 ' + ((settings.allow_guest_comment == true or settings.allow_guest_comment == 1) ? '허용' : '제한')}">비회원 댓글 허용</li>
+                        <li th:text="${'개념글 기준 ' + (settings.concept_recommend_threshold != null ? settings.concept_recommend_threshold : 10)}">개념글 기준 10</li>
                     </ul>
                 </div>
             </div>
@@ -87,73 +114,235 @@
             <div class="dc-board-tabs">
                 <a class="dc-tab"
                    th:classappend="${currentMode == 'all'} ? ' is-active'"
-                   th:href="${currentCategory == null} ? @{/board/{gid}(gid=${gid},page=1)} : @{/board/{gid}(gid=${gid},page=1,category=${currentCategory})}">All</a>
+                   th:href="${currentCategory == null} ? @{/board/{gid}(gid=${gid},page=1)} : @{/board/{gid}(gid=${gid},page=1,category=${currentCategory})}">전체글</a>
                 <a class="dc-tab"
                    th:classappend="${currentMode == 'concept'} ? ' is-active'"
-                   th:href="${currentCategory == null} ? @{/board/{gid}(gid=${gid},page=1,mode='concept')} : @{/board/{gid}(gid=${gid},page=1,mode='concept',category=${currentCategory})}">Concept</a>
+                   th:href="${currentCategory == null} ? @{/board/{gid}(gid=${gid},page=1,mode='concept')} : @{/board/{gid}(gid=${gid},page=1,mode='concept',category=${currentCategory})}">개념글</a>
                 <a class="dc-tab"
                    th:classappend="${currentMode == 'notice'} ? ' is-active'"
-                   th:href="${currentCategory == null} ? @{/board/{gid}(gid=${gid},page=1,mode='notice')} : @{/board/{gid}(gid=${gid},page=1,mode='notice',category=${currentCategory})}">Notice</a>
+                   th:href="${currentCategory == null} ? @{/board/{gid}(gid=${gid},page=1,mode='notice')} : @{/board/{gid}(gid=${gid},page=1,mode='notice',category=${currentCategory})}">공지</a>
                 <div class="dc-board-actions">
-                    <span class="dc-page-chip" th:text="${'page ' + currentPage}">page 1</span>
+                    <span class="dc-page-chip" th:text="${currentPage + '페이지'}">1페이지</span>
                 </div>
             </div>
 
             <div class="dc-category-strip">
                 <a th:href="@{/board/{gid}(gid=${gid},page=1,mode=${currentMode})}"
-                   th:classappend="${currentCategory == null} ? ' is-active'">All</a>
+                   th:classappend="${currentCategory == null} ? ' is-active'">전체</a>
                 <a th:each="categoryOption : ${categoryOptions}"
                    th:text="${categoryOption}"
                    th:href="@{/board/{gid}(gid=${gid},page=1,mode=${currentMode},category=${categoryOption})}"
-                   th:classappend="${currentCategory == categoryOption} ? ' is-active'">category</a>
+                   th:classappend="${currentCategory == categoryOption} ? ' is-active'">말머리</a>
             </div>
 
-            <div class="dc-post-table-wrap">
-                <div class="dc-post-table-head">
-                    <div>No</div>
-                    <div>Category</div>
-                    <div>Title</div>
-                    <div>Writer</div>
-                    <div>Date</div>
-                    <div>Views</div>
-                    <div>Likes</div>
+            <div class="board-admin-toolbar"
+                 th:if="${permissions.canDeletePost == true or permissions.canManageConcept == true or permissions.canManageConceptCut == true or permissions.canManageNotice == true or permissions.canBumpPost == true or permissions.canManageCategories == true}">
+                <strong>글 관리</strong>
+                <span>목록에서 글을 보면서 바로 개념글, 공지, 끌올, 삭제를 처리합니다.</span>
+            </div>
+
+            <div class="dc-post-table-wrap"
+                 th:data-gid="${gid}"
+                 th:data-page="${currentPage}"
+                 th:data-mode="${currentMode}"
+                 th:data-category="${currentCategory}">
+                <div class="dc-post-table-head board-post-table-head">
+                    <div>번호</div>
+                    <div>말머리</div>
+                    <div>제목</div>
+                    <div>글쓴이</div>
+                    <div>작성일</div>
+                    <div>조회</div>
+                    <div>추천</div>
+                    <div th:if="${permissions.canDeletePost == true or permissions.canManageConcept == true or permissions.canManageConceptCut == true or permissions.canManageNotice == true or permissions.canBumpPost == true or permissions.canManageCategories == true}">관리</div>
                 </div>
 
                 <div th:if="${#lists.isEmpty(posts)}" class="empty-box" style="margin: 14px;">
-                    <span th:if="${currentMode == 'concept'}">No concept posts.</span>
-                    <span th:if="${currentMode != 'concept'}">No posts.</span>
+                    <span th:if="${currentMode == 'concept'}">개념글이 없습니다.</span>
+                    <span th:if="${currentMode != 'concept'}">게시글이 없습니다.</span>
                 </div>
 
-                <a th:each="post : ${posts}"
-                   class="dc-post-row"
-                   th:href="@{/board/{gid}/{postNo}(gid=${gid},postNo=${post.post_no},page=${currentPage})}">
+                <div th:each="post : ${posts}"
+                     class="dc-post-row board-post-row"
+                     th:classappend="${post.is_concept_flag == true} ? ' is-concept'"
+                     th:data-post-no="${post.post_no}"
+                     th:data-is-concept="${post.is_concept_flag == true ? 1 : 0}"
+                     th:data-is-notice="${post.is_notice_flag == true ? 1 : 0}">
                     <div class="dc-col-number" th:text="${post.post_no}">1</div>
                     <div class="dc-col-category"
-                         th:text="${post.display_category != null ? post.display_category : (post.category != null ? post.category : ((post.is_notice != null and post.is_notice == 1) ? 'notice' : ((post.is_concept != null and post.is_concept == 1) ? 'concept' : 'general')))}">general</div>
+                         th:text="${post.is_concept_flag == true ? '개념글' : (post.display_category != null ? post.display_category : (post.category != null ? post.category : (post.is_notice_flag == true ? '공지' : '일반')))}">일반</div>
                     <div class="dc-col-title">
-                        <strong th:text="${post.title != null ? post.title : 'Untitled'}">Title</strong>
-                        <span th:if="${post.comment_count != null and post.comment_count > 0}"
-                              class="dc-comment-count"
-                              th:text="${' [' + post.comment_count + ']'}">[3]</span>
+                        <a th:href="@{/board/{gid}/{postNo}(gid=${gid},postNo=${post.post_no},page=${currentPage})}">
+                            <span class="board-row-badge is-concept"
+                                  th:if="${post.is_concept_flag == true}">개념</span>
+                            <span class="board-row-badge is-notice"
+                                  th:if="${post.is_notice_flag == true}">공지</span>
+                            <strong th:text="${post.title != null ? post.title : '제목 없음'}">제목</strong>
+                            <span th:if="${post.comment_count != null and post.comment_count > 0}"
+                                  class="dc-comment-count"
+                                  th:text="${' [' + post.comment_count + ']'}">[3]</span>
+                        </a>
                     </div>
-                    <div class="dc-col-writer" th:text="${post.name != null ? post.name : 'guest'}">writer</div>
-                    <div class="dc-col-date" th:text="${post.writed_at}">date</div>
+                    <div class="dc-col-writer">
+                        <span class="member-identity inline">
+                            <span class="member-name" th:text="${post.name != null ? post.name : '비회원'}">글쓴이</span>
+                            <a th:href="@{/profile/{uid}(uid=${post.writer_uid})}"
+                               th:title="${post.writer_uid + ' 프로필'}"
+                               th:with="postNickType=${post.nick_type != null ? #strings.toLowerCase(#strings.trim(post.nick_type)) : 'variable'}, postFixedNick=${postNickType == 'fixed' or postNickType == 'fix' or postNickType == 'f' or postNickType == '1' or postNickType == 'true' or postNickType == '고정' or postNickType == '고정닉'}"
+                               th:if="${post.writer_uid != null and post.author_board_role == null}"
+                               th:class="${'nick-type-badge ' + (postFixedNick ? 'is-fixed' : 'is-variable')}"
+                               th:text="${postFixedNick ? '고정닉' : '비고정닉'}">고정닉</a>
+                            <span th:if="${post.author_board_role != null}"
+                                  th:class="${'board-role-icon is-' + post.author_board_role}"
+                                  th:title="${post.author_board_role == 'manager' ? '매니저' : '부매니저'}"
+                                  th:text="${post.author_board_role == 'manager' ? 'M' : 'S'}">M</span>
+                        </span>
+                    </div>
+                    <div class="dc-col-date" th:text="${post.writed_at}">작성일</div>
                     <div class="dc-col-view" th:text="${post.view_count != null ? post.view_count : 0}">0</div>
                     <div class="dc-col-recommend" th:text="${post.recommend_count != null ? post.recommend_count : 0}">0</div>
-                </a>
+                    <div class="board-post-admin-actions"
+                         th:if="${permissions.canDeletePost == true or permissions.canManageConcept == true or permissions.canManageConceptCut == true or permissions.canManageNotice == true or permissions.canBumpPost == true or permissions.canManageCategories == true}"
+                         th:with="conceptCut=${settings.concept_recommend_threshold != null ? settings.concept_recommend_threshold : 10}, recommendCount=${post.recommend_count != null ? post.recommend_count : 0}">
+                        <button type="button"
+                                class="btn btn-secondary btn-compact js-board-post-action"
+                                data-action="concept-set"
+                                th:if="${permissions.canManageConcept == true and post.is_concept_flag != true and recommendCount >= conceptCut}">개념 등록</button>
+                        <span class="board-admin-state"
+                              th:if="${permissions.canManageConcept == true and post.is_concept_flag != true and recommendCount < conceptCut}"
+                              th:text="${'개념컷 미달 ' + recommendCount + '/' + conceptCut}">개념컷 미달</span>
+                        <button type="button"
+                                class="btn btn-secondary btn-compact js-board-post-action"
+                                data-action="concept-cancel"
+                                th:if="${(permissions.canManageConcept == true or permissions.canManageConceptCut == true) and post.is_concept_flag == true}">개념 취소</button>
+                        <details class="board-post-more"
+                                 th:if="${permissions.canManageNotice == true or permissions.canBumpPost == true or permissions.canDeletePost == true or permissions.canManageCategories == true}">
+                            <summary class="btn btn-secondary btn-compact">추가 기능</summary>
+                            <div class="board-post-more-menu">
+                                <button type="button"
+                                        class="btn btn-secondary btn-compact js-board-post-action"
+                                        data-action="category-set"
+                                        th:if="${permissions.canManageCategories == true}">말머리 변경</button>
+                                <button type="button"
+                                        class="btn btn-secondary btn-compact js-board-post-action"
+                                        data-action="notice-set"
+                                        th:if="${permissions.canManageNotice == true and post.is_notice_flag != true}">공지 등록</button>
+                                <button type="button"
+                                        class="btn btn-secondary btn-compact js-board-post-action"
+                                        data-action="notice-cancel"
+                                        th:if="${permissions.canManageNotice == true and post.is_notice_flag == true}">공지 해제</button>
+                                <button type="button"
+                                        class="btn btn-secondary btn-compact js-board-post-action"
+                                        data-action="bump"
+                                        th:if="${permissions.canBumpPost == true}">끌올</button>
+                                <button type="button"
+                                        class="btn btn-danger btn-compact js-board-post-action"
+                                        data-action="delete"
+                                        th:if="${permissions.canDeletePost == true}">삭제</button>
+                            </div>
+                        </details>
+                    </div>
+                </div>
             </div>
 
             <div class="dc-board-actions" style="padding: 0 16px 16px; justify-content: space-between;">
                 <a class="btn btn-secondary btn-compact"
                    th:if="${hasPrevPage}"
-                   th:href="${currentCategory == null} ? @{/board/{gid}(gid=${gid},page=${currentPage - 1},mode=${currentMode})} : @{/board/{gid}(gid=${gid},page=${currentPage - 1},mode=${currentMode},category=${currentCategory})}">Prev</a>
+                   th:href="${currentCategory == null} ? @{/board/{gid}(gid=${gid},page=${currentPage - 1},mode=${currentMode})} : @{/board/{gid}(gid=${gid},page=${currentPage - 1},mode=${currentMode},category=${currentCategory})}">이전</a>
                 <span th:if="${!hasPrevPage}"></span>
                 <a class="btn btn-secondary btn-compact"
                    th:if="${hasNextPage}"
-                   th:href="${currentCategory == null} ? @{/board/{gid}(gid=${gid},page=${currentPage + 1},mode=${currentMode})} : @{/board/{gid}(gid=${gid},page=${currentPage + 1},mode=${currentMode},category=${currentCategory})}">Next</a>
+                   th:href="${currentCategory == null} ? @{/board/{gid}(gid=${gid},page=${currentPage + 1},mode=${currentMode})} : @{/board/{gid}(gid=${gid},page=${currentPage + 1},mode=${currentMode},category=${currentCategory})}">다음</a>
             </div>
         </section>
     </div>
 </main>
+
+<script>
+(() => {
+  const table = document.querySelector('.dc-post-table-wrap');
+  const flash = document.getElementById('boardFlash');
+  if (!table) return;
+
+  const gid = table.dataset.gid;
+
+  const showFlash = (message, type = 'error') => {
+    if (!flash) return;
+    flash.hidden = false;
+    flash.className = type === 'success' ? 'board-inline-flash is-success' : 'board-inline-flash is-error';
+    flash.textContent = message;
+  };
+
+  const postJson = async (url, payload = {}) => {
+    const response = await fetch(url, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    return response.json();
+  };
+
+  const actionMeta = {
+    'concept-set': { label: '개념글 등록', url: (postNo) => `/api/features/posts/${encodeURIComponent(gid)}/${encodeURIComponent(postNo)}/concept/set`, payload: {} },
+    'concept-cancel': { label: '개념글 취소', url: (postNo) => `/api/features/posts/${encodeURIComponent(gid)}/${encodeURIComponent(postNo)}/concept/cancel`, payload: {} },
+    'category-set': { label: '말머리 변경', url: (postNo) => `/api/features/posts/${encodeURIComponent(gid)}/${encodeURIComponent(postNo)}/category`, payload: () => null },
+    'notice-set': { label: '공지 등록', url: (postNo) => `/api/features/posts/${encodeURIComponent(gid)}/${encodeURIComponent(postNo)}/notice`, payload: { notice: 'true' } },
+    'notice-cancel': { label: '공지 해제', url: (postNo) => `/api/features/posts/${encodeURIComponent(gid)}/${encodeURIComponent(postNo)}/notice`, payload: { notice: 'false' } },
+    'bump': { label: '끌올', url: (postNo) => `/api/features/posts/${encodeURIComponent(gid)}/${encodeURIComponent(postNo)}/bump`, payload: {} },
+    'delete': { label: '글 삭제', url: () => '/api/posts/delete', payload: (postNo) => ({ gid, postNo: String(postNo), password: '' }) }
+  };
+
+  table.addEventListener('click', async (event) => {
+    const button = event.target.closest('.js-board-post-action');
+    if (!button) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const row = button.closest('.board-post-row');
+    const postNo = row?.dataset.postNo;
+    const action = button.dataset.action;
+    const meta = actionMeta[action];
+    if (!row || !postNo || !meta) return;
+
+    let categoryValue = null;
+    if (action === 'category-set') {
+      const currentCategory = row.querySelector('.dc-col-category')?.textContent?.trim() || '';
+      const prompted = window.prompt('새 말머리를 입력하세요. 비우면 말머리를 제거합니다.', currentCategory === '일반' ? '' : currentCategory);
+      if (prompted === null) return;
+      categoryValue = prompted.trim();
+      if (categoryValue.length > 20) {
+        showFlash('말머리는 20자 이하로 입력해 주세요.');
+        return;
+      }
+    } else if (!window.confirm(`${postNo}번 글을 ${meta.label} 처리할까요?`)) {
+      return;
+    }
+
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = '처리 중';
+
+    try {
+      const payload = action === 'category-set'
+        ? { category: categoryValue }
+        : (typeof meta.payload === 'function' ? meta.payload(postNo) : meta.payload);
+      const result = await postJson(meta.url(postNo), payload);
+      if (!result?.success) {
+        showFlash(result?.message || `${meta.label}에 실패했습니다.`);
+        return;
+      }
+      showFlash(`${postNo}번 글을 ${meta.label} 처리했습니다.`, 'success');
+      window.setTimeout(() => window.location.reload(), 350);
+    } catch (error) {
+      showFlash(`${meta.label} 요청 중 오류가 발생했습니다.`);
+    } finally {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  });
+})();
+</script>
 </body>
 </html>

@@ -38,12 +38,14 @@
     ["can_manage_forbidden_word", "금칙어 관리"],
     ["can_bump_post", "글 끌올"],
     ["can_manage_concept", "개념글 관리"],
-    ["can_manage_concept_cut", "개념글 해제"],
+    ["can_manage_concept_cut", "개념컷 관리"],
     ["can_manage_submanager", "부매니저 관리"]
   ];
-
   const getSearchQueryFromLocation = () => (new URLSearchParams(window.location.search).get("q") || "").trim();
-  const normalizeNickType = (value) => String(value || "").trim().toLowerCase() === "fixed" ? "fixed" : "variable";
+  const normalizeNickType = (value) => {
+    const normalized = String(value || "").trim().toLowerCase();
+    return ["fixed", "fix", "f", "1", "true", "고정", "고정닉"].includes(normalized) ? "fixed" : "variable";
+  };
   const nickTypeLabel = (value) => normalizeNickType(value) === "fixed" ? "고정" : "비고정";
   const normalizeBoardRole = (value) => {
     const normalized = String(value || "").trim().toLowerCase();
@@ -51,7 +53,7 @@
     if (normalized === "submanager") return "submanager";
     return "";
   };
-  const boardRoleLabel = (value) => value === "manager" ? "매" : value === "submanager" ? "부" : "";
+  const boardRoleLabel = (value) => value === "manager" ? "M" : value === "submanager" ? "S" : "";
   const importantActionConfirm = (title, lines) => window.confirm(`${title}\n\n${lines.map((line, index) => `${index + 1}. ${line}`).join("\n")}`);
 
   const formatDate = (value) => {
@@ -91,7 +93,13 @@
     return item.name || "익명";
   };
 
+  const normalizeMobilePathname = (pathname) => {
+    const raw = String(pathname || "/m").split("?")[0].replace(/\/+$/, "") || "/m";
+    return raw.split("/").map((segment) => segment.split(";")[0]).join("/") || "/m";
+  };
+
   function matchRoute(pathname) {
+    pathname = normalizeMobilePathname(pathname);
     if (pathname === "/m") return { name: "home", params: {} };
     if (pathname === "/m/signin") return { name: "login", params: {} };
     if (pathname === "/m/nid") return { name: "signup", params: {} };
@@ -121,9 +129,19 @@
   }
 
   function navigate(path, replace = false) {
+    if (isMobileServerRenderedPath(path)) {
+      if (replace) window.location.replace(path);
+      else window.location.assign(path);
+      return;
+    }
     if (replace) window.history.replaceState({}, "", path);
     else window.history.pushState({}, "", path);
     window.dispatchEvent(new Event("mobile:navigate"));
+  }
+
+  function isMobileServerRenderedPath(path) {
+    const clean = String(path || "").split("#")[0];
+    return clean === "/m/boards" || clean.startsWith("/m/boards?");
   }
 
   function MLink({ href, className, children }) {
@@ -131,7 +149,7 @@
       href,
       className,
       onClick(event) {
-        if (!href.startsWith("/m")) return;
+        if (!href.startsWith("/m") || isMobileServerRenderedPath(href)) return;
         event.preventDefault();
         navigate(href);
       }
@@ -143,15 +161,22 @@
     return h("div", { className: feedback.type === "error" ? "m-feedback-error" : "m-feedback-success" }, feedback.message);
   }
 
-  function MNickTypeBadge({ nickType }) {
+  function MNickTypeBadge({ nickType, uid }) {
     const normalized = normalizeNickType(nickType);
-    return h("span", { className: `m-nick-type ${normalized === "fixed" ? "is-fixed" : "is-variable"}` }, nickTypeLabel(normalized));
+    const className = `m-nick-type ${normalized === "fixed" ? "is-fixed" : "is-variable"}`;
+    const label = nickTypeLabel(normalized);
+    return uid
+      ? h(MLink, { href: `/m/profile/${encodeURIComponent(uid)}`, className, title: `${uid} 프로필` }, label)
+      : h("span", { className }, label);
   }
 
   function MRoleBadge({ role }) {
     const normalized = normalizeBoardRole(role);
     if (!normalized) return null;
-    return h("span", { className: `m-nick-type is-${normalized}` }, boardRoleLabel(normalized));
+    return h("span", {
+      className: `m-board-role-icon is-${normalized}`,
+      title: normalized === "manager" ? "매니저" : "부매니저"
+    }, boardRoleLabel(normalized));
   }
 
   function MMemberIdentity({ item, name, uid, nickType, className = "m-member-identity" }) {
@@ -161,7 +186,7 @@
     const resolvedRole = item?.author_board_role || item?.board_role || item?.role || "";
     return h("span", { className },
       h("span", { className: "m-member-name" }, resolvedName),
-      resolvedUid ? (resolvedRole ? h(MRoleBadge, { role: resolvedRole }) : h(MNickTypeBadge, { nickType: resolvedNickType })) : null
+      resolvedRole ? h(MRoleBadge, { role: resolvedRole }) : (resolvedUid ? h(MNickTypeBadge, { nickType: resolvedNickType, uid: resolvedUid }) : null)
     );
   }
 
@@ -178,7 +203,7 @@
   function MGuestFields({ name, password, setName, setPassword, prefix }) {
     return [
       h("div", { className: "m-field", key: `${prefix}-name` },
-        h("label", { htmlFor: `${prefix}-name` }, "비회원 이름"),
+        h("label", { htmlFor: `${prefix}-name` }, "닉네임"),
         h("input", { id: `${prefix}-name`, type: "text", value: name, onChange: (event) => setName(event.target.value) })
       ),
       h("div", { className: "m-field", key: `${prefix}-pw` },
@@ -250,13 +275,11 @@
       onChange(editorRef.current.innerHTML);
     }
 
-    async function handleFileChange(event) {
-      const file = event.target.files?.[0];
+    async function uploadEditorImage(file) {
       if (!file) return;
       setUploadFeedback(null);
       if (!canUploadImage) {
         setUploadFeedback({ type: "error", message: "현재 권한에서는 이미지 첨부를 사용할 수 없습니다." });
-        event.target.value = "";
         return;
       }
       setImageUploading(true);
@@ -268,8 +291,25 @@
         setUploadFeedback({ type: "error", message: error.message || "이미지 업로드에 실패했습니다." });
       } finally {
         setImageUploading(false);
+      }
+    }
+
+    async function handleFileChange(event) {
+      const file = event.target.files?.[0];
+      try {
+        await uploadEditorImage(file);
+      } finally {
         event.target.value = "";
       }
+    }
+
+    async function handlePaste(event) {
+      const items = Array.from(event.clipboardData?.items || []);
+      const imageItem = items.find((item) => item.kind === "file" && String(item.type || "").startsWith("image/"));
+      const file = imageItem?.getAsFile();
+      if (!file) return;
+      event.preventDefault();
+      await uploadEditorImage(file);
     }
 
     return h("div", { className: "m-editor-shell" },
@@ -287,7 +327,8 @@
         "data-placeholder": placeholder,
         onInput(event) {
           onChange(event.currentTarget.innerHTML);
-        }
+        },
+        onPaste: handlePaste
       }),
       h("div", { className: "m-muted", style: { fontSize: "0.86rem" } }, "작성한 내용은 HTML 형식으로 저장됩니다.")
     );
@@ -295,7 +336,7 @@
 
   function MobileTopbar({ session, onLogout, alarmCount = 0 }) {
     const [searchText, setSearchText] = useState(getSearchQueryFromLocation());
-    const currentPath = window.location.pathname;
+    const currentPath = normalizeMobilePathname(window.location.pathname);
     const lastBoardPath = window.sessionStorage.getItem("irisen:lastMobileBoard") || "/m/boards";
     const navItems = [
       { label: "홈", href: "/m", active: currentPath === "/m" },
@@ -354,8 +395,8 @@
       h("main", { className: "m-shell m-stack" },
         h("section", { className: "m-hero m-card" },
           h("span", { className: "m-eyebrow" }, "Mobile"),
-          h("h3", { className: "m-title" }, "아이리슨닷컴", h("br"), h("span", null, "성갤아카이브"), h("br"), "since 2025"),
-          h("p", { className: "m-copy" }, "보드, 피드, 알림, 프로필을 모바일 경로에서 바로 이어서 쓸 수 있습니다."),
+          h("h3", { className: "m-title" }, "irisen.com", h("br"), h("span", null, "pink archive"), h("br"), "since 2025"),
+          h("p", { className: "m-copy" }, "Arcte stringe et fruere."),
           h("div", { className: "m-inline", style: { marginTop: "16px" } },
             h(MLink, { href: "/m/boards", className: "m-btn m-btn-primary" }, "보드 보기"),
             h(MLink, { href: "/m/feed", className: "m-btn m-btn-secondary" }, "피드 보기")
@@ -474,7 +515,7 @@
           : h("section", { className: "m-category-note" }, h(MLink, { href: "/m/signin" }, "로그인 후 이용 가능합니다.")),
         h("section", { className: "m-board-promo" },
           h("strong", null, "모바일 보드 탐색"),
-          h("p", null, "메인 보드와 사이드 보드를 빠르게 나눠서 볼 수 있습니다.")
+          h("p", null, "메인 보드와 사이드 보드를 빠르게 나눠 볼 수 있습니다.")
         ),
         h("section", { className: "m-board-directory" },
           h("div", { className: "m-directory-head" },
@@ -526,7 +567,7 @@
           h("p", null, "보드 ID, 이름, 목적을 입력하면 운영 검토 요청이 전달됩니다.")
         ),
         h("section", { className: "m-request-spec" },
-          h("strong", null, "요청 규격"),
+          h("strong", null, "요청 규칙"),
           h("ul", null,
             h("li", null, "보드 ID: 3~50자의 영소문자, 숫자, _, -"),
             h("li", null, "보드 이름: 2자 이상"),
@@ -535,7 +576,7 @@
           )
         ),
         !session?.loggedIn
-          ? h("section", { className: "m-feedback-error" }, "로그인 후 보드 개설 신청을 보낼 수 있습니다.")
+          ? h("section", { className: "m-feedback-error" }, "로그인해야 보드 개설 요청을 보낼 수 있습니다.")
           : h("section", { className: "m-request-form m-stack" },
               h("div", { className: "m-field" }, h("label", { htmlFor: "m-request-gall-id" }, "보드 ID"), h("input", { id: "m-request-gall-id", type: "text", value: gallId, onChange: (event) => setGallId(event.target.value.toLowerCase()) })),
               h("div", { className: "m-field" }, h("label", { htmlFor: "m-request-gall-name" }, "보드 이름"), h("input", { id: "m-request-gall-name", type: "text", value: gallName, onChange: (event) => setGallName(event.target.value) })),
@@ -559,7 +600,7 @@
     );
   }
 
-  function BoardView({ session, gid, board, posts, page, settings, manageData, onPrev, onNext, onLogout, alarmCount }) {
+  function BoardView({ session, gid, board, posts, page, settings, manageData, listFeedback, onPrev, onNext, onLogout, alarmCount }) {
     const [selectedCategory, setSelectedCategory] = useState("전체");
     const [listMode, setListMode] = useState("all");
     const configuredCategories = categoryOptionsFromSettings(settings);
@@ -580,21 +621,24 @@
     const permissions = manageData?.permissions || {};
     const manager = manageData?.manager || null;
     const submanagers = Array.isArray(manageData?.submanagers) ? manageData.submanagers : [];
+    const isMainBoard = String(board?.gall_type || "").trim().toLowerCase() === "main";
     const boardIntro = settings?.welcome_message || `${boardName} 모바일 게시판입니다.`;
     const boardHeadline = settings?.board_notice || boardIntro;
     const boardSubcopy = settings?.board_notice && settings?.welcome_message
       ? settings.welcome_message
       : "말머리를 선택해서 원하는 글만 빠르게 볼 수 있습니다.";
-    const staffSummaryLines = [
-      settings?.board_notice || settings?.welcome_message || "등록된 보드 정보가 없습니다.",
-      "",
-      manager
-        ? `매니저: ${manager.nick && manager.nick !== manager.uid ? `${manager.nick} (${manager.uid})` : (manager.uid || manager.nick)}`
-        : "매니저: 미지정",
-      submanagers.length
-        ? `부매니저: ${submanagers.map((user) => user.nick && user.nick !== user.uid ? `${user.nick} (${user.uid})` : (user.uid || user.nick)).join(", ")}`
-        : "부매니저: 없음"
-    ].filter((line, index, array) => line || (index > 0 && array[index - 1]));
+    const staffSummaryLines = isMainBoard
+      ? [settings?.board_notice || settings?.welcome_message || "등록된 보드 정보가 없습니다."]
+      : [
+          settings?.board_notice || settings?.welcome_message || "등록된 보드 정보가 없습니다.",
+          "",
+          manager
+            ? `매니저: ${manager.nick && manager.nick !== manager.uid ? `${manager.nick} (${manager.uid})` : (manager.uid || manager.nick)}`
+            : "매니저: 미지정",
+          submanagers.length
+            ? `부매니저: ${submanagers.map((user) => user.nick && user.nick !== user.uid ? `${user.nick} (${user.uid})` : (user.uid || user.nick)).join(", ")}`
+            : "부매니저: 없음"
+        ].filter((line, index, array) => line || (index > 0 && array[index - 1]));
 
     useEffect(() => {
       if (!categories.includes(selectedCategory)) setSelectedCategory("전체");
@@ -607,6 +651,7 @@
     return h(React.Fragment, null,
       h(MobileTopbar, { session, onLogout, alarmCount }),
       h("main", { className: "m-shell m-board-screen" },
+        h(MFeedback, { feedback: listFeedback }),
         h("section", { className: "m-board-titlebar" },
           h("div", { className: "m-board-title-main" },
             h("h1", { className: "m-board-name" }, boardName),
@@ -615,7 +660,7 @@
           ),
           h("div", { className: "m-board-title-actions" },
             h("button", { type: "button", className: "m-info-dot", onClick: () => window.alert(staffSummaryLines.join("\n")) }, "i"),
-            permissions.canManage ? h(MLink, { href: `/m/board/${encodeURIComponent(gid)}/manage`, className: "m-manage-outline" }, "관리") : null,
+            permissions.canManage && (!isMainBoard || permissions.isAdmin) ? h(MLink, { href: `/m/board/${encodeURIComponent(gid)}/manage`, className: "m-manage-outline" }, "관리") : null,
             h(MLink, { href: `/m/board/${encodeURIComponent(gid)}/write`, className: "m-write-outline" }, "글쓰기")
           )
         ),
@@ -679,7 +724,7 @@
           filteredPosts.length > 15 ? h("div", { className: "m-list-note" }, "모바일 화면에는 현재 페이지에서 15개까지 표시합니다.") : null
         ),
         h("section", { className: "m-board-bottom" },
-          h("button", { type: "button", className: "m-btn m-btn-secondary", onClick: onPrev }, "이전"),
+          h("button", { type: "button", className: "m-btn m-btn-secondary", onClick: onPrev }, "?댁쟾"),
           h("span", { className: "m-chip" }, `page ${page}`),
           h("button", { type: "button", className: "m-btn m-btn-secondary", onClick: onNext }, "다음")
         )
@@ -695,7 +740,7 @@
             h("article", { className: "m-panel m-stack m-staff-card", key: `pending-${request.alarm_id}` },
               h("strong", null, request.role === "manager" ? "매니저 위임 요청" : "부매니저 임명 요청"),
               h("div", { className: "m-muted" }, request.display_name || request.target_nick || request.target_uid || "대상 미지정"),
-              h("div", { className: "m-muted" }, `요청자 ${request.requester_nick && request.requester_nick !== request.requester_uid ? `${request.requester_nick} (${request.requester_uid})` : (request.requester_uid || request.requester_nick || "알 수 없음")}`),
+              h("div", { className: "m-muted" }, `요청자 ${request.requester_nick && request.requester_nick !== request.requester_uid ? `${request.requester_nick} (${request.requester_uid})` : (request.requester_uid || request.requester_nick || "정보 없음")}`),
               h("div", { className: "m-muted" }, formatDate(request.created_at))
             )
           )
@@ -795,10 +840,11 @@
     );
   }
 
-  function PostView({ session, gid, postNo, post, comments, feedback, voteFeedback, voteState, onSubmitComment, onVote, onScrapPost, onReportPost, onLikeComment, onReportComment, onLogout, alarmCount }) {
+  function PostView({ session, gid, postNo, post, comments, feedback, voteFeedback, voteState, onSubmitComment, onDeletePost, onDeleteComment, onVote, onScrapPost, onReportPost, onLikeComment, onReportComment, onLogout, alarmCount }) {
     const [content, setContent] = useState("");
     const [guestName, setGuestName] = useState("");
     const [guestPassword, setGuestPassword] = useState("");
+    const [replyTarget, setReplyTarget] = useState(null);
     const canUpvote = voteState?.canUpvote !== false;
     const canDownvote = voteState?.canDownvote !== false;
     const voteStatus = !canUpvote && !canDownvote
@@ -811,7 +857,6 @@
     const isDeletedComment = (item) => Number(item?.is_deleted || 0) === 1;
     const commentDepth = (item) => Math.max(0, Math.min(2, Number(item?.reply_depth || (item?.parent_id ? 1 : 0)) || 0));
     const isReplyComment = (item) => commentDepth(item) > 0 || !!item?.parent_id;
-    const deletedCommentHtml = (item) => isReplyComment(item) ? "<p>삭제된 답글입니다.</p>" : "<p>삭제된 댓글입니다.</p>";
 
     return h(React.Fragment, null,
       h(MobileTopbar, { session, onLogout, alarmCount }),
@@ -843,7 +888,8 @@
                   h(MLink, { href: `/m/board/${encodeURIComponent(gid)}`, className: "m-btn m-btn-secondary" }, "목록"),
                   h(MLink, { href: `/m/board/${encodeURIComponent(gid)}/write`, className: "m-btn m-btn-primary" }, "글쓰기"),
                   session?.loggedIn ? h("button", { type: "button", className: "m-btn m-btn-secondary", onClick: () => onScrapPost(post) }, "스크랩") : null,
-                  h("button", { type: "button", className: "m-btn m-btn-secondary", onClick: () => onReportPost(post) }, "신고")
+                  h("button", { type: "button", className: "m-btn m-btn-secondary", onClick: () => onReportPost(post) }, "신고"),
+                  h("button", { type: "button", className: "m-btn m-btn-danger", onClick: () => onDeletePost(post) }, "삭제")
                 ),
                 h("section", { className: "m-panel m-stack", style: { marginTop: "14px" }, key: "comment-list" },
                   h(MSectionHead, { eyebrow: "Comments", title: "댓글" }),
@@ -851,18 +897,21 @@
                     ? comments.map((comment) =>
                         h("div", { className: ["m-post-row", "m-comment-row", `depth-${commentDepth(comment)}`, isDeletedComment(comment) ? "is-deleted" : "", isReplyComment(comment) ? "is-reply" : ""].filter(Boolean).join(" "), key: comment.id || comment.comment_id },
                           isDeletedComment(comment)
-                            ? h("div", { className: "m-meta m-muted m-deleted-comment-label" }, isReplyComment(comment) ? "↳ 삭제된 답글" : "삭제된 댓글")
+                            ? h("div", { className: "m-meta m-muted m-deleted-comment-label" }, "삭제된 댓글")
                             : h("div", { className: "m-meta m-muted" }, h(MMemberIdentity, { item: comment }), h("span", null, formatDate(comment.writed_at || comment.created_at))),
-                          h("div", { className: "m-post-title", style: { fontSize: "0.98rem" }, dangerouslySetInnerHTML: { __html: isDeletedComment(comment) ? deletedCommentHtml(comment) : (comment.content || "") } }),
+                          isDeletedComment(comment) ? null : h("div", { className: "m-post-title", style: { fontSize: "0.98rem" }, dangerouslySetInnerHTML: { __html: comment.content || "" } }),
                           isDeletedComment(comment) ? null : h("div", { className: "m-inline", style: { marginTop: "8px" } },
+                            commentDepth(comment) < 2 ? h("button", { type: "button", className: "m-btn m-btn-secondary", onClick: () => setReplyTarget({ id: comment.id || comment.comment_id, name: authorLabel(comment) }) }, "답글") : null,
                             h("button", { type: "button", className: "m-btn m-btn-secondary", onClick: () => onLikeComment(comment) }, `공감 ${comment.like_count ?? 0}`),
-                            h("button", { type: "button", className: "m-btn m-btn-secondary", onClick: () => onReportComment(comment) }, "신고")
+                            h("button", { type: "button", className: "m-btn m-btn-secondary", onClick: () => onReportComment(comment) }, "신고"),
+                            h("button", { type: "button", className: "m-btn m-btn-danger", onClick: () => onDeleteComment(comment) }, "삭제")
                           )
                         )
                       )
                     : h("div", { className: "m-empty" }, "댓글이 없습니다.")
                 ),
                 h("section", { className: "m-panel m-stack", key: "comment-form" },
+                  replyTarget ? h("div", { className: "m-reply-target" }, h("span", null, `${replyTarget.name}에게 답글 작성 중`), h("button", { type: "button", className: "m-btn m-btn-secondary", onClick: () => setReplyTarget(null) }, "취소")) : null,
                   session?.loggedIn ? null : h(MGuestFields, { name: guestName, password: guestPassword, setName: setGuestName, setPassword: setGuestPassword, prefix: "m-comment" }),
                   h("div", { className: "m-field" }, h("label", { htmlFor: "m-comment-content" }, "댓글 내용"), h("textarea", { id: "m-comment-content", value: content, onChange: (event) => setContent(event.target.value) })),
                   h(MFeedback, { feedback }),
@@ -875,14 +924,16 @@
                         postNo,
                         content: content.trim(),
                         name: guestName.trim(),
-                        password: guestPassword
+                        password: guestPassword,
+                        parentId: replyTarget?.id || ""
                       }, () => {
                         setContent("");
                         setGuestName("");
                         setGuestPassword("");
+                        setReplyTarget(null);
                       });
                     }
-                  }, "댓글 등록")
+                   }, "댓글 등록")
                 )
               ]
             : h("div", { className: "m-feedback-error" }, "게시글을 불러오지 못했습니다.")
@@ -943,7 +994,7 @@
                 setGuestPassword("");
               });
             }
-          }, "게시하기")
+          }, "게시")
         ),
         h("section", { className: "m-preview m-card m-stack" },
           h("span", { className: "m-eyebrow" }, "Saved HTML"),
@@ -956,10 +1007,24 @@
   function ProfileView({ session, profileData, feedback, onSaveProfile, onFollowProfile, onUnfollowProfile, onLogout, alarmCount }) {
     const [statusMessage, setStatusMessage] = useState(profileData?.statusMessage || "");
     const [bio, setBio] = useState(profileData?.bio || "");
+    const [avatarUrl, setAvatarUrl] = useState(profileData?.avatarUrl || "");
+    const [bannerUrl, setBannerUrl] = useState(profileData?.bannerUrl || "");
+    const [showFollowers, setShowFollowers] = useState(profileData?.showFollowers !== false);
+    const [showFollowing, setShowFollowing] = useState(profileData?.showFollowing !== false);
+    const [profileUploadFeedback, setProfileUploadFeedback] = useState(null);
+    const [profileUploading, setProfileUploading] = useState("");
+    const avatarFileRef = useRef(null);
+    const bannerFileRef = useRef(null);
 
     useEffect(() => {
       setStatusMessage(profileData?.statusMessage || "");
       setBio(profileData?.bio || "");
+      setAvatarUrl(profileData?.avatarUrl || "");
+      setBannerUrl(profileData?.bannerUrl || "");
+      setShowFollowers(profileData?.showFollowers !== false);
+      setShowFollowing(profileData?.showFollowing !== false);
+      setProfileUploadFeedback(null);
+      setProfileUploading("");
     }, [profileData]);
 
     if (!profileData) {
@@ -970,18 +1035,68 @@
     }
 
     const stats = profileData.stats || {};
+    const displayName = profileData.nick || profileData.uid || "Irisen";
+    const initial = String(displayName).trim().charAt(0).toUpperCase() || "I";
+
+    async function handleProfileImageUpload(kind, event) {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      setProfileUploadFeedback(null);
+      setProfileUploading(kind);
+      try {
+        const url = await uploadImageFile(file);
+        if (kind === "avatar") setAvatarUrl(url);
+        else setBannerUrl(url);
+        setProfileUploadFeedback({ type: "success", message: kind === "avatar" ? "프로필 사진을 업로드했습니다. 저장을 눌러 적용하세요." : "프로필 배너를 업로드했습니다. 저장을 눌러 적용하세요." });
+      } catch (error) {
+        setProfileUploadFeedback({ type: "error", message: error.message || "이미지 업로드에 실패했습니다." });
+      } finally {
+        setProfileUploading("");
+        event.target.value = "";
+      }
+    }
+
+    const renderFollowList = (items = []) => items.map((user) =>
+      h(MLink, { href: `/m/profile/${encodeURIComponent(user.uid)}`, className: "m-follow-user", key: user.uid },
+        h(MMemberIdentity, { name: user.nick || user.uid, uid: user.uid, nickType: user.nick_type || user.nickType }),
+        h("span", { className: "m-muted" }, `@${user.uid}`)
+      )
+    );
+
+    function renderFollowDetails({ title, count, hidden, items, emptyText }) {
+      return h("details", { className: "m-follow-details" },
+        h("summary", null,
+          h("span", null, title),
+          h("strong", null, Number(count || 0).toLocaleString("ko-KR"))
+        ),
+        hidden
+          ? h("div", { className: "m-empty" }, `${title} 목록이 비공개입니다.`)
+          : items?.length ? h("div", { className: "m-follow-list" }, renderFollowList(items)) : h("div", { className: "m-empty" }, emptyText)
+      );
+    }
+
     return h(React.Fragment, null,
       h(MobileTopbar, { session, onLogout, alarmCount }),
       h("main", { className: "m-shell m-stack" },
-        h("section", { className: "m-panel m-stack" },
-          h("div", { className: "m-meta m-muted" }, h("span", { className: "m-chip" }, profileData.ownerView ? "My Profile" : "Profile")),
-          h("h1", { className: "m-section-title" }, h(MMemberIdentity, { name: profileData.nick || profileData.uid, uid: profileData.uid, nickType: profileData.nickType })),
-          h("div", { className: "m-muted" }, `@${profileData.uid}`),
+        h("section", { className: "m-panel m-stack m-profile-card" },
+          h("div", { className: "m-profile-banner", style: bannerUrl ? { backgroundImage: `url("${bannerUrl}")` } : null }),
+          h("div", { className: "m-profile-identity" },
+            h("div", { className: "m-profile-avatar" },
+              avatarUrl ? h("img", { src: avatarUrl, alt: `${displayName} 프로필 사진` }) : h("span", null, initial)
+            ),
+            h("div", { className: "m-stack" },
+              h("div", { className: "m-meta m-muted" }, h("span", { className: "m-chip" }, profileData.ownerView ? "내 프로필" : "프로필")),
+              h("h1", { className: "m-section-title" }, h(MMemberIdentity, { name: displayName, uid: profileData.uid, nickType: profileData.nickType })),
+              h("div", { className: "m-muted" }, `@${profileData.uid}`)
+            )
+          ),
           profileData.statusMessage ? h("div", { className: "m-post-title" }, profileData.statusMessage) : null,
-          profileData.bio ? h("div", { className: "m-muted" }, profileData.bio) : null,
+          profileData.bio ? h("div", { className: "m-muted m-profile-bio" }, profileData.bio) : null,
           h("div", { className: "m-inline" },
             h("span", { className: "m-chip" }, `글 ${stats.postCount ?? 0}`),
             h("span", { className: "m-chip" }, `댓글 ${stats.commentCount ?? 0}`),
+            h("span", { className: "m-chip" }, `팔로워 ${stats.followerCount ?? 0}`),
+            h("span", { className: "m-chip" }, `팔로잉 ${stats.followingCount ?? 0}`),
             h("span", { className: "m-chip" }, `관리 ${stats.managedBoardCount ?? 0}`)
           ),
           !profileData.ownerView && session?.loggedIn
@@ -995,14 +1110,46 @@
               h(MSectionHead, { eyebrow: "Edit", title: "프로필 설정" }),
               h("div", { className: "m-field" }, h("label", { htmlFor: "m-profile-status" }, "상태 메시지"), h("input", { id: "m-profile-status", type: "text", value: statusMessage, onChange: (event) => setStatusMessage(event.target.value) })),
               h("div", { className: "m-field" }, h("label", { htmlFor: "m-profile-bio" }, "소개"), h("textarea", { id: "m-profile-bio", rows: 5, value: bio, onChange: (event) => setBio(event.target.value) })),
+              h("div", { className: "m-profile-upload-grid" },
+                h("div", { className: "m-field" },
+                  h("label", null, "프로필 사진"),
+                  h("button", { type: "button", className: "m-btn m-btn-secondary", disabled: profileUploading === "avatar", onClick: () => avatarFileRef.current?.click() }, profileUploading === "avatar" ? "업로드 중" : "사진 업로드"),
+                  avatarUrl ? h("button", { type: "button", className: "m-btn m-btn-secondary", onClick: () => setAvatarUrl("") }, "삭제") : null,
+                  h("input", { ref: avatarFileRef, type: "file", accept: "image/*", hidden: true, onChange: (event) => handleProfileImageUpload("avatar", event) })
+                ),
+                h("div", { className: "m-field" },
+                  h("label", null, "프로필 배너"),
+                  h("button", { type: "button", className: "m-btn m-btn-secondary", disabled: profileUploading === "banner", onClick: () => bannerFileRef.current?.click() }, profileUploading === "banner" ? "업로드 중" : "배너 업로드"),
+                  bannerUrl ? h("button", { type: "button", className: "m-btn m-btn-secondary", onClick: () => setBannerUrl("") }, "삭제") : null,
+                  h("input", { ref: bannerFileRef, type: "file", accept: "image/*", hidden: true, onChange: (event) => handleProfileImageUpload("banner", event) })
+                )
+              ),
+              h(MFeedback, { feedback: profileUploadFeedback }),
+              h("label", { className: "m-check-row" }, h("input", { type: "checkbox", checked: showFollowers, onChange: (event) => setShowFollowers(event.target.checked) }), h("span", null, "팔로워 목록 공개")),
+              h("label", { className: "m-check-row" }, h("input", { type: "checkbox", checked: showFollowing, onChange: (event) => setShowFollowing(event.target.checked) }), h("span", null, "팔로잉 목록 공개")),
               h(MFeedback, { feedback }),
-              h("button", { type: "button", className: "m-btn m-btn-primary", onClick: () => onSaveProfile({ statusMessage: statusMessage.trim(), bio: bio.trim() }) }, "저장하기")
+              h("button", {
+                type: "button",
+                className: "m-btn m-btn-primary",
+                onClick: () => onSaveProfile({
+                  statusMessage: statusMessage.trim(),
+                  bio: bio.trim(),
+                  avatarUrl: avatarUrl.trim(),
+                  bannerUrl: bannerUrl.trim(),
+                  showFollowers,
+                  showFollowing
+                })
+              }, "저장하기")
             )
-          : h(MFeedback, { feedback })
+          : h(MFeedback, { feedback }),
+        h("section", { className: "m-panel m-stack" },
+          h(MSectionHead, { eyebrow: "Follow", title: "팔로우 세부 목록" }),
+          renderFollowDetails({ title: "팔로워", count: stats.followerCount, hidden: profileData.followersHidden, items: profileData.followers, emptyText: "팔로워가 없습니다." }),
+          renderFollowDetails({ title: "팔로잉", count: stats.followingCount, hidden: profileData.followingHidden, items: profileData.following, emptyText: "팔로잉이 없습니다." })
+        )
       )
     );
   }
-
   function AlarmsView({ session, alarms, feedback, onAcceptAlarm, onRejectAlarm, onMarkAllRead, onLogout, alarmCount }) {
     return h(React.Fragment, null,
       h(MobileTopbar, { session, onLogout, alarmCount }),
@@ -1011,7 +1158,7 @@
           h(MSectionHead, { eyebrow: "Inbox", title: "알림", action: session?.loggedIn ? h("button", { type: "button", className: "m-btn m-btn-secondary", onClick: onMarkAllRead }, "모두 읽음") : null }),
           h(MFeedback, { feedback }),
           !session?.loggedIn
-            ? h("div", { className: "m-empty" }, "로그인해야 알림을 확인할 수 있습니다.")
+            ? h("div", { className: "m-empty" }, "로그인 후 알림을 확인할 수 있습니다.")
             : alarms.length
               ? alarms.map((alarm) =>
                   h("article", { className: "m-panel m-stack", key: alarm.alarm_id },
@@ -1118,9 +1265,9 @@
           h("div", { className: "m-field" }, h("label", { htmlFor: "m-auth-pw" }, "비밀번호"), h("input", { id: "m-auth-pw", type: "password", value: password, onChange: (event) => setPassword(event.target.value) })),
           isLogin ? null : h("div", { className: "m-field" }, h("label", { htmlFor: "m-auth-code" }, "인증 코드"), h("input", { id: "m-auth-code", type: "text", value: code, onChange: (event) => setCode(event.target.value), placeholder: "메일로 받은 인증 코드" })),
           isLogin ? null : h("a", { href: "/policy.html", className: "m-policy-link", target: "_blank", rel: "noreferrer" }, "약관 전문 보기"),
-          isLogin ? null : h("label", { className: "m-check" }, h("input", { type: "checkbox", checked: signupTermsAgreed, onChange: (event) => setSignupTermsAgreed(event.target.checked) }), h("span", null, "약관 및 개인정보 수집·이용에 동의합니다.")),
-          isLogin ? null : h("div", { className: "m-muted" }, uidCheckPassed ? "아이디 중복확인을 완료했습니다." : "가입 전에 아이디 중복확인을 완료해 주세요."),
-          isLogin || !requiresFixedNickCheck ? null : h("div", { className: "m-muted" }, nickCheckPassed ? "고정 닉네임 중복확인을 완료했습니다." : "고정 닉네임도 중복확인을 완료해 주세요."),
+          isLogin ? null : h("label", { className: "m-check" }, h("input", { type: "checkbox", checked: signupTermsAgreed, onChange: (event) => setSignupTermsAgreed(event.target.checked) }), h("span", null, "약관 및 개인정보 수집 이용에 동의합니다.")),
+          isLogin ? null : h("div", { className: "m-muted" }, uidCheckPassed ? "아이디 중복확인이 완료되었습니다." : "가입 전에 아이디 중복확인을 완료해 주세요."),
+          isLogin || !requiresFixedNickCheck ? null : h("div", { className: "m-muted" }, nickCheckPassed ? "고정 닉네임 중복확인이 완료되었습니다." : "고정 닉네임도 중복확인을 완료해 주세요."),
           h(MFeedback, { feedback }),
           isLogin ? null : h(MFeedback, { feedback: localFeedback }),
           isLogin
@@ -1204,6 +1351,7 @@
     const [commentFeedback, setCommentFeedback] = useState(null);
     const [boardRequestFeedback, setBoardRequestFeedback] = useState(null);
     const [boardManageFeedback, setBoardManageFeedback] = useState(null);
+    const [boardPostsFeedback, setBoardPostsFeedback] = useState(null);
     const [searchResults, setSearchResults] = useState([]);
     const [alarms, setAlarms] = useState([]);
     const [alarmFeedback, setAlarmFeedback] = useState(null);
@@ -1242,7 +1390,20 @@
         api("/api/posts/recommend").then(setFeed).catch(() => setFeed([]));
       }
       if (route.name === "board") {
-        api(`/api/board/posts/${encodeURIComponent(route.params.gid)}?page=${page}`).then((data) => setBoardPosts(Array.isArray(data) ? data : [])).catch(() => setBoardPosts([]));
+        setBoardPostsFeedback(null);
+        api(`/api/board/posts/${encodeURIComponent(route.params.gid)}?page=${page}`)
+          .then((data) => {
+            if (Array.isArray(data)) {
+              setBoardPosts(data);
+              return;
+            }
+            setBoardPosts([]);
+            setBoardPostsFeedback({ type: "error", message: data?.message || "게시글 목록을 불러오지 못했습니다." });
+          })
+          .catch((error) => {
+            setBoardPosts([]);
+            setBoardPostsFeedback({ type: "error", message: error.message || "게시글 목록을 불러오지 못했습니다." });
+          });
       }
       if (route.name === "post") {
         api(`/api/posts/get/${encodeURIComponent(route.params.gid)}/${encodeURIComponent(route.params.postNo)}`).then((result) => {
@@ -1341,7 +1502,7 @@
       if (permissions.isAdmin) {
         return "";
       }
-      const password = window.prompt(`${actionName}용 매니저 비밀번호를 입력해 주세요.`);
+      const password = window.prompt(`${actionName}을(를) 하려면 매니저 비밀번호를 입력해 주세요.`);
       if (password === null) {
         return null;
       }
@@ -1519,7 +1680,7 @@
 
     function submitPost(payload, reset) {
       if (!payload.title || !String(payload.content || "").trim()) {
-        setWriteFeedback({ type: "error", message: "제목과 본문을 모두 입력해 주세요." });
+        setWriteFeedback({ type: "error", message: "내용을 입력해주세요." });
         return;
       }
       if (!session?.loggedIn && (!payload.name || !payload.password)) {
@@ -1566,6 +1727,49 @@
         .catch((error) => setCommentFeedback({ type: "error", message: error.message || "댓글 등록 중 오류가 발생했습니다." }));
     }
 
+    function deletePost(post) {
+      const guestPost = !post?.writer_uid;
+      const password = guestPost ? window.prompt("비회원 글 삭제 비밀번호를 입력하세요.") : "";
+      if (guestPost && password === null) return;
+      api("/api/posts/delete", {
+        method: "POST",
+        body: JSON.stringify({
+          gid: post?.gall_id || route.params.gid,
+          postNo: post?.post_no || route.params.postNo,
+          password: password || ""
+        })
+      }).then((result) => {
+        if (!result?.success) {
+          setCommentFeedback({ type: "error", message: result?.message || "게시글 삭제에 실패했습니다." });
+          return;
+        }
+        setCommentFeedback({ type: "success", message: "게시글을 삭제했습니다." });
+        navigate(`/m/board/${encodeURIComponent(route.params.gid)}`, true);
+      }).catch((error) => setCommentFeedback({ type: "error", message: error.message || "게시글 삭제 중 오류가 발생했습니다." }));
+    }
+
+    function deleteComment(comment) {
+      const commentId = comment?.id || comment?.comment_id;
+      if (!commentId) {
+        setCommentFeedback({ type: "error", message: "삭제할 댓글을 찾지 못했습니다." });
+        return;
+      }
+      const guestComment = !comment?.writer_uid;
+      const password = guestComment ? window.prompt("비회원 댓글 삭제 비밀번호를 입력하세요.") : "";
+      if (guestComment && password === null) return;
+      api("/api/posts/comment/delete", {
+        method: "POST",
+        body: JSON.stringify({ commentId, password: password || "" })
+      }).then((result) => {
+        if (!result?.success) {
+          setCommentFeedback({ type: "error", message: result?.message || "댓글 삭제에 실패했습니다." });
+          return;
+        }
+        setCommentFeedback({ type: "success", message: "댓글을 삭제했습니다." });
+        return refreshCurrentPost(route.params.gid, route.params.postNo);
+      }).catch((error) => setCommentFeedback({ type: "error", message: error.message || "댓글 삭제 중 오류가 발생했습니다." }));
+    }
+
     function submitVote(payload) {
       api("/api/posts/vote", { method: "POST", body: JSON.stringify(payload) })
         .then((result) => {
@@ -1588,7 +1792,7 @@
 
     function submitBoardRequest(payload, reset) {
       if (!session?.loggedIn) {
-        setBoardRequestFeedback({ type: "error", message: "로그인 후 요청할 수 있습니다." });
+        setBoardRequestFeedback({ type: "error", message: "로그인해야 요청할 수 있습니다." });
         return;
       }
       if (!payload.gallId?.trim() || !payload.gallName?.trim() || !payload.reason?.trim()) {
@@ -1718,9 +1922,9 @@
     if (route.name === "search") return h(SearchView, { session, boards, posts: searchResults, searchQuery, onLogout: handleLogout, alarmCount });
     if (route.name === "boards") return h(BoardsView, { session, boards, query, onChangeQuery: setQuery, onLogout: handleLogout, alarmCount });
     if (route.name === "boardRequest") return h(BoardRequestView, { session, feedback: boardRequestFeedback, onSubmitRequest: submitBoardRequest, onLogout: handleLogout, alarmCount });
-    if (route.name === "board") return h(BoardView, { session, gid: route.params.gid, board: currentBoard, posts: boardPosts, page, settings: boardSettings, manageData: boardManageData, onPrev: () => setPage((value) => Math.max(1, value - 1)), onNext: () => setPage((value) => value + 1), onLogout: handleLogout, alarmCount });
+    if (route.name === "board") return h(BoardView, { session, gid: route.params.gid, board: currentBoard, posts: boardPosts, page, settings: boardSettings, manageData: boardManageData, listFeedback: boardPostsFeedback, onPrev: () => setPage((value) => Math.max(1, value - 1)), onNext: () => setPage((value) => value + 1), onLogout: handleLogout, alarmCount });
     if (route.name === "boardManage") return h(MBoardManageView, { session, gid: route.params.gid, board: currentBoard, manageData: boardManageData, feedback: boardManageFeedback, onSaveSubmanagerPermissions: submitSubmanagerPermissions, onAppointSubmanager: appointSubmanager, onRevokeSubmanager: revokeSubmanager, onTransferManager: transferManager, onLogout: handleLogout, alarmCount });
-    if (route.name === "post") return h(PostView, { session, gid: route.params.gid, postNo: route.params.postNo, post: postData.post, comments: postData.comments, feedback: commentFeedback, voteFeedback: commentFeedback, voteState: postData.voteState, onSubmitComment: submitComment, onVote: submitVote, onScrapPost: scrapPost, onReportPost: reportPost, onLikeComment: likeComment, onReportComment: reportComment, onLogout: handleLogout, alarmCount });
+    if (route.name === "post") return h(PostView, { session, gid: route.params.gid, postNo: route.params.postNo, post: postData.post, comments: postData.comments, feedback: commentFeedback, voteFeedback: commentFeedback, voteState: postData.voteState, onSubmitComment: submitComment, onDeletePost: deletePost, onDeleteComment: deleteComment, onVote: submitVote, onScrapPost: scrapPost, onReportPost: reportPost, onLikeComment: likeComment, onReportComment: reportComment, onLogout: handleLogout, alarmCount });
     if (route.name === "write") return h(WriteView, { session, gid: route.params.gid, feedback: writeFeedback, settings: boardSettings, onSubmitPost: submitPost, onLogout: handleLogout, alarmCount });
     if (route.name === "profile") return h(ProfileView, { session, profileData, feedback: profileFeedback, onSaveProfile: saveProfile, onFollowProfile: followProfile, onUnfollowProfile: unfollowProfile, onLogout: handleLogout, alarmCount });
     if (route.name === "alarms") return h(AlarmsView, { session, alarms, feedback: alarmFeedback, onAcceptAlarm: acceptAlarm, onRejectAlarm: rejectAlarm, onMarkAllRead: markAllAlarmsRead, onLogout: handleLogout, alarmCount });
@@ -1734,3 +1938,6 @@
     ReactDOM.createRoot(root).render(h(App));
   }
 })();
+
+
+

@@ -1,4 +1,7 @@
-@import url(global.css);
+:root {
+  --border: var(--line);
+  --sub: var(--muted);
+}
 
 .board-grid {
   display: grid;
@@ -13,7 +16,7 @@
 .compose-card {
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 18px;
+  border-radius: 0;
   box-shadow: var(--shadow);
 }
 
@@ -22,9 +25,42 @@
   padding: 18px;
 }
 
+.board-table-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 0;
+  margin-top: 10px;
+  border-top: 1px solid var(--border);
+  border-left: 1px solid var(--border);
+  background: #fff;
+}
+
+.board-table-list .board-card {
+  min-height: 36px;
+  padding: 0 10px;
+  border-width: 0 1px 1px 0;
+  box-shadow: none;
+}
+
+.board-table-list .board-name {
+  display: flex;
+  align-items: center;
+  min-height: 35px;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.board-table-list .board-card:hover {
+  background: var(--accent-soft);
+}
+
 .board-card:hover,
 .boardBox:hover {
-  border-color: rgba(29, 78, 216, 0.24);
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--line));
 }
 
 .board-name {
@@ -73,14 +109,14 @@
 .post-row {
   display: block;
   padding: 14px 16px;
-  border-radius: 14px;
-  background: rgba(29, 78, 216, 0.04);
-  border: 1px solid rgba(29, 78, 216, 0.08);
+  border-radius: 0;
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, #fff);
 }
 
 .preview-item:hover,
 .post-row:hover {
-  border-color: rgba(29, 78, 216, 0.22);
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--line));
 }
 
 .post-row-top {
@@ -125,6 +161,76 @@
 .section-shell {
   display: grid;
   gap: 20px;
+}
+
+.board-ssr-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: end;
+}
+
+.board-count-strip {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.board-count-strip a {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text);
+  font-weight: 800;
+}
+
+.board-count-strip a.is-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.board-section {
+  display: grid;
+  gap: 12px;
+}
+
+.board-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 2px;
+}
+
+.board-section-head h2 {
+  margin: 0;
+  color: var(--accent);
+  font-size: 1.25rem;
+}
+
+.board-section-head span {
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.board-card[hidden],
+.board-section[hidden] {
+  display: none;
+}
+
+.empty-state {
+  padding: 18px;
+  border: 1px dashed var(--border);
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--sub);
 }
 
 .post-shell {
@@ -173,7 +279,7 @@
 .preview-card {
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 18px;
+  border-radius: 0;
   box-shadow: var(--shadow);
   padding: 20px;
 }
@@ -181,8 +287,8 @@
 .preview-surface {
   min-height: 240px;
   padding: 16px;
-  border-radius: 14px;
-  border: 1px solid rgba(29, 78, 216, 0.08);
+  border-radius: 0;
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, #fff);
   background: rgba(255, 255, 255, 0.78);
   overflow: auto;
 }
@@ -213,15 +319,15 @@
   min-height: 360px;
   padding: 16px;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 0;
   background: rgba(255, 255, 255, 0.96);
   outline: none;
   line-height: 1.8;
 }
 
 .editor-surface:focus {
-  border-color: rgba(29, 78, 216, 0.4);
-  box-shadow: 0 0 0 4px rgba(29, 78, 216, 0.08);
+  border-color: color-mix(in srgb, var(--accent) 62%, #fff);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
 .editor-surface:empty::before {
@@ -253,7 +359,7 @@
 .editor-surface blockquote,
 .preview-surface blockquote {
   padding-left: 14px;
-  border-left: 3px solid rgba(29, 78, 216, 0.25);
+  border-left: 3px solid color-mix(in srgb, var(--accent) 42%, #fff);
   color: var(--sub);
 }
 

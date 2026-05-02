@@ -10,8 +10,6 @@ import org.springframework.ui.Model
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestParam
-import java.net.URLEncoder
-import java.nio.charset.StandardCharsets
 import java.time.LocalDateTime
 import java.util.LinkedHashMap
 
@@ -27,22 +25,60 @@ class BoardRouter(
         println("[${LocalDateTime.now()}] GET $pageName PAGE$suffix")
     }
 
-    @GetMapping("/boards")
-    fun boards(): String {
-        logRequest("BOARDS")
-        return "index"
+    @GetMapping("/boards", "/board", "/board_main")
+    fun boards(
+        @RequestParam(name = "type", required = false) type: String?,
+        model: Model,
+        session: HttpSession
+    ): String {
+        val boards = boardService.getBoardList()
+        val mainBoards = boards.filter { boardType(it) == "main" }
+        val sideBoards = boards.filter { boardType(it) == "side" }
+        val otherBoards = boards.filter { boardType(it) == "other" }
+        val currentType = normalizeBoardType(type)
+
+        logRequest("BOARDS", "type=$currentType total=${boards.size}")
+        model.addAttribute("loggedIn", isLoggedIn(session))
+        model.addAttribute("sessionUid", sessionUid(session))
+        model.addAttribute("sessionNick", session.getAttribute("nick")?.toString() ?: "")
+        model.addAttribute("boards", boards)
+        model.addAttribute("mainBoards", mainBoards)
+        model.addAttribute("sideBoards", sideBoards)
+        model.addAttribute("otherBoards", otherBoards)
+        model.addAttribute("currentType", currentType)
+        model.addAttribute("totalBoardCount", boards.size)
+        model.addAttribute("mainBoardCount", mainBoards.size)
+        model.addAttribute("sideBoardCount", sideBoards.size)
+        model.addAttribute("otherBoardCount", otherBoards.size)
+        return "boards"
     }
 
     @GetMapping("/m/boards")
-    fun mobileBoards(): String {
-        logRequest("MOBILE BOARDS")
-        return "mobile"
-    }
+    fun mobileBoards(
+        @RequestParam(name = "type", required = false) type: String?,
+        model: Model,
+        session: HttpSession
+    ): String {
+        val boards = boardService.getBoardList()
+        val mainBoards = boards.filter { boardType(it) == "main" }
+        val sideBoards = boards.filter { boardType(it) == "side" }
+        val otherBoards = boards.filter { boardType(it) == "other" }
+        val currentType = normalizeBoardType(type)
 
-    @GetMapping("/board_main")
-    fun boardMain(): String {
-        logRequest("BOARD_MAIN")
-        return "index"
+        logRequest("MOBILE BOARDS", "type=$currentType total=${boards.size}")
+        model.addAttribute("loggedIn", isLoggedIn(session))
+        model.addAttribute("sessionUid", sessionUid(session))
+        model.addAttribute("sessionNick", session.getAttribute("nick")?.toString() ?: "")
+        model.addAttribute("boards", boards)
+        model.addAttribute("mainBoards", mainBoards)
+        model.addAttribute("sideBoards", sideBoards)
+        model.addAttribute("otherBoards", otherBoards)
+        model.addAttribute("currentType", currentType)
+        model.addAttribute("totalBoardCount", boards.size)
+        model.addAttribute("mainBoardCount", mainBoards.size)
+        model.addAttribute("sideBoardCount", sideBoards.size)
+        model.addAttribute("otherBoardCount", otherBoards.size)
+        return "mobile_boards"
     }
 
     @GetMapping("/board/{gid}")
@@ -54,8 +90,9 @@ class BoardRouter(
         model: Model,
         session: HttpSession
     ): String {
+        val boardId = cleanPathSegment(gid)
         val currentPage = if (page < 1) 1 else page
-        val manageData = boardService.getBoardManageInfo(gid, sessionUid(session), sessionDivision(session))
+        val manageData = boardService.getBoardManageInfo(boardId, sessionUid(session), sessionDivision(session))
         @Suppress("UNCHECKED_CAST")
         val settings = manageData["settings"] as? Map<String, Any?> ?: emptyMap()
         @Suppress("UNCHECKED_CAST")
@@ -70,12 +107,7 @@ class BoardRouter(
         } ?: emptyList()
         val currentMode = normalizeBoardMode(mode)
         val currentCategory = normalizeBoardCategory(category, categoryOptions)
-
-        if (shouldRedirectBoardCanonical(page, mode, category, currentPage, currentMode, currentCategory)) {
-            return buildBoardCanonicalRedirect(gid, currentPage, currentMode, currentCategory)
-        }
-
-        val posts = boardService.getPostsByGallery(gid, currentPage, currentMode, currentCategory)
+        val posts = boardService.getPostsByGallery(boardId, currentPage, currentMode, currentCategory)
         val canWritePost = isLoggedIn(session) || flagEnabled(settings["allow_guest_post"])
         val boardBadgeImage = firstNonBlank(
             settings["cover_image_url"]?.toString(),
@@ -86,8 +118,8 @@ class BoardRouter(
             board["image_url"]?.toString()
         )
 
-        logRequest("BOARD $gid", "page=$currentPage mode=$currentMode category=${currentCategory ?: "-"} posts=${posts.size}")
-        model.addAttribute("gid", gid)
+        logRequest("BOARD $boardId", "page=$currentPage mode=$currentMode category=${currentCategory ?: "-"} posts=${posts.size}")
+        model.addAttribute("gid", boardId)
         model.addAttribute("currentPage", currentPage)
         model.addAttribute("loggedIn", isLoggedIn(session))
         model.addAttribute("sessionUid", sessionUid(session))
@@ -117,24 +149,26 @@ class BoardRouter(
 
     @GetMapping("/board/{gid}/write")
     fun postWrite(@PathVariable gid: String): String {
-        logRequest("WRITE $gid")
+        logRequest("WRITE ${cleanPathSegment(gid)}")
         return "index"
     }
 
     @GetMapping("/board/{gid}/settings")
     fun boardSettings(@PathVariable gid: String, session: HttpSession): String {
-        logRequest("BOARD SETTINGS $gid")
-        if (!boardService.canEditBoardSettings(gid, sessionUid(session), sessionDivision(session))) {
-            return "redirect:/board/$gid"
+        val boardId = cleanPathSegment(gid)
+        logRequest("BOARD SETTINGS $boardId")
+        if (!boardService.canEditBoardSettings(boardId, sessionUid(session), sessionDivision(session))) {
+            return "redirect:/board/$boardId"
         }
         return "index"
     }
 
     @GetMapping("/board/{gid}/manage")
     fun boardManage(@PathVariable gid: String, session: HttpSession): String {
-        logRequest("BOARD MANAGE $gid")
-        if (!boardService.canManageBoard(gid, sessionUid(session), sessionDivision(session))) {
-            return "redirect:/board/$gid"
+        val boardId = cleanPathSegment(gid)
+        logRequest("BOARD MANAGE $boardId")
+        if (!boardService.canManageBoard(boardId, sessionUid(session), sessionDivision(session))) {
+            return "redirect:/board/$boardId"
         }
         return "index"
     }
@@ -154,17 +188,18 @@ class BoardRouter(
         session: HttpSession,
         request: HttpServletRequest
     ): String {
+        val boardId = cleanPathSegment(gid)
         val viewerUid = sessionUid(session) ?: "guest"
         val clientIp = extractClientIp(request)
         val currentPage = if (page < 1) 1 else page
-        logRequest("POST $gid/$postNo", "viewer=$viewerUid ip=$clientIp page=$currentPage")
-        val post = postService.getPostDetail(gid, postNo)
-        val manageData = boardService.getBoardManageInfo(gid, sessionUid(session), sessionDivision(session))
+        logRequest("POST $boardId/$postNo", "viewer=$viewerUid ip=$clientIp page=$currentPage")
+        val post = postService.getPostDetail(boardId, postNo)
+        val manageData = boardService.getBoardManageInfo(boardId, sessionUid(session), sessionDivision(session))
         @Suppress("UNCHECKED_CAST")
         val settings = manageData["settings"] as? Map<String, Any?> ?: emptyMap()
         @Suppress("UNCHECKED_CAST")
         val permissions = manageData["permissions"] as? Map<String, Any?> ?: emptyMap()
-        model.addAttribute("gid", gid)
+        model.addAttribute("gid", boardId)
         model.addAttribute("postNo", postNo)
         model.addAttribute("currentPage", currentPage)
         model.addAttribute("loggedIn", isLoggedIn(session))
@@ -182,19 +217,19 @@ class BoardRouter(
             return "post"
         }
 
-        val comments = postService.getComments(gid, postNo).map { comment ->
+        val comments = postService.getComments(boardId, postNo).map { comment ->
             val copy = LinkedHashMap(comment)
             val deleted = flagEnabled(comment["is_deleted"])
-            copy["canDelete"] = !deleted && canDelete(comment, session, gid, false)
+            copy["canDelete"] = !deleted && canDelete(comment, session, boardId, false)
             copy["requiresDeletePassword"] = requiresDeletePassword(comment, session)
             copy
         }
 
         model.addAttribute("post", post)
         model.addAttribute("comments", comments)
-        model.addAttribute("pagePosts", boardService.getPostsByGallery(gid, currentPage))
-        model.addAttribute("voteState", postService.getVoteState(gid, postNo, sessionUid(session), extractClientIp(request)))
-        model.addAttribute("postCanDelete", canDelete(post, session, gid, true))
+        model.addAttribute("pagePosts", boardService.getPostsByGallery(boardId, currentPage))
+        model.addAttribute("voteState", postService.getVoteState(boardId, postNo, sessionUid(session), extractClientIp(request)))
+        model.addAttribute("postCanDelete", canDelete(post, session, boardId, true))
         model.addAttribute("postRequiresDeletePassword", requiresDeletePassword(post, session))
         return "post"
     }
@@ -251,36 +286,25 @@ class BoardRouter(
         return normalized
     }
 
-    private fun shouldRedirectBoardCanonical(
-        rawPage: Int,
-        rawMode: String?,
-        rawCategory: String?,
-        currentPage: Int,
-        currentMode: String,
-        currentCategory: String?
-    ): Boolean {
-        if (rawPage != currentPage) return true
-        if (normalizeBoardMode(rawMode) != currentMode) return true
-        val trimmedCategory = rawCategory?.trim()
-        if (trimmedCategory.isNullOrEmpty()) {
-            return rawCategory != null && currentCategory == null
+    private fun normalizeBoardType(value: String?): String {
+        return when (value?.trim()?.lowercase()) {
+            "main", "board" -> "main"
+            "side", "m", "minor" -> "side"
+            "other", "etc" -> "other"
+            else -> "all"
         }
-        if (trimmedCategory.startsWith(":")) {
-            return currentCategory == null
-        }
-        return currentCategory != trimmedCategory
     }
 
-    private fun buildBoardCanonicalRedirect(gid: String, page: Int, mode: String, category: String?): String {
-        val query = mutableListOf("page=$page")
-        if (mode != "all") {
-            query += "mode=$mode"
+    private fun boardType(board: Map<String, Any?>): String {
+        return when (board["gall_type"]?.toString()?.trim()?.lowercase()) {
+            "main" -> "main"
+            "m", "side", "minor" -> "side"
+            else -> "other"
         }
-        if (!category.isNullOrBlank()) {
-            query += "category=" + URLEncoder.encode(category, StandardCharsets.UTF_8)
-        }
-        return "redirect:/board/$gid?" + query.joinToString("&")
     }
+
+    private fun cleanPathSegment(value: String): String =
+        value.substringBefore(';').trim()
 
     private fun flagEnabled(value: Any?): Boolean {
         return when (value) {
