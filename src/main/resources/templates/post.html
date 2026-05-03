@@ -59,6 +59,14 @@
                               th:if="${post.is_concept_flag == true}">개념글</span>
                         <span class="post-state-badge is-notice"
                               th:if="${post.is_notice_flag == true}">공지</span>
+                        <span class="post-state-badge is-join-required"
+                              th:if="${joinRequired}">[잠김]</span>
+                    </div>
+
+                    <div class="board-join-required compact" th:if="${joinRequired}">
+                        <strong>[잠김]</strong>
+                        <span th:text="${writePermissionLabel}">글쓰기: 보드 가입 필요</span>
+                        <a class="btn btn-primary btn-compact" th:href="@{/board/{gid}/join(gid=${gid})}">보드 가입</a>
                     </div>
 
                     <div class="post-title-block">
@@ -110,7 +118,7 @@
                                 <button class="btn btn-primary btn-compact"
                                         type="submit"
                                         data-vote-type="up"
-                                        th:disabled="${voteState != null and voteState.canUpvote == false}">추천</button>
+                                        th:disabled="${canParticipateBoard == false or (voteState != null and voteState.canUpvote == false)}">추천</button>
                             </form>
                             <form th:action="@{/board/{gid}/{postNo}/vote(gid=${gid},postNo=${post.post_no})}" method="post">
                                 <input type="hidden" name="voteType" value="down">
@@ -118,13 +126,17 @@
                                 <button class="btn btn-secondary btn-compact"
                                         type="submit"
                                         data-vote-type="down"
-                                        th:disabled="${voteState != null and voteState.canDownvote == false}">비추천</button>
+                                        th:disabled="${canParticipateBoard == false or (voteState != null and voteState.canDownvote == false)}">비추천</button>
                             </form>
                         </div>
                         <div class="muted vote-status"
+                             th:if="${canParticipateBoard != false}"
                              th:text="${voteState != null and voteState.canUpvote == false and voteState.canDownvote == false ? '오늘 추천과 비추천을 모두 사용했습니다.' : voteState != null and voteState.canUpvote == false ? '오늘 추천은 이미 사용했습니다. 비추천은 가능합니다.' : voteState != null and voteState.canDownvote == false ? '오늘 비추천은 이미 사용했습니다. 추천은 가능합니다.' : '추천과 비추천은 각각 에이전트별로 하루 1회 가능합니다.'}">
                             vote help
                         </div>
+                        <div class="muted vote-status"
+                             th:if="${canParticipateBoard == false}"
+                             th:text="${writePermissionLabel}">참여 권한이 없습니다.</div>
                     </div>
 
                     <form class="inline-actions delete-control js-post-delete-form"
@@ -147,7 +159,7 @@
                     </div>
                 </div>
 
-                <article class="card comment-form-card compact-comment-form">
+                <article class="card comment-form-card compact-comment-form" th:if="${canParticipateBoard != false}">
                     <form th:action="@{/board/{gid}/{postNo}/comment(gid=${gid},postNo=${post.post_no})}" method="post" class="stack compact-stack">
                         <input type="hidden" name="page" th:value="${currentPage}">
                         <input type="hidden" name="parentId" value="">
@@ -169,6 +181,9 @@
                             <button class="btn btn-primary btn-compact" type="submit">댓글 등록</button>
                         </div>
                     </form>
+                </article>
+                <article class="card comment-form-card compact-comment-form" th:if="${canParticipateBoard == false}">
+                    <div class="muted" th:text="${writePermissionLabel}">참여 권한이 없습니다.</div>
                 </article>
 
                 <div th:if="${#lists.isEmpty(comments)}" class="empty-box">댓글이 없습니다.</div>
@@ -195,7 +210,7 @@
                                 <span th:text="${' · ' + comment.writed_at}">comment meta</span>
                             </div>
                             <div class="comment-card-tools">
-                                <button th:if="${comment.is_deleted != 1 and comment.reply_depth < 2}"
+                                <button th:if="${canParticipateBoard != false and comment.is_deleted != 1 and comment.reply_depth < 2}"
                                         class="comment-action-button reply-toggle-button"
                                         type="button"
                                         th:attr="data-target='reply-form-' + ${comment.id}">답글</button>
@@ -213,7 +228,7 @@
                              th:if="${comment.is_deleted == 1}"
                              th:text="'삭제된 댓글'">삭제된 댓글</div>
                         <div th:if="${comment.is_deleted != 1}" class="preview comment-preview" th:utext="${comment.content}">comment</div>
-                        <form th:if="${comment.is_deleted != 1 and comment.reply_depth < 2}"
+                        <form th:if="${canParticipateBoard != false and comment.is_deleted != 1 and comment.reply_depth < 2}"
                               th:id="'reply-form-' + ${comment.id}"
                               th:action="@{/board/{gid}/{postNo}/comment(gid=${gid},postNo=${post.post_no})}"
                               method="post"

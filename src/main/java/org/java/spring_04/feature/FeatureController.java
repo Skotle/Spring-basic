@@ -56,9 +56,11 @@ public class FeatureController {
     @PostMapping("/posts/{gid}/{postNo}/scrap")
     public Map<String, Object> scrapPost(@PathVariable("gid") String gid,
                                          @PathVariable("postNo") Long postNo,
-                                         @SessionAttribute(name = "uid", required = false) String uid) {
+                                         HttpServletRequest request,
+                                         @SessionAttribute(name = "uid", required = false) String uid,
+                                         @SessionAttribute(name = "memberDivision", required = false) String memberDivision) {
         try {
-            return featureService.toggleScrap(gid, postNo, uid);
+            return featureService.toggleScrap(gid, postNo, uid, memberDivision, extractClientIp(request));
         } catch (Exception e) {
             return Map.of("success", false, "message", e.getMessage());
         }
@@ -69,9 +71,10 @@ public class FeatureController {
                                           @PathVariable("postNo") Long postNo,
                                           @RequestBody(required = false) Map<String, String> payload,
                                           HttpServletRequest request,
-                                          @SessionAttribute(name = "uid", required = false) String uid) {
+                                          @SessionAttribute(name = "uid", required = false) String uid,
+                                          @SessionAttribute(name = "memberDivision", required = false) String memberDivision) {
         try {
-            return featureService.reportPost(gid, postNo, uid, extractClientIp(request), payload == null ? null : payload.get("reason"));
+            return featureService.reportPost(gid, postNo, uid, memberDivision, extractClientIp(request), payload == null ? null : payload.get("reason"));
         } catch (Exception e) {
             return Map.of("success", false, "message", e.getMessage());
         }
@@ -143,9 +146,10 @@ public class FeatureController {
     @PostMapping("/comments/{commentId}/like")
     public Map<String, Object> likeComment(@PathVariable("commentId") Long commentId,
                                            HttpServletRequest request,
-                                           @SessionAttribute(name = "uid", required = false) String uid) {
+                                           @SessionAttribute(name = "uid", required = false) String uid,
+                                           @SessionAttribute(name = "memberDivision", required = false) String memberDivision) {
         try {
-            return featureService.likeComment(commentId, uid, extractClientIp(request));
+            return featureService.likeComment(commentId, uid, memberDivision, extractClientIp(request));
         } catch (Exception e) {
             return Map.of("success", false, "message", e.getMessage());
         }
@@ -155,9 +159,10 @@ public class FeatureController {
     public Map<String, Object> reportComment(@PathVariable("commentId") Long commentId,
                                              @RequestBody(required = false) Map<String, String> payload,
                                              HttpServletRequest request,
-                                             @SessionAttribute(name = "uid", required = false) String uid) {
+                                             @SessionAttribute(name = "uid", required = false) String uid,
+                                             @SessionAttribute(name = "memberDivision", required = false) String memberDivision) {
         try {
-            return featureService.reportComment(commentId, uid, extractClientIp(request), payload == null ? null : payload.get("reason"));
+            return featureService.reportComment(commentId, uid, memberDivision, extractClientIp(request), payload == null ? null : payload.get("reason"));
         } catch (Exception e) {
             return Map.of("success", false, "message", e.getMessage());
         }

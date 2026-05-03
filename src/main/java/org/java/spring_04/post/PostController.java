@@ -127,12 +127,13 @@ public class PostController {
     @PostMapping("/vote")
     public Map<String, Object> votePost(@RequestBody Map<String, String> payload,
                                         HttpServletRequest request,
-                                        @SessionAttribute(name = "uid", required = false) String uid) {
+                                        @SessionAttribute(name = "uid", required = false) String uid,
+                                        @SessionAttribute(name = "memberDivision", required = false) String memberDivision) {
         String actor = uid == null || uid.isBlank() ? "guest" : uid;
         String clientIp = extractClientIp(request);
         System.out.println("[" + LocalDateTime.now() + "] API /api/posts/vote gid=" + payload.get("gid") + ", postNo=" + payload.get("postNo") + " voteType=" + payload.get("voteType") + " actor=" + actor + " ip=" + clientIp);
         try {
-            Map<String, Object> result = postService.votePost(payload, uid, clientIp);
+            Map<String, Object> result = postService.votePost(payload, uid, memberDivision, clientIp);
             System.out.println("[" + LocalDateTime.now() + "] API RESULT /api/posts/vote success=" + result.get("success") + " message=" + result.get("message"));
             return result;
         } catch (Exception e) {

@@ -1654,6 +1654,11 @@ a.m-nick-type:hover {
   line-height: 1.6;
 }
 
+.dc-policy-list .is-important {
+  color: #d83f68;
+  font-weight: 900;
+}
+
 .dc-board-tabs {
   display: flex;
   align-items: center;
@@ -1942,6 +1947,38 @@ a.m-nick-type:hover {
   background: #fffaf3;
   border-color: #f2d9b5;
   color: #b26a21;
+}
+
+.post-state-badge.is-join-required {
+  border-color: #ff9ab5;
+  background: #fff0f5;
+  color: #d83f68;
+}
+
+.board-join-required {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-top: 1px solid #f3bfd0;
+  border-bottom: 1px solid #f3bfd0;
+  background: #fff6fa;
+  color: #5c4350;
+}
+
+.board-join-required strong {
+  color: #d83f68;
+  white-space: nowrap;
+}
+
+.board-join-required span {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.board-join-required.compact {
+  margin: 12px 0 0;
+  border: 1px solid #f3bfd0;
 }
 
 .post-heading-badge {

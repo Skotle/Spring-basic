@@ -80,6 +80,23 @@ public class BoardService {
         if (!columnExists("board", "manager_uid")) {
             jdbcTemplate.execute("ALTER TABLE board ADD COLUMN manager_uid VARCHAR(50) NULL");
         }
+        if (!columnExists("board", "topic_id")) {
+            jdbcTemplate.execute("ALTER TABLE board ADD COLUMN topic_id VARCHAR(50) NULL");
+        }
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS board_topic (
+                    topic_id VARCHAR(50) NOT NULL,
+                    topic_name VARCHAR(100) NOT NULL,
+                    description VARCHAR(255) NULL,
+                    sort_order INT NOT NULL DEFAULT 0,
+                    is_active TINYINT(1) NOT NULL DEFAULT 1,
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (topic_id),
+                    UNIQUE KEY uk_board_topic_name (topic_name)
+                )
+                """);
+        seedBoardTopics();
+        jdbcTemplate.update("UPDATE board SET topic_id = 'other' WHERE topic_id IS NULL OR topic_id = ''");
         jdbcTemplate.execute("""
                 CREATE TABLE IF NOT EXISTS board_submanager (
                     gall_id VARCHAR(50) NOT NULL,
@@ -148,6 +165,7 @@ public class BoardService {
                     gall_id VARCHAR(50) NULL,
                     gall_name VARCHAR(100) NOT NULL,
                     gall_type VARCHAR(10) NOT NULL DEFAULT 'm',
+                    topic_id VARCHAR(50) NULL,
                     reason TEXT NULL,
                     status VARCHAR(20) NOT NULL DEFAULT 'pending',
                     reviewed_by VARCHAR(50) NULL,
@@ -156,6 +174,10 @@ public class BoardService {
                     PRIMARY KEY (request_id)
                 )
                 """);
+        if (!columnExists("board_request", "topic_id")) {
+            jdbcTemplate.execute("ALTER TABLE board_request ADD COLUMN topic_id VARCHAR(50) NULL");
+        }
+        jdbcTemplate.update("UPDATE board_request SET topic_id = 'other' WHERE topic_id IS NULL OR topic_id = ''");
         jdbcTemplate.execute("""
                 CREATE TABLE IF NOT EXISTS board_counter (
                     gall_id VARCHAR(50) NOT NULL,
@@ -323,12 +345,47 @@ public class BoardService {
         return count != null && count > 0;
     }
 
+    private void seedBoardTopics() {
+        List<Object[]> topics = List.of(
+                new Object[]{"game", "게임", "게임, e스포츠, 콘솔, PC/모바일 게임", 10},
+                new Object[]{"politics", "정치", "국내외 정치, 정책, 선거", 20},
+                new Object[]{"industry", "산업", "기업, 산업 동향, 제조, 기술", 30},
+                new Object[]{"economy", "경제", "경제, 금융, 투자, 부동산", 40},
+                new Object[]{"culture", "문화", "영화, 음악, 방송, 예술", 50},
+                new Object[]{"sports", "스포츠", "스포츠, 리그, 선수, 경기", 60},
+                new Object[]{"life", "생활", "일상, 취미, 생활 정보", 70},
+                new Object[]{"technology", "기술", "IT, 개발, AI, 기기", 80},
+                new Object[]{"society", "사회", "사건, 이슈, 지역, 커뮤니티", 90},
+                new Object[]{"other", "기타", "위 분류에 속하지 않는 주제", 999}
+        );
+        jdbcTemplate.batchUpdate("""
+                INSERT INTO board_topic (topic_id, topic_name, description, sort_order, is_active)
+                VALUES (?, ?, ?, ?, 1)
+                ON DUPLICATE KEY UPDATE
+                    topic_name = VALUES(topic_name),
+                    description = VALUES(description),
+                    sort_order = VALUES(sort_order),
+                    is_active = 1
+                """, topics);
+    }
+
+    public List<Map<String, Object>> getBoardTopics() {
+        return jdbcTemplate.queryForList("""
+                SELECT topic_id, topic_name, description, sort_order
+                FROM board_topic
+                WHERE is_active = 1
+                ORDER BY sort_order ASC, topic_name ASC
+                """);
+    }
+
     public List<Map<String, Object>> getBoardList() {
         String sql = """
                 SELECT g.gall_id,
                        g.gall_name,
                        g.gall_type,
                        g.category,
+                       g.topic_id,
+                       bt.topic_name,
                        g.status,
                        g.post_count,
                        g.manager_uid,
@@ -340,6 +397,7 @@ public class BoardService {
                            WHERE bs.gall_id = g.gall_id
                        ) AS submanager_count
                 FROM board g
+                LEFT JOIN board_topic bt ON bt.topic_id = g.topic_id
                 LEFT JOIN gallery_setting gs ON gs.gall_id = g.gall_id
                 LEFT JOIN user manager ON manager.uid = g.manager_uid
                 ORDER BY g.gall_id ASC
@@ -661,6 +719,7 @@ public class BoardService {
                            allow_guest_image,
                            join_policy,
                            visibility,
+                           read_visibility,
                            pinned_notice_count,
                            allowed_attachment_types,
                            attachment_max_bytes,
@@ -684,6 +743,7 @@ public class BoardService {
             defaults.put("allow_guest_image", toBooleanFlag(row.get("allow_guest_image")));
             defaults.put("join_policy", firstNonBlank(nullableText(row.get("join_policy")), "free"));
             defaults.put("visibility", firstNonBlank(nullableText(row.get("visibility")), "public"));
+            defaults.put("read_visibility", firstNonBlank(nullableText(row.get("read_visibility")), "inherit"));
             defaults.put("pinned_notice_count", normalizeConceptThreshold(row.get("pinned_notice_count")));
             defaults.put("allowed_attachment_types", nullableText(row.get("allowed_attachment_types")));
             defaults.put("attachment_max_bytes", row.get("attachment_max_bytes"));
@@ -719,6 +779,7 @@ public class BoardService {
         int allowGuestImage = parseBooleanFlag(payload.get("allowGuestImage"));
         String joinPolicy = normalizeChoice(payload.get("joinPolicy"), List.of("free", "approval"), "free");
         String visibility = normalizeChoice(payload.get("visibility"), List.of("public", "private", "members"), "public");
+        String readVisibility = normalizeChoice(payload.get("readVisibility"), List.of("inherit", "public", "private", "members"), "inherit");
         int pinnedNoticeCount = normalizeNonNegativeInt(payload.get("pinnedNoticeCount"), 3);
         String allowedAttachmentTypes = nullableTrim(payload.get("allowedAttachmentTypes"));
         long attachmentMaxBytes = normalizeLong(payload.get("attachmentMaxBytes"), 10_485_760L);
@@ -743,6 +804,7 @@ public class BoardService {
                 allowGuestImage,
                 joinPolicy,
                 visibility,
+                readVisibility,
                 pinnedNoticeCount,
                 allowedAttachmentTypes,
                 attachmentMaxBytes,
@@ -754,11 +816,11 @@ public class BoardService {
                 INSERT INTO gallery_setting (
                     gall_id, board_notice, welcome_message, cover_image_url, board_tags, theme_color, concept_recommend_threshold,
                     allow_guest_post, allow_guest_comment, allow_member_image, allow_guest_image, category_options,
-                    join_policy, visibility, pinned_notice_count, allowed_attachment_types,
+                    join_policy, visibility, read_visibility, pinned_notice_count, allowed_attachment_types,
                     attachment_max_bytes, side_board_approval_policy, dormant_after_days,
                     updated_by, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
                 ON DUPLICATE KEY UPDATE
                     board_notice = VALUES(board_notice),
                     welcome_message = VALUES(welcome_message),
@@ -773,6 +835,7 @@ public class BoardService {
                     category_options = VALUES(category_options),
                     join_policy = VALUES(join_policy),
                     visibility = VALUES(visibility),
+                    read_visibility = VALUES(read_visibility),
                     pinned_notice_count = VALUES(pinned_notice_count),
                     allowed_attachment_types = VALUES(allowed_attachment_types),
                     attachment_max_bytes = VALUES(attachment_max_bytes),
@@ -795,6 +858,7 @@ public class BoardService {
                 categoryOptions,
                 joinPolicy,
                 visibility,
+                readVisibility,
                 pinnedNoticeCount,
                 allowedAttachmentTypes,
                 attachmentMaxBytes,
@@ -857,6 +921,7 @@ public class BoardService {
             int allowGuestImage,
             String joinPolicy,
             String visibility,
+            String readVisibility,
             int pinnedNoticeCount,
             String allowedAttachmentTypes,
             long attachmentMaxBytes,
@@ -876,6 +941,7 @@ public class BoardService {
         requirePermissionIfFlagChanged(boardId, actorUid, memberDivision, current, "allow_guest_image", allowGuestImage, PERMISSION_MANAGE_IMAGES, "해당 설정을 변경할 권한이 없습니다.");
         requirePermissionIfChanged(boardId, actorUid, memberDivision, current, "join_policy", joinPolicy, PERMISSION_MANAGE_GUEST_PENALTY, "해당 설정을 변경할 권한이 없습니다.");
         requirePermissionIfChanged(boardId, actorUid, memberDivision, current, "visibility", visibility, PERMISSION_MANAGE_GUEST_PENALTY, "해당 설정을 변경할 권한이 없습니다.");
+        requirePermissionIfChanged(boardId, actorUid, memberDivision, current, "read_visibility", readVisibility, PERMISSION_MANAGE_GUEST_PENALTY, "해당 설정을 변경할 권한이 없습니다.");
         requirePermissionIfIntChanged(boardId, actorUid, memberDivision, current, "pinned_notice_count", pinnedNoticeCount, PERMISSION_MANAGE_NOTICE, "해당 설정을 변경할 권한이 없습니다.");
         requirePermissionIfChanged(boardId, actorUid, memberDivision, current, "allowed_attachment_types", allowedAttachmentTypes, PERMISSION_MANAGE_IMAGES, "해당 설정을 변경할 권한이 없습니다.");
         requirePermissionIfLongChanged(boardId, actorUid, memberDivision, current, "attachment_max_bytes", attachmentMaxBytes, PERMISSION_MANAGE_IMAGES, "해당 설정을 변경할 권한이 없습니다.");
@@ -1163,15 +1229,16 @@ public class BoardService {
         String uid = required(requesterUid, "필수 값을 입력해 주세요.");
         String gallId = normalizeRequestedGallId(payload.get("gallId"));
         String gallName = required(payload.get("gallName"), "보드 이름을 입력해 주세요.");
+        String topicId = resolveBoardTopicForApproval(requesterUid, gallId, payload.get("topicId"));
         String reason = required(payload.get("reason"), "신청 사유를 입력해 주세요.");
 
         ensureSideBoardRequestAllowed(uid, gallId, gallName);
 
         if (isSideBoardAutoApprovalEnabled()) {
             jdbcTemplate.update("""
-                    INSERT INTO board (gall_id, gall_name, gall_type, category, manager_uid, post_count, status)
-                    VALUES (?, ?, 'm', 'user-requested', ?, 0, 'active')
-                    """, gallId, gallName, uid);
+                    INSERT INTO board (gall_id, gall_name, gall_type, category, topic_id, manager_uid, post_count, status)
+                    VALUES (?, ?, 'm', 'user-requested', ?, ?, 0, 'active')
+                    """, gallId, gallName, topicId, uid);
             jdbcTemplate.update("""
                     INSERT INTO board_counter (gall_id, last_post_no)
                     VALUES (?, 0)
@@ -1179,20 +1246,20 @@ public class BoardService {
                     """, gallId);
             jdbcTemplate.update("""
                     INSERT INTO board_request (
-                        requester_uid, gall_id, gall_name, gall_type, reason, status, reviewed_by, reviewed_at, created_at
+                        requester_uid, gall_id, gall_name, gall_type, topic_id, reason, status, reviewed_by, reviewed_at, created_at
                     )
-                    VALUES (?, ?, ?, 'm', ?, 'approved', 'system', NOW(), NOW())
-                    """, uid, gallId, gallName, reason);
+                    VALUES (?, ?, ?, 'm', ?, ?, 'approved', 'system', NOW(), NOW())
+                    """, uid, gallId, gallName, topicId, reason);
             notifyRequesterBoardRequestResult(uid, gallId, gallName, true, reason);
             return;
         }
 
         jdbcTemplate.update("""
                 INSERT INTO board_request (
-                    requester_uid, gall_id, gall_name, gall_type, reason, status, reviewed_by, reviewed_at, created_at
+                    requester_uid, gall_id, gall_name, gall_type, topic_id, reason, status, reviewed_by, reviewed_at, created_at
                 )
-                VALUES (?, ?, ?, 'm', ?, 'pending', NULL, NULL, NOW())
-                """, uid, gallId, gallName, reason);
+                VALUES (?, ?, ?, 'm', ?, ?, 'pending', NULL, NULL, NOW())
+                """, uid, gallId, gallName, topicId, reason);
 
         notifyAdminsForSideBoardRequest(uid, gallId, gallName, reason);
     }
@@ -1271,6 +1338,8 @@ public class BoardService {
                        br.gall_id,
                        br.gall_name,
                        br.gall_type,
+                       br.topic_id,
+                       bt.topic_name,
                        br.reason,
                        br.status,
                        br.reviewed_by,
@@ -1278,6 +1347,7 @@ public class BoardService {
                        br.reviewed_at,
                        br.created_at
                 FROM board_request br
+                LEFT JOIN board_topic bt ON bt.topic_id = br.topic_id
                 LEFT JOIN user requester ON requester.uid = br.requester_uid
                 LEFT JOIN user reviewer ON reviewer.uid = br.reviewed_by
                 WHERE br.requester_uid = ?
@@ -1609,15 +1679,16 @@ public class BoardService {
         String requesterUid = required(payload.get("requesterUid"), "요청자 정보가 없습니다.");
         String gallId = required(payload.get("gallId"), "보드 ID가 없습니다.");
         String gallName = required(payload.get("gallName"), "보드 이름이 없습니다.");
+        String topicId = normalizeBoardTopicId(payload.get("topicId"));
         String reason = nullableTrim(payload.get("reason"));
 
         ensureSideBoardRequestAllowed(requesterUid, gallId, gallName);
         ensureUserExists(requesterUid);
 
         jdbcTemplate.update("""
-                INSERT INTO board (gall_id, gall_name, gall_type, category, manager_uid, post_count, status)
-                VALUES (?, ?, 'm', 'user-requested', ?, 0, 'active')
-                """, gallId, gallName, requesterUid);
+                INSERT INTO board (gall_id, gall_name, gall_type, category, topic_id, manager_uid, post_count, status)
+                VALUES (?, ?, 'm', 'user-requested', ?, ?, 0, 'active')
+                """, gallId, gallName, topicId, requesterUid);
         jdbcTemplate.update("""
                 INSERT INTO board_counter (gall_id, last_post_no)
                 VALUES (?, 0)
@@ -1994,6 +2065,45 @@ public class BoardService {
         return normalized.toLowerCase();
     }
 
+    private String normalizeBoardTopicId(String rawValue) {
+        String topicId = nullableTrim(rawValue);
+        if (topicId == null) {
+            throw new RuntimeException("보드 주제를 선택해 주세요.");
+        }
+        String normalized = topicId.toLowerCase();
+        Integer count = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM board_topic
+                WHERE topic_id = ?
+                  AND is_active = 1
+                """, Integer.class, normalized);
+        if (count == null || count == 0) {
+            throw new RuntimeException("사용할 수 없는 보드 주제입니다.");
+        }
+        return normalized;
+    }
+
+    private String resolveBoardTopicForApproval(String requesterUid, String gallId, String payloadTopicId) {
+        String topicId = nullableTrim(payloadTopicId);
+        if (topicId != null) {
+            return normalizeBoardTopicId(topicId);
+        }
+        try {
+            String storedTopicId = jdbcTemplate.queryForObject("""
+                    SELECT topic_id
+                    FROM board_request
+                    WHERE requester_uid = ?
+                      AND gall_id = ?
+                      AND status = 'pending'
+                    ORDER BY created_at DESC, request_id DESC
+                    LIMIT 1
+                    """, String.class, requesterUid, gallId);
+            return normalizeBoardTopicId(storedTopicId);
+        } catch (EmptyResultDataAccessException e) {
+            return normalizeBoardTopicId("other");
+        }
+    }
+
     private Map<String, Object> getBoardRow(String gallId) {
         try {
             return jdbcTemplate.queryForMap("""
@@ -2001,10 +2111,13 @@ public class BoardService {
                            g.gall_name,
                            g.gall_type,
                            g.category,
+                           g.topic_id,
+                           bt.topic_name,
                            g.post_count,
                            g.manager_uid,
                            manager.nick AS manager_nick
                     FROM board g
+                    LEFT JOIN board_topic bt ON bt.topic_id = g.topic_id
                     LEFT JOIN user manager ON manager.uid = g.manager_uid
                     WHERE g.gall_id = ?
                     """, gallId);
@@ -2370,6 +2483,7 @@ public class BoardService {
         settings.put("allow_guest_image", false);
         settings.put("join_policy", "free");
         settings.put("visibility", "public");
+        settings.put("read_visibility", "inherit");
         settings.put("pinned_notice_count", 3);
         settings.put("allowed_attachment_types", null);
         settings.put("attachment_max_bytes", 10_485_760L);

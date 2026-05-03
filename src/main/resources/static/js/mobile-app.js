@@ -87,6 +87,43 @@
     return text === "1" || text === "true" || text === "yes" || text === "on";
   };
 
+  const boardWriteAccess = (session, settings, manageData) => {
+    if (!manageData) {
+      return {
+        canWritePost: false,
+        joinRequired: false,
+        canParticipateBoard: false,
+        label: "[잠김]"
+      };
+    }
+    const permissions = manageData?.permissions || {};
+    if (typeof permissions.canWritePost === "boolean") {
+      return {
+        canWritePost: permissions.canWritePost,
+        joinRequired: !!permissions.joinRequired,
+        canParticipateBoard: permissions.canParticipateBoard !== false,
+        label: permissions.canWritePost ? (permissions.writePermissionLabel || "글쓰기 가능") : "[잠김]"
+      };
+    }
+    const visibility = String(settings?.visibility || "public").trim().toLowerCase();
+    const canParticipateBoard = visibility === "public" || !!permissions.isAdmin || !!permissions.isManager || !!permissions.isSubmanager;
+    const joinRequired = visibility === "members" && !canParticipateBoard;
+    const guestAllowed = flagEnabled(settings?.allow_guest_post);
+    const canWritePost = canParticipateBoard && (!!session?.loggedIn || guestAllowed);
+    const label = joinRequired
+      ? "[잠김]"
+      : !canParticipateBoard
+        ? "[잠김]"
+        : visibility === "members"
+          ? "글쓰기: 보드 멤버만 가능"
+          : guestAllowed
+            ? "글쓰기: 비회원 포함 누구나 가능"
+            : session?.loggedIn
+              ? "글쓰기: 로그인 사용자 가능"
+              : "[잠김]";
+    return { canWritePost, joinRequired, canParticipateBoard, label };
+  };
+
   const authorLabel = (item) => {
     if (!item) return "익명";
     if (item.writer_uid) return item.name || item.writer_uid;
@@ -621,6 +658,7 @@
     const permissions = manageData?.permissions || {};
     const manager = manageData?.manager || null;
     const submanagers = Array.isArray(manageData?.submanagers) ? manageData.submanagers : [];
+    const writeAccess = boardWriteAccess(session, settings, manageData);
     const isMainBoard = String(board?.gall_type || "").trim().toLowerCase() === "main";
     const boardIntro = settings?.welcome_message || `${boardName} 모바일 게시판입니다.`;
     const boardHeadline = settings?.board_notice || boardIntro;
@@ -661,9 +699,19 @@
           h("div", { className: "m-board-title-actions" },
             h("button", { type: "button", className: "m-info-dot", onClick: () => window.alert(staffSummaryLines.join("\n")) }, "i"),
             permissions.canManage && (!isMainBoard || permissions.isAdmin) ? h(MLink, { href: `/m/board/${encodeURIComponent(gid)}/manage`, className: "m-manage-outline" }, "관리") : null,
-            h(MLink, { href: `/m/board/${encodeURIComponent(gid)}/write`, className: "m-write-outline" }, "글쓰기")
+            writeAccess.canWritePost
+              ? h(MLink, { href: `/m/board/${encodeURIComponent(gid)}/write`, className: "m-write-outline" }, "글쓰기")
+              : h("button", { type: "button", className: "m-write-outline is-disabled", disabled: true, title: writeAccess.label }, "글쓰기")
           )
         ),
+        !writeAccess.canWritePost
+          ? h("section", { className: writeAccess.joinRequired ? "m-feedback-error" : "m-muted", style: { marginTop: "10px" } },
+              writeAccess.label,
+              writeAccess.joinRequired && session?.loggedIn
+                ? h(MLink, { href: `/board/${encodeURIComponent(gid)}/join`, className: "m-btn m-btn-secondary", style: { marginLeft: "8px" } }, "가입")
+                : null
+            )
+          : null,
         h("section", { className: `m-board-hero${settings?.cover_image_url ? " has-cover" : ""}` },
           settings?.cover_image_url ? h("img", { className: "m-board-hero-image", src: settings.cover_image_url, alt: `${boardName} cover` }) : null,
           h("div", { className: "m-board-hero-overlay" }),
@@ -840,13 +888,15 @@
     );
   }
 
-  function PostView({ session, gid, postNo, post, comments, feedback, voteFeedback, voteState, onSubmitComment, onDeletePost, onDeleteComment, onVote, onScrapPost, onReportPost, onLikeComment, onReportComment, onLogout, alarmCount }) {
+  function PostView({ session, gid, postNo, post, comments, feedback, voteFeedback, voteState, settings, manageData, onSubmitComment, onDeletePost, onDeleteComment, onVote, onScrapPost, onReportPost, onLikeComment, onReportComment, onLogout, alarmCount }) {
     const [content, setContent] = useState("");
     const [guestName, setGuestName] = useState("");
     const [guestPassword, setGuestPassword] = useState("");
     const [replyTarget, setReplyTarget] = useState(null);
-    const canUpvote = voteState?.canUpvote !== false;
-    const canDownvote = voteState?.canDownvote !== false;
+    const writeAccess = boardWriteAccess(session, settings, manageData);
+    const canParticipate = writeAccess.canParticipateBoard !== false;
+    const canUpvote = canParticipate && voteState?.canUpvote !== false;
+    const canDownvote = canParticipate && voteState?.canDownvote !== false;
     const voteStatus = !canUpvote && !canDownvote
       ? "오늘 추천과 비추천을 모두 사용했습니다."
       : !canUpvote
@@ -854,6 +904,7 @@
         : !canDownvote
           ? "오늘 비추천은 이미 사용했습니다. 추천은 가능합니다."
           : "추천과 비추천은 각각 하루 1회 가능합니다.";
+    const participationStatus = canParticipate ? voteStatus : writeAccess.label;
     const isDeletedComment = (item) => Number(item?.is_deleted || 0) === 1;
     const commentDepth = (item) => Math.max(0, Math.min(2, Number(item?.reply_depth || (item?.parent_id ? 1 : 0)) || 0));
     const isReplyComment = (item) => commentDepth(item) > 0 || !!item?.parent_id;
@@ -881,14 +932,16 @@
                     h("button", { type: "button", className: "m-btn m-btn-primary", disabled: !canUpvote, onClick: () => onVote({ gid, postNo, voteType: "up" }) }, "추천"),
                     h("button", { type: "button", className: "m-btn m-btn-secondary", disabled: !canDownvote, onClick: () => onVote({ gid, postNo, voteType: "down" }) }, "비추천")
                   ),
-                  h("div", { className: "m-muted" }, voteStatus),
+                  h("div", { className: "m-muted" }, participationStatus),
                   h(MFeedback, { feedback: voteFeedback })
                 ),
                 h("div", { className: "m-inline", style: { marginTop: "14px" }, key: "actions" },
                   h(MLink, { href: `/m/board/${encodeURIComponent(gid)}`, className: "m-btn m-btn-secondary" }, "목록"),
-                  h(MLink, { href: `/m/board/${encodeURIComponent(gid)}/write`, className: "m-btn m-btn-primary" }, "글쓰기"),
-                  session?.loggedIn ? h("button", { type: "button", className: "m-btn m-btn-secondary", onClick: () => onScrapPost(post) }, "스크랩") : null,
-                  h("button", { type: "button", className: "m-btn m-btn-secondary", onClick: () => onReportPost(post) }, "신고"),
+                  writeAccess.canWritePost
+                    ? h(MLink, { href: `/m/board/${encodeURIComponent(gid)}/write`, className: "m-btn m-btn-primary" }, "글쓰기")
+                    : h("button", { type: "button", className: "m-btn m-btn-secondary", disabled: true, title: writeAccess.label }, writeAccess.label),
+                  session?.loggedIn ? h("button", { type: "button", className: "m-btn m-btn-secondary", disabled: !canParticipate, onClick: () => canParticipate && onScrapPost(post) }, "스크랩") : null,
+                  h("button", { type: "button", className: "m-btn m-btn-secondary", disabled: !canParticipate, onClick: () => canParticipate && onReportPost(post) }, "신고"),
                   h("button", { type: "button", className: "m-btn m-btn-danger", onClick: () => onDeletePost(post) }, "삭제")
                 ),
                 h("section", { className: "m-panel m-stack", style: { marginTop: "14px" }, key: "comment-list" },
@@ -901,9 +954,9 @@
                             : h("div", { className: "m-meta m-muted" }, h(MMemberIdentity, { item: comment }), h("span", null, formatDate(comment.writed_at || comment.created_at))),
                           isDeletedComment(comment) ? null : h("div", { className: "m-post-title", style: { fontSize: "0.98rem" }, dangerouslySetInnerHTML: { __html: comment.content || "" } }),
                           isDeletedComment(comment) ? null : h("div", { className: "m-inline", style: { marginTop: "8px" } },
-                            commentDepth(comment) < 2 ? h("button", { type: "button", className: "m-btn m-btn-secondary", onClick: () => setReplyTarget({ id: comment.id || comment.comment_id, name: authorLabel(comment) }) }, "답글") : null,
-                            h("button", { type: "button", className: "m-btn m-btn-secondary", onClick: () => onLikeComment(comment) }, `공감 ${comment.like_count ?? 0}`),
-                            h("button", { type: "button", className: "m-btn m-btn-secondary", onClick: () => onReportComment(comment) }, "신고"),
+                            canParticipate && commentDepth(comment) < 2 ? h("button", { type: "button", className: "m-btn m-btn-secondary", onClick: () => setReplyTarget({ id: comment.id || comment.comment_id, name: authorLabel(comment) }) }, "답글") : null,
+                            h("button", { type: "button", className: "m-btn m-btn-secondary", disabled: !canParticipate, onClick: () => canParticipate && onLikeComment(comment) }, `공감 ${comment.like_count ?? 0}`),
+                            h("button", { type: "button", className: "m-btn m-btn-secondary", disabled: !canParticipate, onClick: () => canParticipate && onReportComment(comment) }, "신고"),
                             h("button", { type: "button", className: "m-btn m-btn-danger", onClick: () => onDeleteComment(comment) }, "삭제")
                           )
                         )
@@ -911,14 +964,17 @@
                     : h("div", { className: "m-empty" }, "댓글이 없습니다.")
                 ),
                 h("section", { className: "m-panel m-stack", key: "comment-form" },
-                  replyTarget ? h("div", { className: "m-reply-target" }, h("span", null, `${replyTarget.name}에게 답글 작성 중`), h("button", { type: "button", className: "m-btn m-btn-secondary", onClick: () => setReplyTarget(null) }, "취소")) : null,
-                  session?.loggedIn ? null : h(MGuestFields, { name: guestName, password: guestPassword, setName: setGuestName, setPassword: setGuestPassword, prefix: "m-comment" }),
-                  h("div", { className: "m-field" }, h("label", { htmlFor: "m-comment-content" }, "댓글 내용"), h("textarea", { id: "m-comment-content", value: content, onChange: (event) => setContent(event.target.value) })),
+                  !canParticipate ? h("div", { className: "m-feedback-error" }, writeAccess.label) : null,
+                  canParticipate && replyTarget ? h("div", { className: "m-reply-target" }, h("span", null, `${replyTarget.name}에게 답글 작성 중`), h("button", { type: "button", className: "m-btn m-btn-secondary", onClick: () => setReplyTarget(null) }, "취소")) : null,
+                  canParticipate && !session?.loggedIn ? h(MGuestFields, { name: guestName, password: guestPassword, setName: setGuestName, setPassword: setGuestPassword, prefix: "m-comment" }) : null,
+                  h("div", { className: "m-field" }, h("label", { htmlFor: "m-comment-content" }, "댓글 내용"), h("textarea", { id: "m-comment-content", value: content, disabled: !canParticipate, onChange: (event) => setContent(event.target.value) })),
                   h(MFeedback, { feedback }),
                   h("button", {
                     type: "button",
                     className: "m-btn m-btn-primary",
+                    disabled: !canParticipate,
                     onClick() {
+                      if (!canParticipate) return;
                       onSubmitComment({
                         gid,
                         postNo,
@@ -942,7 +998,7 @@
     );
   }
 
-  function WriteView({ session, gid, feedback, settings, onSubmitPost, onLogout, alarmCount }) {
+  function WriteView({ session, gid, feedback, settings, manageData, onSubmitPost, onLogout, alarmCount }) {
     const [title, setTitle] = useState("");
     const [content, setContent] = useState("");
     const [category, setCategory] = useState("");
@@ -951,6 +1007,7 @@
     const canUploadImage = session?.loggedIn ? flagEnabled(settings?.allow_member_image) : flagEnabled(settings?.allow_guest_image);
     window.__mobileWriteCanUploadImage = canUploadImage;
     const categoryOptions = categoryOptionsFromSettings(settings);
+    const writeAccess = boardWriteAccess(session, settings, manageData);
 
     useEffect(() => {
       if (!category && categoryOptions.length) setCategory(categoryOptions[0]);
@@ -962,6 +1019,14 @@
       h("main", { className: "m-shell m-stack" },
         h("section", { className: "m-compose m-card m-stack" },
           h(MSectionHead, { eyebrow: "Compose", title: `${gid} 글쓰기`, action: h(MLink, { href: `/m/board/${encodeURIComponent(gid)}`, className: "m-btn m-btn-secondary" }, "보드") }),
+          !writeAccess.canWritePost
+            ? h("div", { className: "m-feedback-error" },
+                writeAccess.label,
+                writeAccess.joinRequired && session?.loggedIn
+                  ? h(MLink, { href: `/board/${encodeURIComponent(gid)}/join`, className: "m-btn m-btn-secondary", style: { marginLeft: "8px" } }, "가입")
+                  : null
+              )
+            : null,
           h("div", { className: session?.loggedIn ? "m-feedback-success" : "m-feedback-error" }, session?.loggedIn ? h(React.Fragment, null, h(MMemberIdentity, { name: session.nick || session.uid, uid: session.uid, nickType: session.nickType }), " 계정으로 작성합니다.") : "비회원은 이름과 비밀번호를 반드시 입력해야 합니다."),
           session?.loggedIn ? null : h(MGuestFields, { name: guestName, password: guestPassword, setName: setGuestName, setPassword: setGuestPassword, prefix: "m-post" }),
           categoryOptions.length
@@ -978,7 +1043,9 @@
           h("button", {
             type: "button",
             className: "m-btn m-btn-primary",
+            disabled: !writeAccess.canWritePost,
             onClick() {
+              if (!writeAccess.canWritePost) return;
               onSubmitPost({
                 gid,
                 category: category || categoryOptions[0] || "",
@@ -1414,7 +1481,7 @@
           });
         }).catch(() => setPostData({ post: null, comments: [], voteState: { canUpvote: true, canDownvote: true } }));
       }
-      if (route.name === "board" || route.name === "boardManage" || route.name === "write") {
+      if (route.name === "board" || route.name === "boardManage" || route.name === "post" || route.name === "write") {
         api(`/api/board/manage/${encodeURIComponent(route.params.gid)}`).then((result) => {
           const nextManageData = result && result.success ? result.data : null;
           setBoardManageData(nextManageData);
@@ -1444,8 +1511,8 @@
       if (route.name !== "board") setPage(1);
       if (route.name !== "login" && route.name !== "signup") setAuthFeedback(null);
       if (route.name !== "write") setWriteFeedback(null);
-      if (route.name !== "write" && route.name !== "board" && route.name !== "boardManage") setBoardSettings(null);
-      if (route.name !== "write" && route.name !== "board" && route.name !== "boardManage") setBoardManageData(null);
+      if (route.name !== "write" && route.name !== "board" && route.name !== "boardManage" && route.name !== "post") setBoardSettings(null);
+      if (route.name !== "write" && route.name !== "board" && route.name !== "boardManage" && route.name !== "post") setBoardManageData(null);
       if (route.name !== "post") setCommentFeedback(null);
       if (route.name !== "boardRequest") setBoardRequestFeedback(null);
       if (route.name !== "boardManage") setBoardManageFeedback(null);
@@ -1924,8 +1991,8 @@
     if (route.name === "boardRequest") return h(BoardRequestView, { session, feedback: boardRequestFeedback, onSubmitRequest: submitBoardRequest, onLogout: handleLogout, alarmCount });
     if (route.name === "board") return h(BoardView, { session, gid: route.params.gid, board: currentBoard, posts: boardPosts, page, settings: boardSettings, manageData: boardManageData, listFeedback: boardPostsFeedback, onPrev: () => setPage((value) => Math.max(1, value - 1)), onNext: () => setPage((value) => value + 1), onLogout: handleLogout, alarmCount });
     if (route.name === "boardManage") return h(MBoardManageView, { session, gid: route.params.gid, board: currentBoard, manageData: boardManageData, feedback: boardManageFeedback, onSaveSubmanagerPermissions: submitSubmanagerPermissions, onAppointSubmanager: appointSubmanager, onRevokeSubmanager: revokeSubmanager, onTransferManager: transferManager, onLogout: handleLogout, alarmCount });
-    if (route.name === "post") return h(PostView, { session, gid: route.params.gid, postNo: route.params.postNo, post: postData.post, comments: postData.comments, feedback: commentFeedback, voteFeedback: commentFeedback, voteState: postData.voteState, onSubmitComment: submitComment, onDeletePost: deletePost, onDeleteComment: deleteComment, onVote: submitVote, onScrapPost: scrapPost, onReportPost: reportPost, onLikeComment: likeComment, onReportComment: reportComment, onLogout: handleLogout, alarmCount });
-    if (route.name === "write") return h(WriteView, { session, gid: route.params.gid, feedback: writeFeedback, settings: boardSettings, onSubmitPost: submitPost, onLogout: handleLogout, alarmCount });
+    if (route.name === "post") return h(PostView, { session, gid: route.params.gid, postNo: route.params.postNo, post: postData.post, comments: postData.comments, feedback: commentFeedback, voteFeedback: commentFeedback, voteState: postData.voteState, settings: boardSettings, manageData: boardManageData, onSubmitComment: submitComment, onDeletePost: deletePost, onDeleteComment: deleteComment, onVote: submitVote, onScrapPost: scrapPost, onReportPost: reportPost, onLikeComment: likeComment, onReportComment: reportComment, onLogout: handleLogout, alarmCount });
+    if (route.name === "write") return h(WriteView, { session, gid: route.params.gid, feedback: writeFeedback, settings: boardSettings, manageData: boardManageData, onSubmitPost: submitPost, onLogout: handleLogout, alarmCount });
     if (route.name === "profile") return h(ProfileView, { session, profileData, feedback: profileFeedback, onSaveProfile: saveProfile, onFollowProfile: followProfile, onUnfollowProfile: unfollowProfile, onLogout: handleLogout, alarmCount });
     if (route.name === "alarms") return h(AlarmsView, { session, alarms, feedback: alarmFeedback, onAcceptAlarm: acceptAlarm, onRejectAlarm: rejectAlarm, onMarkAllRead: markAllAlarmsRead, onLogout: handleLogout, alarmCount });
     if (route.name === "login") return h(AuthView, { mode: "login", feedback: authFeedback, onSubmitAuth: submitAuth, session, onLogout: handleLogout, alarmCount });

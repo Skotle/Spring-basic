@@ -1107,6 +1107,7 @@
     const [allowGuestComment, setAllowGuestComment] = useState(settings?.allow_guest_comment !== false);
     const [joinPolicy, setJoinPolicy] = useState(settings?.join_policy || "free");
     const [visibility, setVisibility] = useState(settings?.visibility || "public");
+    const [readVisibility, setReadVisibility] = useState(settings?.read_visibility || "inherit");
     const [pinnedNoticeCount, setPinnedNoticeCount] = useState(String(settings?.pinned_notice_count ?? 3));
     const [allowedAttachmentTypes, setAllowedAttachmentTypes] = useState(settings?.allowed_attachment_types || "");
     const [attachmentMaxBytes, setAttachmentMaxBytes] = useState(String(settings?.attachment_max_bytes || 10485760));
@@ -1127,6 +1128,7 @@
       setAllowGuestComment(settings?.allow_guest_comment !== false);
       setJoinPolicy(settings?.join_policy || "free");
       setVisibility(settings?.visibility || "public");
+      setReadVisibility(settings?.read_visibility || "inherit");
       setPinnedNoticeCount(String(settings?.pinned_notice_count ?? 3));
       setAllowedAttachmentTypes(settings?.allowed_attachment_types || "");
       setAttachmentMaxBytes(String(settings?.attachment_max_bytes || 10485760));
@@ -1196,11 +1198,20 @@
                 )
             ),
             h("div", { className: "field" },
-                h("label", { htmlFor: "board-setting-visibility-v2" }, "공개 범위"),
+                h("label", { htmlFor: "board-setting-visibility-v2" }, "참여 범위"),
                 h("select", { id: "board-setting-visibility-v2", value: visibility, onChange: (event) => setVisibility(event.target.value) },
                     h("option", { value: "public" }, "공개"),
                     h("option", { value: "private" }, "비공개"),
                     h("option", { value: "members" }, "멤버 전용")
+                )
+            ),
+            h("div", { className: "field" },
+                h("label", { htmlFor: "board-setting-read-visibility-v2" }, "조회 범위"),
+                h("select", { id: "board-setting-read-visibility-v2", value: readVisibility, onChange: (event) => setReadVisibility(event.target.value) },
+                    h("option", { value: "inherit" }, "참여 범위와 동일"),
+                    h("option", { value: "public" }, "누구나 조회"),
+                    h("option", { value: "members" }, "멤버만 조회"),
+                    h("option", { value: "private" }, "비공개")
                 )
             ),
             h("div", { className: "field" },
@@ -1239,7 +1250,7 @@
                   type: "button",
                   className: "btn btn-primary",
                   onClick() {
-                    onSave({ boardNotice, welcomeMessage, coverImageUrl, categoryOptions, boardTags, themeColor, conceptRecommendThreshold, allowGuestPost, allowGuestComment, joinPolicy, visibility, pinnedNoticeCount, allowedAttachmentTypes, attachmentMaxBytes, allowMemberImage, allowGuestImage });
+                    onSave({ boardNotice, welcomeMessage, coverImageUrl, categoryOptions, boardTags, themeColor, conceptRecommendThreshold, allowGuestPost, allowGuestComment, joinPolicy, visibility, readVisibility, pinnedNoticeCount, allowedAttachmentTypes, attachmentMaxBytes, allowMemberImage, allowGuestImage });
                   }
                 }, "설정 저장")
             )

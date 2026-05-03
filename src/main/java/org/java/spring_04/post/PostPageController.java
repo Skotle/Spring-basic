@@ -30,18 +30,26 @@ public class PostPageController {
                        @RequestParam("voteType") String voteType,
                        @RequestParam(value = "page", defaultValue = "1") int page,
                        @SessionAttribute(name = "uid", required = false) String uid,
+                       @SessionAttribute(name = "memberDivision", required = false) String memberDivision,
                        HttpServletRequest request,
                        RedirectAttributes redirectAttributes) {
         String actor = uid == null || uid.isBlank() ? "guest" : uid;
         String clientIp = extractClientIp(request);
         System.out.println("[" + LocalDateTime.now() + "] PAGE POST /board/" + gid + "/" + postNo + "/vote voteType=" + voteType + " actor=" + actor + " ip=" + clientIp);
-        Map<String, Object> result = postService.votePost(
-                Map.of("gid", gid, "postNo", String.valueOf(postNo), "voteType", voteType),
-                uid,
-                clientIp
-        );
-        System.out.println("[" + LocalDateTime.now() + "] PAGE POST RESULT /board/" + gid + "/" + postNo + "/vote success=" + result.get("success") + " message=" + result.get("message"));
-        putFlash(redirectAttributes, result, "Vote recorded.");
+        try {
+            Map<String, Object> result = postService.votePost(
+                    Map.of("gid", gid, "postNo", String.valueOf(postNo), "voteType", voteType),
+                    uid,
+                    memberDivision,
+                    clientIp
+            );
+            System.out.println("[" + LocalDateTime.now() + "] PAGE POST RESULT /board/" + gid + "/" + postNo + "/vote success=" + result.get("success") + " message=" + result.get("message"));
+            putFlash(redirectAttributes, result, "Vote recorded.");
+        } catch (Exception e) {
+            System.out.println("[" + LocalDateTime.now() + "] PAGE POST ERROR /board/" + gid + "/" + postNo + "/vote message=" + e.getMessage());
+            redirectAttributes.addFlashAttribute("flashType", "error");
+            redirectAttributes.addFlashAttribute("flashMessage", e.getMessage());
+        }
         return "redirect:/board/" + gid + "/" + postNo + "?page=" + normalizePage(page);
     }
 

@@ -59,6 +59,7 @@ public class FeatureService {
                 """);
         addColumnIfMissing("gallery_setting", "join_policy", "VARCHAR(20) NOT NULL DEFAULT 'free'");
         addColumnIfMissing("gallery_setting", "visibility", "VARCHAR(20) NOT NULL DEFAULT 'public'");
+        addColumnIfMissing("gallery_setting", "read_visibility", "VARCHAR(20) NOT NULL DEFAULT 'inherit'");
         addColumnIfMissing("gallery_setting", "pinned_notice_count", "INT NOT NULL DEFAULT 3");
         addColumnIfMissing("gallery_setting", "allowed_attachment_types", "VARCHAR(255) NULL");
         addColumnIfMissing("gallery_setting", "attachment_max_bytes", "BIGINT NOT NULL DEFAULT 10485760");
@@ -226,16 +227,15 @@ public class FeatureService {
     public void assertBoardReadable(String gallId, String uid, String memberDivision) {
         Map<String, Object> settings = getBoardSettings(gallId);
         String visibility = text(settings.get("visibility"), "public");
-        if ("public".equalsIgnoreCase(visibility)) {
+        String readVisibility = text(settings.get("read_visibility"), "inherit");
+        String effectiveReadVisibility = "inherit".equalsIgnoreCase(readVisibility) ? visibility : readVisibility;
+        if ("public".equalsIgnoreCase(effectiveReadVisibility)) {
             return;
         }
         if (isAdmin(memberDivision) || isBoardStaff(gallId, uid) || isBoardMember(gallId, uid)) {
             return;
         }
-        if ("members".equalsIgnoreCase(visibility)) {
-            if (uid != null && !uid.isBlank()) {
-                return;
-            }
+        if ("members".equalsIgnoreCase(effectiveReadVisibility)) {
             throw new RuntimeException("멤버 전용 보드입니다.");
         }
         throw new RuntimeException("비공개 보드입니다.");
@@ -243,8 +243,34 @@ public class FeatureService {
 
     public void assertBoardWritable(String gallId, String uid, String memberDivision, String clientIp) {
         assertBoardReadable(gallId, uid, memberDivision);
+        if (!canParticipateInBoard(gallId, uid, memberDivision)) {
+            Map<String, Object> settings = getBoardSettings(gallId);
+            String visibility = text(settings.get("visibility"), "public");
+            if ("members".equalsIgnoreCase(visibility)) {
+                throw new RuntimeException("보드 가입 후 작성할 수 있습니다.");
+            }
+            throw new RuntimeException("이 보드에 작성할 권한이 없습니다.");
+        }
         assertNotBlocked(gallId, uid, clientIp);
         assertNotSuspended(uid);
+    }
+
+    public boolean canParticipateInBoard(String gallId, String uid, String memberDivision) {
+        Map<String, Object> settings = getBoardSettings(gallId);
+        String visibility = text(settings.get("visibility"), "public");
+        if ("public".equalsIgnoreCase(visibility)) {
+            return true;
+        }
+        return isAdmin(memberDivision) || isBoardStaff(gallId, uid) || isBoardMember(gallId, uid);
+    }
+
+    public boolean requiresBoardJoin(String gallId, String uid, String memberDivision) {
+        Map<String, Object> settings = getBoardSettings(gallId);
+        String visibility = text(settings.get("visibility"), "public");
+        if (!"members".equalsIgnoreCase(visibility)) {
+            return false;
+        }
+        return !canParticipateInBoard(gallId, uid, memberDivision);
     }
 
     public void validateTextPolicy(String gallId, String content) {
@@ -320,7 +346,8 @@ public class FeatureService {
     }
 
     @Transactional
-    public Map<String, Object> toggleScrap(String gallId, long postNo, String uid) {
+    public Map<String, Object> toggleScrap(String gallId, long postNo, String uid, String memberDivision, String clientIp) {
+        assertBoardWritable(gallId, uid, memberDivision, clientIp);
         String actor = required(uid, "로그인이 필요합니다.");
         Integer exists = jdbcTemplate.queryForObject("""
                 SELECT COUNT(*) FROM post_scrap WHERE uid = ? AND gall_id = ? AND post_no = ?
@@ -334,7 +361,8 @@ public class FeatureService {
     }
 
     @Transactional
-    public Map<String, Object> reportPost(String gallId, long postNo, String uid, String clientIp, String reason) {
+    public Map<String, Object> reportPost(String gallId, long postNo, String uid, String memberDivision, String clientIp, String reason) {
+        assertBoardWritable(gallId, uid, memberDivision, clientIp);
         String actorKey = actorKey(uid, clientIp);
         jdbcTemplate.update("""
                 INSERT INTO post_report (gall_id, post_no, reporter_key, reason)
@@ -356,7 +384,10 @@ public class FeatureService {
     }
 
     @Transactional
-    public Map<String, Object> reportComment(long commentId, String uid, String clientIp, String reason) {
+    public Map<String, Object> reportComment(long commentId, String uid, String memberDivision, String clientIp, String reason) {
+        Map<String, Object> comment = requireComment(commentId);
+        String gallId = text(comment.get("gall_id"), "");
+        assertBoardWritable(gallId, uid, memberDivision, clientIp);
         String actorKey = actorKey(uid, clientIp);
         jdbcTemplate.update("""
                 INSERT INTO comment_report (comment_id, reporter_key, reason)
@@ -376,8 +407,10 @@ public class FeatureService {
     }
 
     @Transactional
-    public Map<String, Object> likeComment(long commentId, String uid, String clientIp) {
+    public Map<String, Object> likeComment(long commentId, String uid, String memberDivision, String clientIp) {
         Map<String, Object> comment = requireComment(commentId);
+        String gallId = text(comment.get("gall_id"), "");
+        assertBoardWritable(gallId, uid, memberDivision, clientIp);
         String writerUid = nullable(comment.get("writer_uid"));
         if (writerUid != null && uid != null && writerUid.equals(uid)) {
             return Map.of("success", false, "message", "본인 댓글에는 공감할 수 없습니다.");

@@ -37,6 +37,16 @@ public class BoardController {
         return boardService.getBoardList();
     }
 
+    @GetMapping("/topics")
+    public Map<String, Object> getBoardTopics() {
+        System.out.println("[" + LocalDateTime.now() + "] API /api/board/topics");
+        try {
+            return Map.of("success", true, "topics", boardService.getBoardTopics());
+        } catch (Exception e) {
+            return Map.of("success", false, "message", e.getMessage(), "topics", List.of());
+        }
+    }
+
     @GetMapping("/posts/{gid}")
     public ResponseEntity<?> getPosts(@PathVariable("gid") String gid,
                                       @RequestParam(value = "page", defaultValue = "1") int page,
@@ -82,7 +92,9 @@ public class BoardController {
                                                   @SessionAttribute(name = "memberDivision", required = false) String memberDivision) {
         System.out.println("[" + LocalDateTime.now() + "] API /api/board/manage/" + gid);
         try {
-            return Map.of("success", true, "data", boardService.getBoardManageInfo(gid, uid, memberDivision));
+            Map<String, Object> data = boardService.getBoardManageInfo(gid, uid, memberDivision);
+            enrichWriteAccess(gid, uid, memberDivision, data);
+            return Map.of("success", true, "data", data);
         } catch (Exception e) {
             return Map.of("success", false, "message", e.getMessage());
         }
@@ -243,5 +255,47 @@ public class BoardController {
         }
         String text = String.valueOf(value).trim();
         return text.equals("1") || text.equalsIgnoreCase("true") || text.equalsIgnoreCase("yes") || text.equalsIgnoreCase("on");
+    }
+
+    @SuppressWarnings("unchecked")
+    private void enrichWriteAccess(String gid, String uid, String memberDivision, Map<String, Object> data) {
+        Object permissionsValue = data.get("permissions");
+        if (!(permissionsValue instanceof Map<?, ?>)) {
+            return;
+        }
+        Map<String, Object> permissions = (Map<String, Object>) permissionsValue;
+        Map<String, Object> settings = data.get("settings") instanceof Map<?, ?> settingsMap
+                ? (Map<String, Object>) settingsMap
+                : Map.of();
+        boolean loggedIn = uid != null && !uid.isBlank();
+        boolean guestAllowed = flagEnabled(settings.get("allow_guest_post"));
+        boolean canParticipate = featureService.canParticipateInBoard(gid, uid, memberDivision);
+        boolean joinRequired = featureService.requiresBoardJoin(gid, uid, memberDivision);
+        boolean canWritePost = canParticipate && (loggedIn || guestAllowed);
+        permissions.put("canParticipateBoard", canParticipate);
+        permissions.put("joinRequired", joinRequired);
+        permissions.put("canWritePost", canWritePost);
+        permissions.put("writePermissionLabel", writePermissionLabel(settings, joinRequired, canParticipate, loggedIn));
+    }
+
+    private String writePermissionLabel(Map<String, Object> settings, boolean joinRequired, boolean canParticipate, boolean loggedIn) {
+        String visibility = settings.get("visibility") == null ? "" : String.valueOf(settings.get("visibility")).trim().toLowerCase();
+        boolean guestAllowed = flagEnabled(settings.get("allow_guest_post"));
+        if (joinRequired) {
+            return "[잠김]";
+        }
+        if (!canParticipate) {
+            return "[잠김]";
+        }
+        if ("members".equals(visibility)) {
+            return "글쓰기: 보드 멤버만 가능";
+        }
+        if (guestAllowed) {
+            return "글쓰기: 비회원 포함 누구나 가능";
+        }
+        if (loggedIn) {
+            return "글쓰기: 로그인 사용자 가능";
+        }
+        return "[잠김]";
     }
 }

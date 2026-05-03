@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title th:text="${(boardInfo.gall_name != null ? boardInfo.gall_name : gid) + ' 가입'}">보드 가입</title>
+    <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<header class="topbar">
+    <div class="frame">
+        <div class="topbar-inner">
+            <div class="topbar-main">
+                <a class="brand" href="/">
+                    <span class="brand-mark">/</span>
+                    <span>Irisen</span>
+                </a>
+                <form class="topbar-search" action="/search" method="get">
+                    <button type="button" class="topbar-menu" aria-label="메뉴"><span></span><span></span><span></span></button>
+                    <input class="topbar-search-input" type="search" name="q" placeholder="보드 & 게시글 검색">
+                    <button class="topbar-search-submit" type="submit" aria-label="검색"><span class="topbar-search-icon" aria-hidden="true"></span></button>
+                </form>
+                <div class="topbar-account">
+                    <span class="status-badge" th:text="${sessionNick != null and !#strings.isEmpty(sessionNick) ? sessionNick : sessionUid}">회원</span>
+                    <form action="/logout" method="post">
+                        <button class="btn btn-secondary btn-compact" type="submit">로그아웃</button>
+                    </form>
+                </div>
+            </div>
+            <nav class="topbar-nav" aria-label="주요 메뉴">
+                <a href="/">홈</a>
+                <a class="is-active" href="/boards?type=main">보드</a>
+                <a href="/boards?type=side">사이드 보드</a>
+                <span class="topbar-nav-divider" aria-hidden="true">||</span>
+                <a href="/feed">피드</a>
+                <a href="/profile" class="topbar-nav-auth">프로필</a>
+            </nav>
+        </div>
+    </div>
+</header>
+
+<main class="shell">
+    <div class="frame">
+        <section class="card stack" style="max-width: 720px; margin: 42px auto;">
+            <span class="eyebrow">BOARD JOIN</span>
+            <h1 class="section-title" th:text="${boardInfo.gall_name != null ? boardInfo.gall_name : gid}">보드</h1>
+            <p class="muted" th:text="${joinMessage}">이 보드는 가입 후 이용할 수 있습니다.</p>
+
+            <div th:if="${flashMessage != null}"
+                 th:class="${flashType == 'error' ? 'error-box' : 'success-box'}"
+                 th:text="${flashMessage}">message</div>
+
+            <form class="stack" th:action="@{/board/{gid}/join(gid=${gid})}" method="post">
+                <div class="field" th:if="${settings.join_policy != null and #strings.toLowerCase(settings.join_policy) == 'approval'}">
+                    <label for="join-reason">가입 사유</label>
+                    <textarea id="join-reason" name="reason" rows="4" placeholder="운영진에게 전달할 가입 사유를 입력하세요."></textarea>
+                </div>
+                <div class="inline-actions">
+                    <button class="btn btn-primary" type="submit"
+                            th:text="${settings.join_policy != null and #strings.toLowerCase(settings.join_policy) == 'approval' ? '가입 요청' : '가입하고 입장'}">가입하고 입장</button>
+                    <a class="btn btn-secondary" href="/boards">보드 목록</a>
+                </div>
+            </form>
+        </section>
+    </div>
+</main>
+</body>
+</html>

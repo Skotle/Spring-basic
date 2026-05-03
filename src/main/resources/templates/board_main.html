@@ -8,6 +8,11 @@
     <script src="/js/security-request.js"></script>
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5128462008892004"
             crossorigin="anonymous"></script>
+    <ins class="kakao_ad_area" style="display:none;"
+         data-ad-unit = "DAN-HGwMI7hHrajGwi2G"
+         data-ad-width = "160"
+         data-ad-height = "600"></ins>
+    <script type="text/javascript" src="//t1.kakaocdn.net/kas/static/ba.min.js" async></script>
 </head>
 <body>
 <header class="topbar">
@@ -104,11 +109,16 @@
                 <div class="dc-board-policy">
                     <h3 class="dc-side-heading">보드 권한</h3>
                     <ul class="dc-policy-list">
-                        <li th:text="${'글쓰기 ' + (canWritePost ? '허용' : '제한')}">글쓰기 허용</li>
+                        <li class="is-important" th:text="${writePermissionLabel}">글쓰기: 로그인 사용자만 가능</li>
                         <li th:text="${'비회원 댓글 ' + ((settings.allow_guest_comment == true or settings.allow_guest_comment == 1) ? '허용' : '제한')}">비회원 댓글 허용</li>
                         <li th:text="${'개념글 기준 ' + (settings.concept_recommend_threshold != null ? settings.concept_recommend_threshold : 10)}">개념글 기준 10</li>
                     </ul>
                 </div>
+            </div>
+
+            <div class="board-join-required" th:if="${joinRequired}">
+                <strong>[잠김]</strong>
+                <a class="btn btn-primary btn-compact" th:href="@{/board/{gid}/join(gid=${gid})}">보드 가입</a>
             </div>
 
             <div class="dc-board-tabs">

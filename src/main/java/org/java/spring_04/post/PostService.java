@@ -430,7 +430,7 @@ public class PostService {
     }
 
     @Transactional
-    public Map<String, Object> votePost(Map<String, String> payload, String uid, String clientIp) {
+    public Map<String, Object> votePost(Map<String, String> payload, String uid, String memberDivision, String clientIp) {
         String gallId = required(payload.get("gid"), "Board ID is required.");
         Long postNo = parseLong(payload.get("postNo"), "Post number is required.");
         String voteType = normalizeVoteType(payload.get("voteType"));
@@ -439,6 +439,7 @@ public class PostService {
         if (post == null) {
             return Map.of("success", false, "message", "Post not found.");
         }
+        featureService.assertBoardWritable(gallId, uid, memberDivision, clientIp);
 
         String actorKey = resolveVoteActorKey(uid, clientIp);
         LocalDate today = LocalDate.now(SEOUL_ZONE);
