@@ -636,15 +636,46 @@
     );
   }
 
-  function BoardRequestsView({ session, feedback, onSubmitSideBoardRequest, onLogout, alarmCount }) {
+  function BoardRequestsView({ session, feedback, boardDashboard, onSubmitSideBoardRequest, onLogout, alarmCount }) {
     const [requestGid, setRequestGid] = useState("");
     const [requestName, setRequestName] = useState("");
+    const [requestTopicId, setRequestTopicId] = useState("");
+    const [boardTopics, setBoardTopics] = useState([]);
     const [requestReason, setRequestReason] = useState("");
     const [requestAgreed, setRequestAgreed] = useState(false);
     const normalizedGid = requestGid.trim().toLowerCase();
     const gidValid = /^[a-z0-9_-]{3,50}$/.test(normalizedGid);
     const nameValid = requestName.trim().length >= 2 && requestName.trim().length <= 100;
+    const topicValid = !!requestTopicId;
     const reasonValid = requestReason.trim().length >= 10;
+
+    useEffect(() => {
+      let active = true;
+      api("/api/board/topics")
+          .then((result) => {
+            if (!active) return;
+            const topics = result?.success && Array.isArray(result.topics) ? result.topics : [];
+            setBoardTopics(topics);
+            setRequestTopicId((current) => current || topics[0]?.topic_id || "");
+          })
+          .catch(() => {
+            if (active) setBoardTopics([]);
+          });
+      return () => {
+        active = false;
+      };
+    }, []);
+
+    const requestedBoards = Array.isArray(boardDashboard?.requestedBoards) ? boardDashboard.requestedBoards : [];
+    const managedBoards = Array.isArray(boardDashboard?.managedBoards) ? boardDashboard.managedBoards : [];
+    const statusLabel = (status) => {
+      const normalized = String(status || "").toLowerCase();
+      if (normalized === "approved") return "승인";
+      if (normalized === "rejected") return "반려";
+      if (normalized === "pending") return "대기";
+      return status || "상태 없음";
+    };
+    const roleLabel = (role) => String(role || "").toLowerCase() === "manager" ? "매니저" : "부매니저";
 
     return h(React.Fragment, null,
         h(TopbarV2, { session, onLogout, alarmCount }),
@@ -656,6 +687,40 @@
                         h("h1", { className: "section-title" }, "사이드 보드 개설 신청"),
                         h("p", { className: "muted board-request-hero-copy" }, "현재 운영 중인 목록에 없는 주제를 별도 보드로 열고 싶다면 아래 규격과 심사 기준에 맞춰 개설 신청을 제출할 수 있습니다.")
                     ),
+                    session?.loggedIn ? h("div", { className: "board-request-layout" },
+                        h("article", { className: "card board-request-guide" },
+                            h("h3", { className: "board-request-title" }, "내가 요청한 보드"),
+                            requestedBoards.length
+                                ? h("div", { className: "compact-stack" }, requestedBoards.map((board) =>
+                                    h("div", { className: "mini-link-card", key: `requested-${board.request_id}` },
+                                        h("div", { className: "section-head", style: { marginBottom: 0 } },
+                                            h("div", null,
+                                                h("div", { className: "board-title" }, board.gall_name || board.gall_id),
+                                                h("div", { className: "muted" }, `${board.gall_id || "-"} · ${board.topic_name || board.topic_id || "주제 없음"}`)
+                                            ),
+                                            h("span", { className: "chip" }, statusLabel(board.status))
+                                        )
+                                    )
+                                ))
+                                : h("div", { className: "empty-box" }, "요청 중인 보드가 없습니다.")
+                        ),
+                        h("article", { className: "card board-request-guide" },
+                            h("h3", { className: "board-request-title" }, "내가 관리 중인 보드"),
+                            managedBoards.length
+                                ? h("div", { className: "compact-stack" }, managedBoards.map((board) =>
+                                    h(Link, { href: `/board/${encodeURIComponent(board.gall_id)}/manage`, className: "mini-link-card", key: `managed-${board.board_role}-${board.gall_id}`, reload: true },
+                                        h("div", { className: "section-head", style: { marginBottom: 0 } },
+                                            h("div", null,
+                                                h("div", { className: "board-title" }, board.gall_name || board.gall_id),
+                                                h("div", { className: "muted" }, `${board.gall_id || "-"} · ${board.topic_name || board.topic_id || "주제 없음"}`)
+                                            ),
+                                            h("span", { className: "chip" }, roleLabel(board.board_role))
+                                        )
+                                    )
+                                ))
+                                : h("div", { className: "empty-box" }, "관리 중인 보드가 없습니다.")
+                        )
+                    ) : null,
                     h("div", { className: "board-request-layout" },
                         h("article", { className: "card board-request-guide" },
                             h("h3", { className: "board-request-title" }, "신청 규격"),
@@ -692,7 +757,22 @@
                                         h("div", { className: nameValid || !requestName ? "request-rule-hint" : "request-rule-hint is-error" }, "2~100자")
                                     ),
                                     h("div", { className: "field" },
-                                        h("label", { htmlFor: "board-request-reason" }, "?좎껌 ?ъ쑀"),
+                                        h("label", { htmlFor: "board-request-topic" }, "주제"),
+                                        h("select", {
+                                          id: "board-request-topic",
+                                          value: requestTopicId,
+                                          onChange: (event) => setRequestTopicId(event.target.value)
+                                        },
+                                            h("option", { value: "" }, "주제를 선택하세요"),
+                                            boardTopics.map((topic) => h("option", {
+                                              key: topic.topic_id,
+                                              value: topic.topic_id
+                                            }, topic.topic_name || topic.topic_id))
+                                        ),
+                                        h("div", { className: topicValid ? "request-rule-hint" : "request-rule-hint is-error" }, "개설 이후 주제는 변경할 수 없습니다.")
+                                    ),
+                                    h("div", { className: "field" },
+                                        h("label", { htmlFor: "board-request-reason" }, "요청 사유"),
                                         h("textarea", { id: "board-request-reason", rows: 8, value: requestReason, placeholder: "개설 목적, 예상 이용층, 기존 보드와의 차이, 운영 방향을 적어주세요.", onChange: (event) => setRequestReason(event.target.value) }),
                                         h("div", { className: reasonValid || !requestReason ? "request-rule-hint" : "request-rule-hint is-error" }, `${requestReason.trim().length}/10자 이상`)
                                     ),
@@ -703,11 +783,12 @@
                                         h("button", {
                                           type: "button",
                                           className: "btn btn-primary",
-                                          disabled: !gidValid || !nameValid || !reasonValid || !requestAgreed,
+                                          disabled: !gidValid || !nameValid || !topicValid || !reasonValid || !requestAgreed,
                                           onClick() {
-                                            onSubmitSideBoardRequest({ gallId: normalizedGid, gallName: requestName.trim(), reason: requestReason.trim() }, () => {
+                                            onSubmitSideBoardRequest({ gallId: normalizedGid, gallName: requestName.trim(), topicId: requestTopicId, reason: requestReason.trim() }, () => {
                                               setRequestGid("");
                                               setRequestName("");
+                                              setRequestTopicId(boardTopics[0]?.topic_id || "");
                                               setRequestReason("");
                                               setRequestAgreed(false);
                                             });
@@ -796,12 +877,7 @@
                                     h("span", { className: "eyebrow" }, "Ranking"),
                                     h("h3", { className: "home-side-title" }, "보드 랭킹")
                                 ),
-                                h("button", {
-                                  type: "button",
-                                  className: "btn btn-secondary btn-compact",
-                                  disabled: rankings?.canRefresh === false,
-                                  onClick: onRefreshRankings
-                                }, "갱신")
+                                h("span", { className: "chip" }, "자동 갱신")
                             ),
                             h("div", { className: "board-ranking-meta" },
                                 h("span", null, `오늘 ${rankings?.refreshCount ?? 0}회`),
@@ -2218,6 +2294,7 @@
     const [submanagerFeedback, setSubmanagerFeedback] = useState(null);
     const [profileFeedback, setProfileFeedback] = useState(null);
     const [boardRequestFeedback, setBoardRequestFeedback] = useState(null);
+    const [boardDashboard, setBoardDashboard] = useState({ requestedBoards: [], managedBoards: [] });
     const [rankingFeedback, setRankingFeedback] = useState(null);
 
     const currentBoard = boards.find((board) => board.gall_id === route.params.gid) || null;
@@ -2258,16 +2335,8 @@
     }
 
     function requestRefreshRankings() {
-      return api("/api/board/rankings/refresh", { method: "POST" })
-          .then((result) => {
-            if (!result?.success || !result.data) {
-              setRankingFeedback({ type: "error", message: result?.message || "랭킹 갱신에 실패했습니다." });
-              return;
-            }
-            setRankings(result.data);
-            setRankingFeedback({ type: "success", message: "보드 랭킹을 갱신했습니다." });
-          })
-          .catch((error) => setRankingFeedback({ type: "error", message: error.message || "랭킹 갱신에 실패했습니다." }));
+      setRankingFeedback(null);
+      return refreshRankings();
     }
 
     function refreshSearchResults(q) {
@@ -2287,6 +2356,16 @@
         return Promise.resolve();
       }
       return api("/api/alarms/my").then((result) => setAlarms(result?.success && Array.isArray(result.alarms) ? result.alarms : [])).catch(() => setAlarms([]));
+    }
+
+    function refreshMyBoardDashboard() {
+      if (!session?.loggedIn) {
+        setBoardDashboard({ requestedBoards: [], managedBoards: [] });
+        return Promise.resolve();
+      }
+      return api("/api/board/my")
+          .then((result) => setBoardDashboard(result?.success && result.data ? result.data : { requestedBoards: [], managedBoards: [] }))
+          .catch(() => setBoardDashboard({ requestedBoards: [], managedBoards: [] }));
     }
 
     function refreshBoardPosts(gid, nextPage) {
@@ -2369,8 +2448,9 @@
       }
       if (route.name === "profile") refreshProfile(targetProfileUid);
       if (route.name === "alarms") refreshAlarms();
+      if (route.name === "boardRequests") refreshMyBoardDashboard();
       if (route.name === "search") refreshSearchResults(searchQuery);
-    }, [route, page, targetProfileUid]);
+    }, [route, page, targetProfileUid, session?.loggedIn]);
 
     function handleLogout() {
       fetch("/logout", { method: "POST", credentials: "include" }).finally(() => {
@@ -2840,8 +2920,8 @@
         setBoardRequestFeedback({ type: "error", message: "로그인해야 요청할 수 있습니다." });
         return;
       }
-      if (!payload.gallId?.trim() || !payload.gallName?.trim() || !payload.reason?.trim()) {
-        setBoardRequestFeedback({ type: "error", message: "보드 ID, 이름, 요청 사유를 모두 입력해주세요." });
+      if (!payload.gallId?.trim() || !payload.gallName?.trim() || !payload.topicId?.trim() || !payload.reason?.trim()) {
+        setBoardRequestFeedback({ type: "error", message: "보드 ID, 이름, 주제, 요청 사유를 모두 입력해주세요." });
         return;
       }
       api("/api/board/request/side-board", { method: "POST", body: JSON.stringify(payload) })
@@ -2853,6 +2933,7 @@
             reset?.();
             setBoardRequestFeedback({ type: "success", message: result?.message || "사이드 보드 개설 요청을 보냈습니다." });
             if (session?.loggedIn) refreshAlarms();
+            if (session?.loggedIn) refreshMyBoardDashboard();
           })
           .catch((error) => setBoardRequestFeedback({ type: "error", message: error.message || "사이드 보드 요청에 실패했습니다." }));
     }
@@ -2913,7 +2994,7 @@
     if (route.name === "boards") return h(BoardsView, { session, boards, query, boardTypeFilter, onQueryChange: setQuery, onSubmitSideBoardRequest: submitSideBoardRequest, requestFeedback: boardRequestFeedback, onLogout: handleLogout, alarmCount });
     if (route.name === "feed") return h(FeedView, { session, feed, onLogout: handleLogout, alarmCount });
     if (route.name === "search") return h(SearchResultsView, { session, boards, posts: searchResults, searchQuery, onLogout: handleLogout, alarmCount });
-    if (route.name === "boardRequests") return h(BoardRequestsView, { session, feedback: boardRequestFeedback, onSubmitSideBoardRequest: submitSideBoardRequest, onLogout: handleLogout, alarmCount });
+    if (route.name === "boardRequests") return h(BoardRequestsView, { session, feedback: boardRequestFeedback, boardDashboard, onSubmitSideBoardRequest: submitSideBoardRequest, onLogout: handleLogout, alarmCount });
     if (route.name === "board") return h(BoardView, { session, gid: route.params.gid, board: currentBoard, posts: boardPosts, page, manageData: boardManageData, settingsFeedback, listFeedback: boardPostsFeedback, onPrevPage: () => navigate(`/board/${encodeURIComponent(route.params.gid)}?page=${Math.max(1, page - 1)}`), onNextPage: () => navigate(`/board/${encodeURIComponent(route.params.gid)}?page=${page + 1}`), onLogout: handleLogout, alarmCount });
     if (route.name === "boardManage") return h(BoardManageView, { session, gid: route.params.gid, board: currentBoard, manageData: boardManageData, feedback: settingsFeedback, submanagerFeedback, onSaveSettings: submitBoardSettings, onSaveSubmanagerPermissions: submitSubmanagerPermissions, onAppointSubmanager: appointSubmanager, onRevokeSubmanager: revokeSubmanager, onTransferManager: transferManager, onLogout: handleLogout, alarmCount });
     if (route.name === "boardStaffManage") return h(BoardStaffManageView, { session, gid: route.params.gid, board: currentBoard, manageData: boardManageData, feedback: submanagerFeedback, onSaveSubmanagerPermissions: submitSubmanagerPermissions, onAppointSubmanager: appointSubmanager, onRevokeSubmanager: revokeSubmanager, onTransferManager: transferManager, onLogout: handleLogout, alarmCount });

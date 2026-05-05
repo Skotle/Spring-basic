@@ -47,6 +47,16 @@ public class BoardController {
         }
     }
 
+    @GetMapping("/my")
+    public Map<String, Object> getMyBoardDashboard(@SessionAttribute(name = "uid", required = false) String uid) {
+        System.out.println("[" + LocalDateTime.now() + "] API /api/board/my");
+        try {
+            return Map.of("success", true, "data", boardService.getMyBoardDashboard(uid));
+        } catch (Exception e) {
+            return Map.of("success", false, "message", e.getMessage());
+        }
+    }
+
     @GetMapping("/posts/{gid}")
     public ResponseEntity<?> getPosts(@PathVariable("gid") String gid,
                                       @RequestParam(value = "page", defaultValue = "1") int page,

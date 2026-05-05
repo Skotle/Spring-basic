@@ -405,6 +405,70 @@ public class BoardService {
         return jdbcTemplate.queryForList(sql);
     }
 
+    public Map<String, Object> getMyBoardDashboard(String uid) {
+        String actor = required(uid, "로그인이 필요합니다.");
+        List<Map<String, Object>> requestedBoards = jdbcTemplate.queryForList("""
+                SELECT br.request_id,
+                       br.gall_id,
+                       br.gall_name,
+                       br.gall_type,
+                       br.topic_id,
+                       bt.topic_name,
+                       br.reason,
+                       br.status,
+                       br.reviewed_by,
+                       reviewer.nick AS reviewed_by_nick,
+                       br.reviewed_at,
+                       br.created_at
+                FROM board_request br
+                LEFT JOIN board_topic bt ON bt.topic_id = br.topic_id
+                LEFT JOIN user reviewer ON reviewer.uid = br.reviewed_by
+                WHERE br.requester_uid = ?
+                ORDER BY br.created_at DESC, br.request_id DESC
+                LIMIT 50
+                """, actor);
+        List<Map<String, Object>> managedBoards = jdbcTemplate.queryForList("""
+                SELECT b.gall_id,
+                       b.gall_name,
+                       b.gall_type,
+                       b.topic_id,
+                       bt.topic_name,
+                       b.status,
+                       b.post_count,
+                       'manager' AS board_role,
+                       NULL AS appointed_by,
+                       NULL AS appointed_by_nick,
+                       NULL AS appointed_at
+                FROM board b
+                LEFT JOIN board_topic bt ON bt.topic_id = b.topic_id
+                WHERE b.manager_uid = ?
+                  AND COALESCE(b.status, 'active') <> 'deleted'
+                UNION ALL
+                SELECT b.gall_id,
+                       b.gall_name,
+                       b.gall_type,
+                       b.topic_id,
+                       bt.topic_name,
+                       b.status,
+                       b.post_count,
+                       'submanager' AS board_role,
+                       bs.appointed_by,
+                       appointor.nick AS appointed_by_nick,
+                       bs.appointed_at
+                FROM board_submanager bs
+                JOIN board b ON b.gall_id = bs.gall_id
+                LEFT JOIN board_topic bt ON bt.topic_id = b.topic_id
+                LEFT JOIN user appointor ON appointor.uid = bs.appointed_by
+                WHERE bs.uid = ?
+                  AND COALESCE(b.status, 'active') <> 'deleted'
+                ORDER BY gall_name ASC, gall_id ASC
+                """, actor, actor);
+        return Map.of(
+                "requestedBoards", requestedBoards,
+                "managedBoards", managedBoards
+        );
+    }
+
     public Map<String, Object> getBoardRankingData() {
         autoRefreshBoardRankingsIfNeeded();
         LocalDate today = LocalDate.now();
@@ -760,10 +824,18 @@ public class BoardService {
         String boardId = required(gallId, "필수 값을 입력해 주세요.");
         String actorUid = required(uid, "필수 값을 입력해 주세요.");
 
-        requireBoard(boardId);
+        Map<String, Object> boardRow = requireBoard(boardId);
         Map<String, Object> currentSettings = getBoardSettings(boardId);
         if (!canEditBoardSettings(boardId, actorUid, memberDivision)) {
             throw new RuntimeException("요청을 처리할 수 없습니다.");
+        }
+        String requestedTopicId = nullableTrim(payload.get("topicId"));
+        if (requestedTopicId != null) {
+            String currentTopicId = nullableTrim(nullableText(boardRow.get("topic_id")));
+            String normalizedCurrentTopicId = currentTopicId == null ? "other" : currentTopicId;
+            if (!requestedTopicId.equalsIgnoreCase(normalizedCurrentTopicId)) {
+                throw new RuntimeException("보드 주제는 개설 이후 변경할 수 없습니다.");
+            }
         }
 
         String boardNotice = nullableTrim(payload.get("boardNotice"));
@@ -1261,7 +1333,7 @@ public class BoardService {
                 VALUES (?, ?, ?, 'm', ?, ?, 'pending', NULL, NULL, NOW())
                 """, uid, gallId, gallName, topicId, reason);
 
-        notifyAdminsForSideBoardRequest(uid, gallId, gallName, reason);
+        notifyAdminsForSideBoardRequest(uid, gallId, gallName, topicId, reason);
     }
 
     public Map<String, Object> getAdminRequestDashboard(String adminUid) {
@@ -1679,10 +1751,10 @@ public class BoardService {
         String requesterUid = required(payload.get("requesterUid"), "요청자 정보가 없습니다.");
         String gallId = required(payload.get("gallId"), "보드 ID가 없습니다.");
         String gallName = required(payload.get("gallName"), "보드 이름이 없습니다.");
-        String topicId = normalizeBoardTopicId(payload.get("topicId"));
+        String topicId = resolveBoardTopicForApproval(requesterUid, gallId, payload.get("topicId"));
         String reason = nullableTrim(payload.get("reason"));
 
-        ensureSideBoardRequestAllowed(requesterUid, gallId, gallName);
+        ensureSideBoardCreationTargetAvailable(null, gallId, gallName);
         ensureUserExists(requesterUid);
 
         jdbcTemplate.update("""
@@ -1971,6 +2043,11 @@ public class BoardService {
     }
 
     private void ensureSideBoardRequestAllowed(String requesterUid, String gallId, String gallName) {
+        ensureSideBoardCreationTargetAvailable(requesterUid, gallId, gallName);
+
+    }
+
+    private void ensureSideBoardCreationTargetAvailable(String requesterUid, String gallId, String gallName) {
         if (gallId == null || gallId.isBlank()) {
             throw new RuntimeException("요청을 처리할 수 없습니다.");
         }
@@ -1988,6 +2065,10 @@ public class BoardService {
         if (existingGallery != null && existingGallery > 0) {
             throw new RuntimeException("요청을 처리할 수 없습니다.");
         }
+        if (requesterUid == null || requesterUid.isBlank()) {
+            return;
+        }
+
         Integer existingPending = jdbcTemplate.queryForObject("""
                 SELECT COUNT(*)
                 FROM board_request
@@ -2013,7 +2094,7 @@ public class BoardService {
     }
 
     // 보드 관리 요청 처리
-    private void notifyAdminsForSideBoardRequest(String requesterUid, String gallId, String gallName, String reason) {
+    private void notifyAdminsForSideBoardRequest(String requesterUid, String gallId, String gallName, String topicId, String reason) {
         List<String> adminUids = jdbcTemplate.query(
                 "SELECT uid FROM user WHERE member_division IN ('1', 'admin', 'operator') ORDER BY uid ASC",
                 (rs, rowNum) -> rs.getString("uid")
@@ -2028,6 +2109,7 @@ public class BoardService {
         payload.put("requesterNick", requesterNick);
         payload.put("gallId", gallId);
         payload.put("gallName", gallName);
+        payload.put("topicId", topicId);
         payload.put("reason", reason);
         payload.put("requestedAt", LocalDateTime.now().toString());
 
@@ -2045,7 +2127,7 @@ public class BoardService {
         String alarmType = approved ? ALARM_TYPE_SIDE_BOARD_ACCEPTED : ALARM_TYPE_SIDE_BOARD_REJECTED;
         String title = approved
                 ? "[" + gallName + " 보드가 생성되었습니다."
-                : "[" + gallName + " 보드가 생성되었습니다.";
+                : "[" + gallName + " 보드 개설이 반려되었습니다.";
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("gallId", gallId);
         payload.put("gallName", gallName);

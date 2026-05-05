@@ -1225,6 +1225,11 @@ a.m-nick-type:hover {
   object-fit: contain;
   box-sizing: border-box;
 }
+.m-html-editor img {
+  max-width: 100% !important;
+  height: auto !important;
+  display: block;
+}
 
 .m-board-cover-image {
   width: 72px;

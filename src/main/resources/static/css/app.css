@@ -1,5 +1,5 @@
 :root {
-  --desktop-max: 1720px;
+  --desktop-max: 1080px;
   --bg: #f8f3f7;
   --bg-soft: #f6edf3;
   --panel: #ffffff;
@@ -64,6 +64,13 @@ button {
 .shell {
   min-height: 100vh;
   padding: 18px 24px 48px;
+}
+
+.page-shell {
+  width: min(var(--desktop-max), calc(100vw - 64px));
+  max-width: var(--desktop-max);
+  margin: 0 auto;
+  padding: 18px 0 48px;
 }
 
 .frame {
@@ -258,8 +265,8 @@ button {
 
   .frame,
   .topbar .frame {
-    width: calc(100vw - 40px);
-    max-width: none;
+    width: min(var(--desktop-max), calc(100vw - 40px));
+    max-width: var(--desktop-max);
   }
 
   .topbar {
@@ -276,7 +283,7 @@ button {
   }
 
   .topbar-main {
-    grid-template-columns: 220px minmax(560px, 1fr) minmax(280px, auto);
+    grid-template-columns: 190px minmax(360px, 1fr) minmax(220px, auto);
     gap: 20px;
     padding: 14px 0 18px;
     border: 0;
@@ -313,7 +320,9 @@ button {
   .topbar-nav {
     gap: 0;
     overflow: visible;
-    padding: 0 18px;
+    width: 100vw;
+    margin-left: calc(50% - 50vw);
+    padding: 0 max(18px, calc((100vw - var(--desktop-max)) / 2));
     border: 0;
     background: linear-gradient(90deg, var(--accent-deep), var(--accent));
   }
@@ -2866,12 +2875,8 @@ textarea#comment-content {
 }
 
 @media (min-width: 1600px) {
-  :root {
-    --desktop-max: 1840px;
-  }
-
   .shell {
-    padding-top: 42px;
+    padding-top: 30px;
   }
 }
 
