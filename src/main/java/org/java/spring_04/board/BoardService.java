@@ -296,6 +296,7 @@ public class BoardService {
         addPostColumnIfMissing("review_status", "VARCHAR(20) NOT NULL DEFAULT 'normal'");
         addPostColumnIfMissing("report_count", "INT NOT NULL DEFAULT 0");
         addPostColumnIfMissing("pinned_at", "DATETIME NULL");
+        addPostColumnIfMissing("bumped_at", "DATETIME NULL");
         addPostColumnIfMissing("pin_order", "INT NULL");
         addPostColumnIfMissing("attachment_urls", "TEXT NULL");
     }
@@ -560,6 +561,7 @@ public class BoardService {
         boolean hasConcept = columnExists("post", "is_concept");
         boolean hasNotice = columnExists("post", "is_notice");
         boolean hasPinnedAt = columnExists("post", "pinned_at");
+        boolean hasBumpedAt = columnExists("post", "bumped_at");
 
         if ("concept".equalsIgnoreCase(normalizedMode) && !hasConcept) {
             return new ArrayList<>();
@@ -624,6 +626,9 @@ public class BoardService {
         }
         if (hasPinnedAt) {
             sql.append("p.pinned_at DESC, ");
+        }
+        if (hasBumpedAt) {
+            sql.append("COALESCE(p.bumped_at, p.writed_at) DESC, ");
         }
         sql.append("p.writed_at DESC, p.id DESC, p.post_no DESC LIMIT ? OFFSET ?");
         args.add(size);

@@ -79,6 +79,7 @@ public class FeatureService {
         addColumnIfMissing("post", "review_status", "VARCHAR(20) NOT NULL DEFAULT 'normal'");
         addColumnIfMissing("post", "report_count", "INT NOT NULL DEFAULT 0");
         addColumnIfMissing("post", "pinned_at", "DATETIME NULL");
+        addColumnIfMissing("post", "bumped_at", "DATETIME NULL");
         addColumnIfMissing("post", "pin_order", "INT NULL");
         addColumnIfMissing("post", "attachment_urls", "TEXT NULL");
 
@@ -471,7 +472,12 @@ public class FeatureService {
         if (!boardService.hasBoardPermission(gallId, uid, memberDivision, BoardService.PERMISSION_BUMP_POST)) {
             return Map.of("success", false, "message", "포스트를 끌올할 권한이 없습니다.");
         }
-        jdbcTemplate.update("UPDATE post SET writed_at = NOW() WHERE gall_id = ? AND post_no = ? AND is_deleted = 0", gallId, postNo);
+        int updated = jdbcTemplate.update(
+                "UPDATE post SET bumped_at = NOW() WHERE gall_id = ? AND post_no = ? AND is_deleted = 0",
+                gallId, postNo);
+        if (updated == 0) {
+            return Map.of("success", false, "message", "Post not found.");
+        }
         logModeration(gallId, uid, null, null, "post_bump", "manual");
         return Map.of("success", true);
     }

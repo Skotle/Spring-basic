@@ -108,6 +108,7 @@ public class PostService {
         addPostColumnIfMissing("review_status", "VARCHAR(20) NOT NULL DEFAULT 'normal'");
         addPostColumnIfMissing("report_count", "INT NOT NULL DEFAULT 0");
         addPostColumnIfMissing("pinned_at", "DATETIME NULL");
+        addPostColumnIfMissing("bumped_at", "DATETIME NULL");
         addPostColumnIfMissing("pin_order", "INT NULL");
         addPostColumnIfMissing("attachment_urls", "TEXT NULL");
     }
@@ -231,7 +232,7 @@ public class PostService {
                   AND COALESCE(p.is_draft, 0) = 0
                   AND COALESCE(p.is_secret, 0) = 0
                   AND COALESCE(p.review_status, 'normal') <> 'review'
-                ORDER BY COALESCE(p.is_notice, 0) DESC, p.pinned_at DESC, p.writed_at DESC, p.id DESC, p.post_no DESC
+                ORDER BY COALESCE(p.is_notice, 0) DESC, p.pinned_at DESC, COALESCE(p.bumped_at, p.writed_at) DESC, p.writed_at DESC, p.id DESC, p.post_no DESC
                 LIMIT 20
                 """;
         return decorateListRows(sanitizeRowsContent(jdbcTemplate.queryForList(sql, gallId)));
