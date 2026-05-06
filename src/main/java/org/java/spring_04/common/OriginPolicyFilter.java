@@ -47,9 +47,9 @@ public class OriginPolicyFilter extends OncePerRequestFilter {
     private boolean matchesRequestOrigin(HttpServletRequest request, String source) {
         try {
             URI uri = URI.create(source);
-            String scheme = request.getScheme();
-            String host = request.getServerName();
-            int port = normalizePort(scheme, request.getServerPort());
+            String scheme = forwardedScheme(request);
+            String host = forwardedHost(request);
+            int port = normalizePort(scheme, forwardedPort(request, scheme));
             int sourcePort = normalizePort(uri.getScheme(), uri.getPort());
             return scheme.equalsIgnoreCase(uri.getScheme())
                     && host.equalsIgnoreCase(uri.getHost())
@@ -57,6 +57,49 @@ public class OriginPolicyFilter extends OncePerRequestFilter {
         } catch (Exception ignored) {
             return false;
         }
+    }
+
+    private String forwardedScheme(HttpServletRequest request) {
+        String proto = request.getHeader("X-Forwarded-Proto");
+        return proto == null || proto.isBlank() ? request.getScheme() : proto.split(",")[0].trim();
+    }
+
+    private String forwardedHost(HttpServletRequest request) {
+        String host = request.getHeader("X-Forwarded-Host");
+        if (host == null || host.isBlank()) {
+            host = request.getHeader("Host");
+        }
+        if (host == null || host.isBlank()) {
+            return request.getServerName();
+        }
+        String first = host.split(",")[0].trim();
+        int colon = first.lastIndexOf(':');
+        return colon > -1 ? first.substring(0, colon) : first;
+    }
+
+    private int forwardedPort(HttpServletRequest request, String scheme) {
+        String forwardedPort = request.getHeader("X-Forwarded-Port");
+        if (forwardedPort != null && !forwardedPort.isBlank()) {
+            try {
+                return Integer.parseInt(forwardedPort.split(",")[0].trim());
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        String host = request.getHeader("X-Forwarded-Host");
+        if (host == null || host.isBlank()) {
+            host = request.getHeader("Host");
+        }
+        if (host != null) {
+            String first = host.split(",")[0].trim();
+            int colon = first.lastIndexOf(':');
+            if (colon > -1) {
+                try {
+                    return Integer.parseInt(first.substring(colon + 1));
+                } catch (NumberFormatException ignored) {
+                }
+            }
+        }
+        return request.getServerPort() > 0 ? request.getServerPort() : ("https".equalsIgnoreCase(scheme) ? 443 : 80);
     }
 
     private int normalizePort(String scheme, int port) {

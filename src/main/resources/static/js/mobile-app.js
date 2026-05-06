@@ -3,16 +3,79 @@
   const { useEffect, useMemo, useRef, useState } = React;
 
   const MAX_IMAGE_UPLOAD_BYTES = 50 * 1024 * 1024;
+  const isUnsafeMethod = (method) => ["POST", "PUT", "PATCH", "DELETE"].includes(String(method || "GET").toUpperCase());
 
-  const api = async (url, options = {}) => {
-    const headers = options.body instanceof FormData
+  const randomRequestId = () => {
+    const bytes = new Uint8Array(16);
+    if (window.crypto?.getRandomValues) {
+      window.crypto.getRandomValues(bytes);
+      return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+    }
+    return `${Date.now()}-${Math.random().toString(36).slice(2, 18)}`;
+  };
+
+  const sha256Hex = async (text) => {
+    const data = new TextEncoder().encode(text || "");
+    const digest = await window.crypto.subtle.digest("SHA-256", data);
+    return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  };
+
+  const withSecurityEnvelope = async (url, options = {}) => {
+    const method = String(options.method || "GET").toUpperCase();
+    const multipart = options.body instanceof FormData;
+    const headers = multipart
       ? { ...(options.headers || {}) }
       : { "Content-Type": "application/json", ...(options.headers || {}) };
+    if (typeof window.secureFetch === "function") {
+      return { ...options, method, headers };
+    }
+    if (!isUnsafeMethod(method) || !(url === "/login" || url.startsWith("/api/"))) {
+      return { ...options, method, headers };
+    }
+
+    const timestamp = String(Date.now());
+    const requestId = randomRequestId();
+    const clientPath = `${window.location.pathname}${window.location.search || ""}`;
+    const clientOrigin = window.location.origin;
+    headers["X-Requested-With"] = "XMLHttpRequest";
+    headers["X-Request-Id"] = requestId;
+    headers["X-Request-Timestamp"] = timestamp;
+    headers["X-Client-Path"] = clientPath;
+    headers["X-Client-Origin"] = clientOrigin;
+    headers["X-Client-Timezone"] = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+    headers["X-Client-Language"] = navigator.language || "";
+
+    if (multipart) {
+      return { ...options, method, headers };
+    }
+
+    let payload = {};
+    if (typeof options.body === "string" && options.body.trim()) {
+      payload = JSON.parse(options.body);
+    } else if (options.body && typeof options.body === "object") {
+      payload = options.body;
+    }
+    const securedPayload = {
+      ...payload,
+      __security_request_id: requestId,
+      __security_timestamp: timestamp,
+      __security_path: clientPath,
+      __security_method: method,
+      __security_origin: clientOrigin,
+      __security_timezone: headers["X-Client-Timezone"],
+      __security_language: headers["X-Client-Language"]
+    };
+    const body = JSON.stringify(securedPayload);
+    headers["X-Payload-Hash"] = await sha256Hex(body);
+    return { ...options, method, headers, body };
+  };
+
+  const api = async (url, options = {}) => {
+    const securedOptions = await withSecurityEnvelope(url, options);
     const response = await fetch(url, {
       method: "GET",
-      headers,
       credentials: "include",
-      ...options
+      ...securedOptions
     });
     let payload = null;
     try {
@@ -357,10 +420,12 @@
 
     return h("div", { className: "m-editor-shell" },
       h(MEditorToolbar),
-      h("div", { className: "m-inline-actions" },
+      !canUploadImage ? h("div", { className: "m-feedback-error" }, "이미지 업로드 권한이 비활성화되어 있습니다.") : null,
+      h(MFeedback, { feedback: uploadFeedback }),
+      h("div", { className: canUploadImage ? "m-inline-actions" : "m-inline-actions is-upload-disabled" },
         h("button", { type: "button", className: "m-btn m-btn-secondary", onClick: () => fileInputRef.current?.click(), disabled: imageUploading }, imageUploading ? "업로드 중" : "이미지")
       ),
-      h("input", { ref: fileInputRef, type: "file", accept: "image/*", hidden: true, onChange: handleFileChange }),
+      h("input", { ref: fileInputRef, type: "file", accept: "image/*", hidden: true, disabled: !canUploadImage, onChange: handleFileChange }),
       h("div", {
         id,
         ref: editorRef,
@@ -1073,6 +1138,12 @@
     window.__mobileWriteCanUploadImage = canUploadImage;
     const categoryOptions = categoryOptionsFromSettings(settings);
     const writeAccess = boardWriteAccess(session, settings, manageData);
+    const selectedCategory = category || categoryOptions[0] || "";
+    const plainContent = String(content || "").replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim();
+    const canSubmit = writeAccess.canWritePost
+      && title.trim().length > 0
+      && plainContent.length > 0
+      && (session?.loggedIn || (guestName.trim().length > 0 && guestPassword.length > 0));
 
     useEffect(() => {
       if (!category && categoryOptions.length) setCategory(categoryOptions[0]);
@@ -1081,8 +1152,21 @@
 
     return h(React.Fragment, null,
       h(MobileTopbar, { session, onLogout, alarmCount }),
-      h("main", { className: "m-shell m-stack" },
-        h("section", { className: "m-compose m-card m-stack" },
+      h("main", { className: "m-shell m-stack m-write-screen" },
+        h("section", { className: "m-write-hero" },
+          h("div", null,
+            h("span", { className: "m-eyebrow" }, "Write"),
+            h("h1", null, "글쓰기"),
+            h("p", null, `${gid} 보드에 새 글을 등록합니다.`)
+          ),
+          h(MLink, { href: `/m/board/${encodeURIComponent(gid)}`, className: "m-btn m-btn-secondary" }, "목록")
+        ),
+        h("section", { className: "m-write-status" },
+          h("span", { className: writeAccess.canWritePost ? "is-ok" : "is-blocked" }, writeAccess.canWritePost ? "작성 가능" : "작성 제한"),
+          h("strong", null, session?.loggedIn ? (session.nick || session.uid) : "비회원 작성"),
+          h("em", null, session?.loggedIn ? "로그인 계정으로 저장됩니다." : "이름과 비밀번호가 반드시 필요합니다.")
+        ),
+        h("section", { className: "m-compose m-card m-stack m-write-form" },
           h(MSectionHead, { eyebrow: "Compose", title: `${gid} 글쓰기`, action: h(MLink, { href: `/m/board/${encodeURIComponent(gid)}`, className: "m-btn m-btn-secondary" }, "보드") }),
           !writeAccess.canWritePost
             ? h("div", { className: "m-feedback-error" },
@@ -1095,6 +1179,18 @@
           h("div", { className: session?.loggedIn ? "m-feedback-success" : "m-feedback-error" }, session?.loggedIn ? h(React.Fragment, null, h(MMemberIdentity, { name: session.nick || session.uid, uid: session.uid, nickType: session.nickType }), " 계정으로 작성합니다.") : "비회원은 이름과 비밀번호를 반드시 입력해야 합니다."),
           session?.loggedIn ? null : h(MGuestFields, { name: guestName, password: guestPassword, setName: setGuestName, setPassword: setGuestPassword, prefix: "m-post" }),
           categoryOptions.length
+            ? h("div", { className: "m-category-pills", "aria-label": "말머리 빠른 선택" },
+                categoryOptions.map((option) =>
+                  h("button", {
+                    key: `pill-${option}`,
+                    type: "button",
+                    className: selectedCategory === option ? "is-active" : "",
+                    onClick: () => setCategory(option)
+                  }, option)
+                )
+              )
+            : null,
+          categoryOptions.length
             ? h("div", { className: "m-field" },
                 h("label", { htmlFor: "m-write-category" }, "말머리"),
                 h("select", { id: "m-write-category", value: category || categoryOptions[0], onChange: (event) => setCategory(event.target.value) },
@@ -1104,16 +1200,17 @@
             : null,
           h("div", { className: "m-field" }, h("label", { htmlFor: "m-write-title" }, "제목"), h("input", { id: "m-write-title", type: "text", value: title, onChange: (event) => setTitle(event.target.value) })),
           h("div", { className: "m-field" }, h("label", { htmlFor: "m-write-content" }, "본문"), h(MHtmlEditor, { id: "m-write-content", value: content, onChange: setContent, placeholder: "모바일에서도 바로 작성하면 HTML로 저장됩니다." })),
+          h("div", { className: "m-write-count" }, `제목 ${title.trim().length}/120 · 본문 ${plainContent.length.toLocaleString("ko-KR")}자`),
           h(MFeedback, { feedback }),
           h("button", {
             type: "button",
             className: "m-btn m-btn-primary",
-            disabled: !writeAccess.canWritePost,
+            disabled: !canSubmit,
             onClick() {
               if (!writeAccess.canWritePost) return;
               onSubmitPost({
                 gid,
-                category: category || categoryOptions[0] || "",
+                category: selectedCategory,
                 title: title.trim(),
                 content,
                 name: guestName.trim(),

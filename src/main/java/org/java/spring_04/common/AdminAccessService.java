@@ -31,6 +31,9 @@ public class AdminAccessService {
         if (!isAdminDivision(currentDivision)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Admin permission is required.");
         }
+        if (!Boolean.TRUE.equals(session.getAttribute("adminAuthenticated"))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Admin login is required.");
+        }
     }
 
     public boolean isAdminDivision(String division) {

@@ -4,16 +4,79 @@
 
   const MAX_IMAGE_UPLOAD_BYTES = 50 * 1024 * 1024;
   const isMobilePath = window.location.pathname === "/m" || window.location.pathname.startsWith("/m/");
+  const isUnsafeMethod = (method) => ["POST", "PUT", "PATCH", "DELETE"].includes(String(method || "GET").toUpperCase());
 
-  const api = async (url, options = {}) => {
-    const headers = options.body instanceof FormData
+  const randomRequestId = () => {
+    const bytes = new Uint8Array(16);
+    if (window.crypto?.getRandomValues) {
+      window.crypto.getRandomValues(bytes);
+      return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+    }
+    return `${Date.now()}-${Math.random().toString(36).slice(2, 18)}`;
+  };
+
+  const sha256Hex = async (text) => {
+    const data = new TextEncoder().encode(text || "");
+    const digest = await window.crypto.subtle.digest("SHA-256", data);
+    return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  };
+
+  const withSecurityEnvelope = async (url, options = {}) => {
+    const method = String(options.method || "GET").toUpperCase();
+    const multipart = options.body instanceof FormData;
+    const headers = multipart
         ? { ...(options.headers || {}) }
         : { "Content-Type": "application/json", ...(options.headers || {}) };
+    if (typeof window.secureFetch === "function") {
+      return { ...options, method, headers };
+    }
+    if (!isUnsafeMethod(method) || !(url === "/login" || url === "/admin/login" || url.startsWith("/api/"))) {
+      return { ...options, method, headers };
+    }
+
+    const timestamp = String(Date.now());
+    const requestId = randomRequestId();
+    const clientPath = `${window.location.pathname}${window.location.search || ""}`;
+    const clientOrigin = window.location.origin;
+    headers["X-Requested-With"] = "XMLHttpRequest";
+    headers["X-Request-Id"] = requestId;
+    headers["X-Request-Timestamp"] = timestamp;
+    headers["X-Client-Path"] = clientPath;
+    headers["X-Client-Origin"] = clientOrigin;
+    headers["X-Client-Timezone"] = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+    headers["X-Client-Language"] = navigator.language || "";
+
+    if (multipart) {
+      return { ...options, method, headers };
+    }
+
+    let payload = {};
+    if (typeof options.body === "string" && options.body.trim()) {
+      payload = JSON.parse(options.body);
+    } else if (options.body && typeof options.body === "object") {
+      payload = options.body;
+    }
+    const securedPayload = {
+      ...payload,
+      __security_request_id: requestId,
+      __security_timestamp: timestamp,
+      __security_path: clientPath,
+      __security_method: method,
+      __security_origin: clientOrigin,
+      __security_timezone: headers["X-Client-Timezone"],
+      __security_language: headers["X-Client-Language"]
+    };
+    const body = JSON.stringify(securedPayload);
+    headers["X-Payload-Hash"] = await sha256Hex(body);
+    return { ...options, method, headers, body };
+  };
+
+  const api = async (url, options = {}) => {
+    const securedOptions = await withSecurityEnvelope(url, options);
     const response = await fetch(url, {
       method: "GET",
-      headers,
       credentials: "include",
-      ...options
+      ...securedOptions
     });
     let payload = null;
     try {
@@ -197,6 +260,7 @@
     const path = normalizePathname(pathname);
     if (path === "/") return { name: "home", params: {} };
     if (path === "/signin") return { name: "login", params: {} };
+    if (path === "/admin-login") return { name: "adminLogin", params: {} };
     if (path === "/nid") return { name: "signup", params: {} };
     if (path === "/alarms") return { name: "alarms", params: {} };
     if (path === "/board-requests") return { name: "boardRequests", params: {} };
@@ -1777,6 +1841,46 @@
     );
   }
 
+  function AdminLoginView({ feedback, onSubmitAuth, session, onLogout, alarmCount }) {
+    const [uid, setUid] = useState("");
+    const [password, setPassword] = useState("");
+    const [adminCode, setAdminCode] = useState("");
+
+    return h(React.Fragment, null,
+        h(TopbarV2, { session, onLogout, alarmCount }),
+        h("main", { className: "shell" },
+            h("div", { className: "frame" },
+                h("section", { className: "auth-wrap" },
+                    h("article", { className: "auth-card card" },
+                        h("span", { className: "eyebrow" }, "Admin Access"),
+                        h("h1", { className: "section-title" }, "관리자 전용 로그인"),
+                        h("p", { className: "muted" }, "관리 목적 계정은 일반 로그인으로 접근할 수 없으며, 별도 관리자 코드가 필요합니다."),
+                        h("div", { className: "stack", style: { marginTop: "16px" } },
+                            h("div", { className: "field" },
+                                h("label", { htmlFor: "admin-login-id" }, "관리자 아이디 또는 이메일"),
+                                h("input", { id: "admin-login-id", type: "text", value: uid, autoComplete: "username", onChange: (event) => setUid(event.target.value) })
+                            ),
+                            h("div", { className: "field" },
+                                h("label", { htmlFor: "admin-login-pw" }, "비밀번호"),
+                                h("input", { id: "admin-login-pw", type: "password", value: password, autoComplete: "current-password", onChange: (event) => setPassword(event.target.value) })
+                            ),
+                            h("div", { className: "field" },
+                                h("label", { htmlFor: "admin-login-code" }, "관리자 전용 코드"),
+                                h("input", { id: "admin-login-code", type: "password", value: adminCode, autoComplete: "one-time-code", onChange: (event) => setAdminCode(event.target.value) })
+                            ),
+                            h(Feedback, { feedback }),
+                            h("div", { className: "inline-actions" },
+                                h("button", { type: "button", className: "btn btn-primary", onClick: () => onSubmitAuth({ mode: "admin-login", uid, password, adminCode }) }, "관리자 로그인"),
+                                h(Link, { href: "/signin", className: "btn btn-secondary" }, "일반 로그인")
+                            )
+                        )
+                    )
+                )
+            )
+        )
+    );
+  }
+
   function AuthView({ mode, feedback, onSubmitAuth, session, onLogout, alarmCount }) {
     const [uid, setUid] = useState("");
     const [nick, setNick] = useState("");
@@ -2460,6 +2564,28 @@
     }
 
     function submitAuth(payload) {
+      if (payload.mode === "admin-login") {
+        if (!payload.uid?.trim() || !payload.password || !payload.adminCode?.trim()) {
+          setAuthFeedback({ type: "error", message: "관리자 아이디, 비밀번호, 전용 코드를 모두 입력해 주세요." });
+          return;
+        }
+        api("/admin/login", {
+          method: "POST",
+          body: JSON.stringify({
+            userID: payload.uid.trim(),
+            password: payload.password,
+            adminCode: payload.adminCode.trim()
+          })
+        }).then((result) => {
+          if (!result.success) {
+            setAuthFeedback({ type: "error", message: result.message || "관리자 로그인에 실패했습니다." });
+            return;
+          }
+          refreshSession().then(() => navigate("/admin", true));
+        }).catch((error) => setAuthFeedback({ type: "error", message: error.message || "관리자 로그인 요청 중 오류가 발생했습니다." }));
+        return;
+      }
+
       if (payload.mode === "login") {
         if (!payload.uid?.trim() || !payload.password) {
           setAuthFeedback({ type: "error", message: "아이디와 비밀번호를 입력해주세요." });
@@ -3002,6 +3128,7 @@
     if (route.name === "profile") return h(ProfileView, { session, profileData, feedback: profileFeedback, onSaveProfile: submitProfileSettings, onFollowProfile: followProfile, onUnfollowProfile: unfollowProfile, onLogout: handleLogout, alarmCount });
     if (route.name === "write") return h(WriteView, { session, gid: route.params.gid, feedback: writeFeedback, manageData: boardManageData, onSubmitPost: submitPost, onLogout: handleLogout, alarmCount });
     if (route.name === "login") return h(AuthView, { mode: "login", feedback: authFeedback, onSubmitAuth: submitAuth, session, onLogout: handleLogout, alarmCount });
+    if (route.name === "adminLogin") return h(AdminLoginView, { feedback: authFeedback, onSubmitAuth: submitAuth, session, onLogout: handleLogout, alarmCount });
     if (route.name === "signup") return h(AuthView, { mode: "signup", feedback: authFeedback, onSubmitAuth: submitAuth, session, onLogout: handleLogout, alarmCount });
     if (route.name === "alarms") return h(AlarmsView, { session, alarms, feedback: alarmFeedback, onAcceptAlarm: acceptAlarm, onRejectAlarm: rejectAlarm, onMarkAllRead: markAllAlarmsRead, onLogout: handleLogout, alarmCount });
     return h(NotFoundView, { session, onLogout: handleLogout, alarmCount });

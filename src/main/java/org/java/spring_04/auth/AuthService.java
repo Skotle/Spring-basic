@@ -31,6 +31,9 @@ public class AuthService {
     private EmailVerificationService emailVerificationService;
 
     public UserEntity login(String identifier, String password) {
+        if (identifier == null || identifier.isBlank() || password == null || password.isBlank()) {
+            return null;
+        }
         return userDAO.findByIdentifier(identifier)
                 .filter(user -> BCrypt.checkpw(password, user.getPasswordHash()))
                 .orElse(null);

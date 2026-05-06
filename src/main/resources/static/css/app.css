@@ -1759,16 +1759,19 @@ a.m-nick-type:hover {
 
 .dc-post-table-wrap {
   display: grid;
+  overflow-x: auto;
   border-top: 2px solid var(--board-accent);
   border-bottom: 1px solid #cfd6ea;
+  background: #fff;
 }
 
 .dc-post-table-head,
 .dc-post-row {
   display: grid;
-  grid-template-columns: 90px 96px minmax(0, 1fr) 150px 130px 90px 90px;
-  gap: 12px;
+  grid-template-columns: 64px 72px minmax(260px, 1fr) 118px 112px 54px 54px;
+  gap: 8px;
   align-items: center;
+  min-width: 780px;
 }
 
 .dc-post-table-head.board-post-table-head,
@@ -1777,20 +1780,21 @@ a.m-nick-type:hover {
 }
 
 .dc-post-table-head {
-  padding: 14px 24px;
+  min-height: 34px;
+  padding: 7px 18px;
   border-bottom: 1px solid #cfd6ea;
   color: #44516f;
-  font-size: 0.9rem;
+  font-size: 0.82rem;
   font-weight: 700;
   background: #f8f9fc;
 }
 
 .dc-post-row {
-  min-height: 54px;
-  padding: 14px 24px;
+  min-height: 34px;
+  padding: 6px 18px;
   border-bottom: 1px solid #e7ebf3;
   color: #2c3342;
-  font-size: 0.93rem;
+  font-size: 0.88rem;
   background: #fff;
 }
 
@@ -2057,8 +2061,18 @@ a.m-nick-type:hover {
 .dc-post-date,
 .dc-post-view,
 .dc-post-rec {
+  min-width: 0;
+  overflow: hidden;
   color: #54617f;
-  font-size: 0.9rem;
+  font-size: 0.82rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dc-post-view,
+.dc-post-rec {
+  justify-content: center;
+  text-align: center;
 }
 
 .profile-inline-link {
@@ -2932,7 +2946,8 @@ textarea#comment-content {
 
   .dc-post-table-head,
   .dc-post-row {
-    grid-template-columns: 64px 64px minmax(0, 1fr) 96px 90px 58px 58px;
+    grid-template-columns: 54px 62px minmax(240px, 1fr) 104px 92px 48px 48px;
+    min-width: 700px;
   }
 
   .dc-post-table-head.board-post-table-head,
@@ -3086,12 +3101,13 @@ textarea#comment-content {
 
   .dc-post-table-head,
   .dc-post-row {
-    grid-template-columns: 58px 58px minmax(0, 1fr);
+    grid-template-columns: 54px 62px minmax(240px, 1fr) 104px 92px 48px 48px;
+    min-width: 700px;
   }
 
   .dc-post-table-head span:nth-child(n + 4),
   .dc-post-row span:nth-child(n + 4) {
-    display: none;
+    display: inline-flex;
   }
 
   .dc-board-actions {

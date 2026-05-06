@@ -24,6 +24,7 @@ import java.util.regex.Pattern;
 @Order(Ordered.HIGHEST_PRECEDENCE + 30)
 public class ApiRequestSecurityFilter extends OncePerRequestFilter {
     private static final Duration MAX_CLOCK_SKEW = Duration.ofMinutes(10);
+    private static final int MAX_JSON_BODY_BYTES = 2 * 1024 * 1024;
     private static final Pattern REQUEST_ID = Pattern.compile("^[A-Za-z0-9._:-]{12,100}$");
     private static final Pattern SHA_256_HEX = Pattern.compile("^[a-fA-F0-9]{64}$");
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
@@ -55,6 +56,10 @@ public class ApiRequestSecurityFilter extends OncePerRequestFilter {
         }
 
         byte[] body = request.getInputStream().readAllBytes();
+        if (body.length > MAX_JSON_BODY_BYTES) {
+            reject(response, "Request payload is too large.");
+            return;
+        }
         CachedBodyHttpServletRequest wrapped = new CachedBodyHttpServletRequest(request, body);
 
         try {
@@ -73,7 +78,8 @@ public class ApiRequestSecurityFilter extends OncePerRequestFilter {
         }
         String uri = request.getRequestURI();
         return uri.startsWith("/api/")
-                || "/login".equals(uri);
+                || "/login".equals(uri)
+                || "/admin/login".equals(uri);
     }
 
     private boolean isUnsafeMethod(String method) {
@@ -90,6 +96,10 @@ public class ApiRequestSecurityFilter extends OncePerRequestFilter {
 
     private void validateSecurityEnvelope(HttpServletRequest request, byte[] body) {
         SecurityEnvelope envelope = validateHeaderEnvelope(request);
+        String contentType = request.getContentType();
+        if (contentType == null || !contentType.toLowerCase().contains("application/json")) {
+            throw new IllegalArgumentException("Invalid request content type.");
+        }
 
         String payloadHash = requireHeader(request, "X-Payload-Hash");
         if (!SHA_256_HEX.matcher(payloadHash).matches() || !payloadHash.equalsIgnoreCase(sha256Hex(body))) {
@@ -195,14 +205,59 @@ public class ApiRequestSecurityFilter extends OncePerRequestFilter {
     private boolean sameOrigin(HttpServletRequest request, String source) {
         try {
             URI uri = URI.create(source);
-            int requestPort = normalizePort(request.getScheme(), request.getServerPort());
+            String requestScheme = forwardedScheme(request);
+            String requestHost = forwardedHost(request);
+            int requestPort = normalizePort(requestScheme, forwardedPort(request, requestScheme));
             int sourcePort = normalizePort(uri.getScheme(), uri.getPort());
-            return request.getScheme().equalsIgnoreCase(uri.getScheme())
-                    && request.getServerName().equalsIgnoreCase(uri.getHost())
+            return requestScheme.equalsIgnoreCase(uri.getScheme())
+                    && requestHost.equalsIgnoreCase(uri.getHost())
                     && requestPort == sourcePort;
         } catch (Exception e) {
             return false;
         }
+    }
+
+    private String forwardedScheme(HttpServletRequest request) {
+        String proto = request.getHeader("X-Forwarded-Proto");
+        return proto == null || proto.isBlank() ? request.getScheme() : proto.split(",")[0].trim();
+    }
+
+    private String forwardedHost(HttpServletRequest request) {
+        String host = request.getHeader("X-Forwarded-Host");
+        if (host == null || host.isBlank()) {
+            host = request.getHeader("Host");
+        }
+        if (host == null || host.isBlank()) {
+            return request.getServerName();
+        }
+        String first = host.split(",")[0].trim();
+        int colon = first.lastIndexOf(':');
+        return colon > -1 ? first.substring(0, colon) : first;
+    }
+
+    private int forwardedPort(HttpServletRequest request, String scheme) {
+        String forwardedPort = request.getHeader("X-Forwarded-Port");
+        if (forwardedPort != null && !forwardedPort.isBlank()) {
+            try {
+                return Integer.parseInt(forwardedPort.split(",")[0].trim());
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        String host = request.getHeader("X-Forwarded-Host");
+        if (host == null || host.isBlank()) {
+            host = request.getHeader("Host");
+        }
+        if (host != null) {
+            String first = host.split(",")[0].trim();
+            int colon = first.lastIndexOf(':');
+            if (colon > -1) {
+                try {
+                    return Integer.parseInt(first.substring(colon + 1));
+                } catch (NumberFormatException ignored) {
+                }
+            }
+        }
+        return request.getServerPort() > 0 ? request.getServerPort() : ("https".equalsIgnoreCase(scheme) ? 443 : 80);
     }
 
     private int normalizePort(String scheme, int port) {

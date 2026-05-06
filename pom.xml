@@ -10,7 +10,7 @@
     </parent>
     <groupId>org.java</groupId>
     <artifactId>irisen</artifactId>
-    <version>26.0.4</version>
+    <version>26.1</version>
     <name>Spring_04</name>
     <description>Spring_04</description>
     <url/>

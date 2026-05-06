@@ -23,6 +23,7 @@ import java.util.Map;
 
 @Service
 public class BoardService {
+    private static final int BOARD_POSTS_PAGE_SIZE = 50;
     private static final int BOARD_RANKING_DAILY_LIMIT = 10;
     private static final long BOARD_RANKING_AUTO_REFRESH_MINUTES = 144L;
     private static final String ALARM_REF_TYPE_BOARD_STAFF = "board_staff_request";
@@ -548,7 +549,7 @@ public class BoardService {
     }
 
     public List<Map<String, Object>> getPostsByGallery(String gallId, int page, String mode, String category) {
-        int size = 20;
+        int size = BOARD_POSTS_PAGE_SIZE;
         int offset = Math.max(page - 1, 0) * size;
         String normalizedMode = normalizeBoardListMode(mode);
         String normalizedCategory = normalizeBoardListCategory(gallId, category);

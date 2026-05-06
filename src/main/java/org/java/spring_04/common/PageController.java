@@ -30,6 +30,12 @@ public class PageController {
         return "index";
     }
 
+    @GetMapping("/admin-login")
+    public String adminLogin() {
+        logRequest("ADMIN LOGIN");
+        return "index";
+    }
+
     @GetMapping("/m")
     public String mobileIndex() {
         logRequest("MOBILE INDEX");

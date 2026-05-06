@@ -1697,6 +1697,149 @@ a.m-nick-type:hover {
   background: white;
 }
 
+.m-write-screen {
+  padding-bottom: 86px;
+}
+
+.m-write-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid rgba(255, 143, 171, 0.28);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 14% 18%, rgba(255, 255, 255, 0.9), transparent 26%),
+    linear-gradient(135deg, #fff1f6, #fff);
+  box-shadow: 0 12px 26px rgba(255, 91, 134, 0.12);
+}
+
+.m-write-hero h1 {
+  margin: 8px 0 4px;
+  color: #171717;
+  font-size: 1.65rem;
+  line-height: 1.08;
+}
+
+.m-write-hero p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.m-write-status {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 10px;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+}
+
+.m-write-status span {
+  grid-row: span 2;
+  padding: 6px 9px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.m-write-status span.is-ok {
+  background: #eefbf2;
+  color: #13823a;
+}
+
+.m-write-status span.is-blocked {
+  background: #fff2f2;
+  color: #d9365f;
+}
+
+.m-write-status strong {
+  overflow: hidden;
+  color: #111;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.m-write-status em {
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-style: normal;
+}
+
+.m-write-form {
+  gap: 14px;
+  border-radius: 18px;
+}
+
+.m-write-form > .m-field input,
+.m-write-form > .m-field select {
+  min-height: 48px;
+  font-size: 1rem;
+}
+
+.m-category-pills {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 0 4px;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.m-category-pills::-webkit-scrollbar {
+  display: none;
+}
+
+.m-category-pills button {
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 0 13px;
+  border: 1px solid #f0c8d3;
+  border-radius: 999px;
+  background: #fff;
+  color: #444;
+  font-weight: 850;
+}
+
+.m-category-pills button.is-active {
+  border-color: var(--accent-deep);
+  background: var(--accent-deep);
+  color: #fff;
+}
+
+.m-write-count {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #fafbfe;
+  color: var(--muted);
+  font-size: 0.84rem;
+  text-align: right;
+}
+
+.m-write-form .m-html-editor {
+  min-height: 42vh;
+  padding: 14px;
+  border: 1px solid #dfe3ec;
+  border-radius: 14px;
+  background: #fff;
+  font-size: 1rem;
+}
+
+.m-write-form .m-editor-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.06);
+}
+
 .m-compact-post:last-child {
   border-bottom: 0;
 }
