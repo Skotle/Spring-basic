@@ -347,6 +347,56 @@
     );
   }
 
+  const RECENT_BOARDS_KEY = "irisen.recentBoards";
+  const MAX_RECENT_BOARDS = 10;
+
+  const readRecentBoards = () => {
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem(RECENT_BOARDS_KEY) || "[]");
+      return Array.isArray(parsed) ? parsed.filter((item) => item?.gid).slice(0, MAX_RECENT_BOARDS) : [];
+    } catch (error) {
+      return [];
+    }
+  };
+
+  const rememberBoardVisit = (board) => {
+    const gid = String(board?.gid || board?.gall_id || "").trim();
+    if (!gid) return;
+    const name = String(board?.name || board?.gall_name || gid).trim() || gid;
+    const current = readRecentBoards().filter((item) => item.gid !== gid);
+    window.localStorage.setItem(RECENT_BOARDS_KEY, JSON.stringify([{ gid, name, visitedAt: Date.now() }, ...current].slice(0, MAX_RECENT_BOARDS)));
+    window.dispatchEvent(new CustomEvent("irisen:recent-boards-updated"));
+  };
+
+  function RecentBoardStrip() {
+    const [items, setItems] = useState(readRecentBoards);
+
+    useEffect(() => {
+      const refresh = () => setItems(readRecentBoards());
+      window.addEventListener("storage", refresh);
+      window.addEventListener("irisen:recent-boards-updated", refresh);
+      return () => {
+        window.removeEventListener("storage", refresh);
+        window.removeEventListener("irisen:recent-boards-updated", refresh);
+      };
+    }, []);
+
+    if (!items.length) return null;
+    return h("div", { className: "recent-board-strip" },
+        h("span", { className: "recent-board-label" }, "최근 방문"),
+        items.map((item, index) => [
+          index > 0 ? h("span", { className: "recent-board-separator", key: `sep-${item.gid}` }, "×") : null,
+          h(Link, {
+            key: item.gid,
+            href: `/board/${encodeURIComponent(item.gid)}`,
+            className: "recent-board-link",
+            title: item.gid,
+            reload: true
+          }, item.name || item.gid)
+        ])
+    );
+  }
+
   function Topbar({ session, onLogout, alarmCount = 0 }) {
     const navItems = [
       { label: "홈", href: "/" },
@@ -385,7 +435,8 @@
                             : null
                     ),
                     session?.loggedIn ? null : h(Link, { href: "/signin", className: "topbar-nav-auth" }, "로그인")
-                )
+                ),
+                h(RecentBoardStrip)
             )
         )
     );
@@ -453,7 +504,8 @@
                     session?.loggedIn
                         ? h(Link, { href: "/profile", className: "topbar-nav-auth" }, alarmCount > 0 ? `알림 ${alarmCount}` : "프로필")
                         : h(Link, { href: "/signin", className: "topbar-nav-auth" }, "로그인")
-                )
+                ),
+                h(RecentBoardStrip)
             )
         )
     );
@@ -1121,6 +1173,10 @@
     }, [gid]);
 
     useEffect(() => {
+      rememberBoardVisit({ gid, name: boardInfo?.gall_name || gid });
+    }, [gid, boardInfo?.gall_name]);
+
+    useEffect(() => {
       if (!categories.includes(selectedCategory)) {
         setSelectedCategory("전체");
       }
@@ -1647,6 +1703,12 @@
     const canDeleteByRole = (kind) => isAdmin || (kind === "post" ? !!permissions.canDeletePost : !!permissions.canDeleteComment);
     const canRenderDelete = (item, kind) => item && !isDeletedComment(item) && (!session?.loggedIn ? !item.writer_uid : isOwnedBySession(item) || canDeleteByRole(kind));
     const requiresDeletePassword = (item, kind) => item && !item.writer_uid && !(session?.loggedIn && canDeleteByRole(kind));
+
+    useEffect(() => {
+      if (post) {
+        rememberBoardVisit({ gid, name: post.gall_name || gid });
+      }
+    }, [gid, post?.gall_name]);
 
     if (!post) {
       return h(React.Fragment, null, h(TopbarV2, { session, onLogout, alarmCount }), h("main", { className: "shell" }, h("div", { className: "frame" }, h("div", { className: "error-box" }, "게시글을 찾을 수 없습니다."))));
