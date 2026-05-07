@@ -4,6 +4,8 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -23,6 +25,7 @@ import java.util.regex.Pattern;
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 30)
 public class ApiRequestSecurityFilter extends OncePerRequestFilter {
+    private static final Logger log = LoggerFactory.getLogger(ApiRequestSecurityFilter.class);
     private static final Duration MAX_CLOCK_SKEW = Duration.ofMinutes(10);
     private static final int MAX_JSON_BODY_BYTES = 2 * 1024 * 1024;
     private static final Pattern REQUEST_ID = Pattern.compile("^[A-Za-z0-9._:-]{12,100}$");
@@ -48,7 +51,7 @@ public class ApiRequestSecurityFilter extends OncePerRequestFilter {
             try {
                 validateHeaderEnvelope(request);
             } catch (IllegalArgumentException e) {
-                reject(response, e.getMessage());
+                reject(request, response, e.getMessage());
                 return;
             }
             filterChain.doFilter(request, response);
@@ -57,7 +60,7 @@ public class ApiRequestSecurityFilter extends OncePerRequestFilter {
 
         byte[] body = request.getInputStream().readAllBytes();
         if (body.length > MAX_JSON_BODY_BYTES) {
-            reject(response, "Request payload is too large.");
+            reject(request, response, "Request payload is too large.");
             return;
         }
         CachedBodyHttpServletRequest wrapped = new CachedBodyHttpServletRequest(request, body);
@@ -65,7 +68,7 @@ public class ApiRequestSecurityFilter extends OncePerRequestFilter {
         try {
             validateSecurityEnvelope(wrapped, body);
         } catch (IllegalArgumentException e) {
-            reject(response, e.getMessage());
+            reject(request, response, e.getMessage());
             return;
         }
 
@@ -276,7 +279,13 @@ public class ApiRequestSecurityFilter extends OncePerRequestFilter {
         }
     }
 
-    private void reject(HttpServletResponse response, String message) throws IOException {
+    private void reject(HttpServletRequest request, HttpServletResponse response, String message) throws IOException {
+        log.warn("SECURITY_REQUEST_REJECT method={} path={} remote={} reason={} requestId={}",
+                request.getMethod(),
+                request.getRequestURI(),
+                request.getRemoteAddr(),
+                message,
+                request.getHeader("X-Request-Id"));
         response.setStatus(HttpServletResponse.SC_FORBIDDEN);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
         response.setContentType("application/json;charset=UTF-8");

@@ -4,6 +4,8 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -12,11 +14,19 @@ import java.net.URI;
 
 @Component
 public class OriginPolicyFilter extends OncePerRequestFilter {
+    private static final Logger log = LoggerFactory.getLogger(OriginPolicyFilter.class);
+
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
         if (isUnsafeMethod(request.getMethod()) && !isSameOrigin(request)) {
+            log.warn("ORIGIN_POLICY_DENIED method={} path={} remote={} origin={} referer={}",
+                    request.getMethod(),
+                    request.getRequestURI(),
+                    request.getRemoteAddr(),
+                    request.getHeader("Origin"),
+                    request.getHeader("Referer"));
             response.sendError(HttpServletResponse.SC_FORBIDDEN, "Cross-site request blocked.");
             return;
         }

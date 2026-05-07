@@ -4,6 +4,8 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.core.env.Environment;
@@ -12,7 +14,6 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -20,6 +21,8 @@ import java.util.stream.Collectors;
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 25)
 public class AdminAddressRestrictionFilter extends OncePerRequestFilter {
+    private static final Logger log = LoggerFactory.getLogger(AdminAddressRestrictionFilter.class);
+
     private final RequestIpResolver requestIpResolver;
     private final Environment environment;
 
@@ -40,13 +43,17 @@ public class AdminAddressRestrictionFilter extends OncePerRequestFilter {
         String ip = requestIpResolver.resolve(request);
         Set<String> allowedAddresses = allowedAdminAddresses();
         if (!allowedAddresses.contains(normalizeIp(ip))) {
-            System.out.println("[" + LocalDateTime.now() + "] ADMIN_ADDRESS_DENIED path="
-                    + request.getRequestURI()
-                    + " ip=" + ip
-                    + " allowedCount=" + allowedAddresses.size());
+            log.warn("ADMIN_ADDRESS_DENIED method={} path={} ip={} allowedCount={} ua={}",
+                    request.getMethod(),
+                    request.getRequestURI(),
+                    ip,
+                    allowedAddresses.size(),
+                    request.getHeader("User-Agent"));
             reject(response);
             return;
         }
+
+        log.info("ADMIN_ADDRESS_ALLOWED method={} path={} ip={}", request.getMethod(), request.getRequestURI(), ip);
 
         filterChain.doFilter(request, response);
     }
