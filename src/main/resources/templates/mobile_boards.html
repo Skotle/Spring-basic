@@ -67,36 +67,57 @@
 
     <input id="mobileBoardSearchInput" class="m-directory-search" type="search" placeholder="보드 이름 또는 ID" oninput="filterMobileBoards(this.value)">
 
-    <div class="m-board-columns">
-      <div class="m-board-column" th:if="${currentType == 'all' or currentType == 'main'}" data-mobile-board-section="main">
-        <a class="m-board-line m-board-ssr-card"
-           th:each="board, stat : ${mainBoards}"
-           th:href="@{/m/board/{gid}(gid=${board.gall_id})}"
-           th:data-search="${#strings.toLowerCase((board.gall_id != null ? board.gall_id : '') + ' ' + (board.gall_name != null ? board.gall_name : '') + ' ' + (board.board_tags != null ? board.board_tags : ''))}">
-          <strong th:text="${board.gall_name != null ? board.gall_name : board.gall_id}">보드</strong>
-        </a>
-        <div th:if="${#lists.isEmpty(mainBoards)}" class="m-empty">표시할 메인 보드가 없습니다.</div>
-      </div>
+    <div class="m-board-topic-groups">
+      <section class="m-board-topic-group" th:if="${currentType == 'all' or currentType == 'main'}" th:each="group : ${mainTopicGroups}" data-mobile-board-section="main">
+        <div class="m-board-topic-head">
+          <strong th:text="${group.topicName}">주제</strong>
+          <span th:text="${#lists.size(group.boards) + '개'}">0개</span>
+        </div>
+        <div class="m-board-topic-links">
+          <a class="m-board-line m-board-ssr-card"
+             th:each="board : ${group.boards}"
+             th:href="@{/m/board/{gid}(gid=${board.gall_id})}"
+             th:title="${board.gall_id + ' · ' + (board.post_count != null ? board.post_count : 0) + ' posts'}"
+             th:data-search="${#strings.toLowerCase((board.gall_id != null ? board.gall_id : '') + ' ' + (board.gall_name != null ? board.gall_name : '') + ' ' + (board.topic_id != null ? board.topic_id : '') + ' ' + (board.topic_name != null ? board.topic_name : '') + ' ' + (board.board_tags != null ? board.board_tags : ''))}">
+            <strong th:text="${board.gall_name != null ? board.gall_name : board.gall_id}">보드</strong>
+          </a>
+        </div>
+      </section>
 
-      <div class="m-board-column" th:if="${currentType == 'all' or currentType == 'side'}" data-mobile-board-section="side">
-        <a class="m-board-line m-board-ssr-card"
-           th:each="board, stat : ${sideBoards}"
-           th:href="@{/m/board/{gid}(gid=${board.gall_id})}"
-           th:data-search="${#strings.toLowerCase((board.gall_id != null ? board.gall_id : '') + ' ' + (board.gall_name != null ? board.gall_name : '') + ' ' + (board.board_tags != null ? board.board_tags : ''))}">
-          <strong th:text="${board.gall_name != null ? board.gall_name : board.gall_id}">사이드보드</strong>
-        </a>
-        <div th:if="${#lists.isEmpty(sideBoards)}" class="m-empty">표시할 사이드보드가 없습니다.</div>
-      </div>
+      <section class="m-board-topic-group" th:if="${currentType == 'all' or currentType == 'side'}" th:each="group : ${sideTopicGroups}" data-mobile-board-section="side">
+        <div class="m-board-topic-head">
+          <strong th:text="${group.topicName}">주제</strong>
+          <span th:text="${#lists.size(group.boards) + '개'}">0개</span>
+        </div>
+        <div class="m-board-topic-links">
+          <a class="m-board-line m-board-ssr-card"
+             th:each="board : ${group.boards}"
+             th:href="@{/m/board/{gid}(gid=${board.gall_id})}"
+             th:title="${board.gall_id + ' · ' + (board.post_count != null ? board.post_count : 0) + ' posts'}"
+             th:data-search="${#strings.toLowerCase((board.gall_id != null ? board.gall_id : '') + ' ' + (board.gall_name != null ? board.gall_name : '') + ' ' + (board.topic_id != null ? board.topic_id : '') + ' ' + (board.topic_name != null ? board.topic_name : '') + ' ' + (board.board_tags != null ? board.board_tags : ''))}">
+            <strong th:text="${board.gall_name != null ? board.gall_name : board.gall_id}">사이드보드</strong>
+          </a>
+        </div>
+      </section>
 
-      <div class="m-board-column" th:if="${currentType == 'other'}" data-mobile-board-section="other">
-        <a class="m-board-line m-board-ssr-card"
-           th:each="board, stat : ${otherBoards}"
-           th:href="@{/m/board/{gid}(gid=${board.gall_id})}"
-           th:data-search="${#strings.toLowerCase((board.gall_id != null ? board.gall_id : '') + ' ' + (board.gall_name != null ? board.gall_name : '') + ' ' + (board.board_tags != null ? board.board_tags : ''))}">
-          <strong th:text="${board.gall_name != null ? board.gall_name : board.gall_id}">기타</strong>
-        </a>
-        <div th:if="${#lists.isEmpty(otherBoards)}" class="m-empty">표시할 기타 보드가 없습니다.</div>
-      </div>
+      <section class="m-board-topic-group" th:if="${currentType == 'other'}" th:each="group : ${otherTopicGroups}" data-mobile-board-section="other">
+        <div class="m-board-topic-head">
+          <strong th:text="${group.topicName}">주제</strong>
+          <span th:text="${#lists.size(group.boards) + '개'}">0개</span>
+        </div>
+        <div class="m-board-topic-links">
+          <a class="m-board-line m-board-ssr-card"
+             th:each="board : ${group.boards}"
+             th:href="@{/m/board/{gid}(gid=${board.gall_id})}"
+             th:title="${board.gall_id + ' · ' + (board.post_count != null ? board.post_count : 0) + ' posts'}"
+             th:data-search="${#strings.toLowerCase((board.gall_id != null ? board.gall_id : '') + ' ' + (board.gall_name != null ? board.gall_name : '') + ' ' + (board.topic_id != null ? board.topic_id : '') + ' ' + (board.topic_name != null ? board.topic_name : '') + ' ' + (board.board_tags != null ? board.board_tags : ''))}">
+            <strong th:text="${board.gall_name != null ? board.gall_name : board.gall_id}">기타</strong>
+          </a>
+        </div>
+      </section>
+      <div th:if="${(currentType == 'all' or currentType == 'main') and #lists.isEmpty(mainBoards)}" class="m-empty">표시할 메인 보드가 없습니다.</div>
+      <div th:if="${(currentType == 'all' or currentType == 'side') and #lists.isEmpty(sideBoards)}" class="m-empty">표시할 사이드보드가 없습니다.</div>
+      <div th:if="${currentType == 'other' and #lists.isEmpty(otherBoards)}" class="m-empty">표시할 기타 보드가 없습니다.</div>
     </div>
 
     <div id="mobileBoardSearchEmpty" class="m-empty" hidden>조건에 맞는 보드가 없습니다.</div>

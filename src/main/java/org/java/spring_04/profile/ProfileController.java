@@ -48,6 +48,17 @@ public class ProfileController {
         }
     }
 
+    @PostMapping("/me/history/delete")
+    public Map<String, Object> deleteMyHistory(@RequestBody(required = false) Map<String, String> payload,
+                                               @SessionAttribute(name = "uid", required = false) String uid) {
+        System.out.println("[" + LocalDateTime.now() + "] API /api/profile/me/history/delete uid=" + uid);
+        try {
+            return success(profileService.deleteMyHistory(uid, payload == null ? null : payload.get("scope")));
+        } catch (Exception e) {
+            return failure(e);
+        }
+    }
+
     @PostMapping("/{uid}/follow")
     public Map<String, Object> follow(@PathVariable("uid") String targetUid,
                                       @SessionAttribute(name = "uid", required = false) String uid) {

@@ -602,12 +602,28 @@
     const visibleSource = boardType === "main" ? mainBoards : boardType === "side" ? sideBoards : boards;
     const filtered = useMemo(() => {
       const q = query.trim().toLowerCase();
-      return visibleSource.filter((board) => !q || String(board.gall_id).toLowerCase().includes(q) || String(board.gall_name).toLowerCase().includes(q));
+      return visibleSource.filter((board) => {
+        const haystack = [
+          board.gall_id,
+          board.gall_name,
+          board.topic_id,
+          board.topic_name,
+          board.board_tags
+        ].map((value) => String(value || "").toLowerCase()).join(" ");
+        return !q || haystack.includes(q);
+      });
     }, [visibleSource, query]);
-    const featuredBoards = filtered.slice(0, 6);
-    const half = Math.ceil(filtered.length / 2);
-    const leftColumn = filtered.slice(0, half);
-    const rightColumn = filtered.slice(half);
+    const topicGroups = filtered.reduce((groups, board) => {
+      const topicId = String(board.topic_id || "other");
+      const topicName = String(board.topic_name || board.topic_id || "기타");
+      let group = groups.find((item) => item.topicId === topicId);
+      if (!group) {
+        group = { topicId, topicName, boards: [] };
+        groups.push(group);
+      }
+      group.boards.push(board);
+      return groups;
+    }, []);
     const boardLink = (board) => `/m/board/${encodeURIComponent(board.gall_id)}`;
 
     return h(React.Fragment, null,
@@ -633,27 +649,28 @@
             h("button", { type: "button", className: boardType === "side" ? "m-mini-more is-active" : "m-mini-more", onClick: () => setBoardType("side") }, "사이드")
           ),
           h("input", { className: "m-directory-search", type: "search", value: query, placeholder: "보드 이름 또는 ID", onChange: (event) => onChangeQuery(event.target.value) }),
-          featuredBoards.length
-            ? h("div", { className: "m-feature-board-list" }, featuredBoards.map((board, index) =>
-                h(MLink, { href: boardLink(board), className: "m-feature-board", key: `feature-${board.gall_id}` },
-                  h("span", null, `${index + 1}.`),
-                  h("strong", null, board.gall_name || board.gall_id),
-                  h("em", null, board.gall_type || "board")
-                )
-              ))
-            : h("div", { className: "m-empty" }, "검색 결과가 없습니다."),
-          h("div", { className: "m-board-columns" },
-            [leftColumn, rightColumn].map((column, columnIndex) =>
-              h("div", { className: "m-board-column", key: `column-${columnIndex}` },
-                column.map((board, index) =>
-                  h(MLink, { href: boardLink(board), className: "m-board-line", key: board.gall_id },
-                    h("span", null, `${columnIndex === 0 ? index + 1 : half + index + 1}.`),
-                    h("strong", null, board.gall_name || board.gall_id)
+          filtered.length
+            ? h("div", { className: "m-board-topic-groups" },
+                topicGroups.map((group) =>
+                  h("section", { className: "m-board-topic-group", key: group.topicId },
+                    h("div", { className: "m-board-topic-head" },
+                      h("strong", null, group.topicName),
+                      h("span", null, `${group.boards.length}개`)
+                    ),
+                    h("div", { className: "m-board-topic-links" },
+                      group.boards.map((board) =>
+                        h(MLink, {
+                          href: boardLink(board),
+                          className: "m-board-line",
+                          key: board.gall_id,
+                          title: `${board.gall_id} · ${board.post_count ?? 0} posts`
+                        }, h("strong", null, board.gall_name || board.gall_id))
+                      )
+                    )
                   )
                 )
               )
-            )
-          )
+            : h("div", { className: "m-empty" }, "검색 결과가 없습니다.")
         )
       )
     );
@@ -1233,7 +1250,7 @@
     );
   }
 
-  function ProfileView({ session, profileData, feedback, onSaveProfile, onFollowProfile, onUnfollowProfile, onLogout, alarmCount }) {
+  function ProfileView({ session, profileData, feedback, onSaveProfile, onDeleteHistory, onFollowProfile, onUnfollowProfile, onLogout, alarmCount }) {
     const [statusMessage, setStatusMessage] = useState(profileData?.statusMessage || "");
     const [bio, setBio] = useState(profileData?.bio || "");
     const [avatarUrl, setAvatarUrl] = useState(profileData?.avatarUrl || "");
@@ -1368,7 +1385,17 @@
                   showFollowers,
                   showFollowing
                 })
-              }, "저장하기")
+              }, "저장하기"),
+              h("button", {
+                type: "button",
+                className: "m-btn m-btn-secondary",
+                onClick: () => {
+                  const scope = window.prompt("삭제 범위: posts, comments, scraps, follows, blocks, profile, all", "all");
+                  if (!scope) return;
+                  if (!window.confirm("선택한 기록을 삭제합니다. 계속할까요?")) return;
+                  onDeleteHistory?.(scope);
+                }
+              }, "기록 삭제")
             )
           : h(MFeedback, { feedback }),
         h("section", { className: "m-panel m-stack" },
@@ -2091,6 +2118,22 @@
         .catch((error) => setProfileFeedback({ type: "error", message: error.message || "프로필 저장에 실패했습니다." }));
     }
 
+    function deleteProfileHistory(scope) {
+      api("/api/profile/me/history/delete", { method: "POST", body: JSON.stringify({ scope }) })
+        .then((result) => {
+          if (!result?.success) {
+            setProfileFeedback({ type: "error", message: result?.message || "기록 삭제에 실패했습니다." });
+            return;
+          }
+          setProfileFeedback({ type: "success", message: "기록을 삭제했습니다." });
+          if (route.name === "profile") {
+            const endpoint = route.params.uid ? `/api/profile/${encodeURIComponent(route.params.uid)}` : "/api/profile/me";
+            return api(endpoint).then((next) => setProfileData(next?.success ? next.data : null));
+          }
+        })
+        .catch((error) => setProfileFeedback({ type: "error", message: error.message || "기록 삭제에 실패했습니다." }));
+    }
+
     function followProfile(targetUid) {
       api(`/api/profile/${encodeURIComponent(targetUid)}/follow`, { method: "POST" })
         .then((result) => {
@@ -2165,7 +2208,7 @@
     if (route.name === "boardManage") return h(MBoardManageView, { session, gid: route.params.gid, board: currentBoard, manageData: boardManageData, feedback: boardManageFeedback, onSaveSubmanagerPermissions: submitSubmanagerPermissions, onAppointSubmanager: appointSubmanager, onRevokeSubmanager: revokeSubmanager, onTransferManager: transferManager, onLogout: handleLogout, alarmCount });
     if (route.name === "post") return h(PostView, { session, gid: route.params.gid, postNo: route.params.postNo, post: postData.post, comments: postData.comments, feedback: commentFeedback, voteFeedback: commentFeedback, voteState: postData.voteState, settings: boardSettings, manageData: boardManageData, onSubmitComment: submitComment, onDeletePost: deletePost, onDeleteComment: deleteComment, onVote: submitVote, onScrapPost: scrapPost, onReportPost: reportPost, onLikeComment: likeComment, onReportComment: reportComment, onLogout: handleLogout, alarmCount });
     if (route.name === "write") return h(WriteView, { session, gid: route.params.gid, feedback: writeFeedback, settings: boardSettings, manageData: boardManageData, onSubmitPost: submitPost, onLogout: handleLogout, alarmCount });
-    if (route.name === "profile") return h(ProfileView, { session, profileData, feedback: profileFeedback, onSaveProfile: saveProfile, onFollowProfile: followProfile, onUnfollowProfile: unfollowProfile, onLogout: handleLogout, alarmCount });
+    if (route.name === "profile") return h(ProfileView, { session, profileData, feedback: profileFeedback, onSaveProfile: saveProfile, onDeleteHistory: deleteProfileHistory, onFollowProfile: followProfile, onUnfollowProfile: unfollowProfile, onLogout: handleLogout, alarmCount });
     if (route.name === "alarms") return h(AlarmsView, { session, alarms, feedback: alarmFeedback, onAcceptAlarm: acceptAlarm, onRejectAlarm: rejectAlarm, onMarkAllRead: markAllAlarmsRead, onLogout: handleLogout, alarmCount });
     if (route.name === "login") return h(AuthView, { mode: "login", feedback: authFeedback, onSubmitAuth: submitAuth, session, onLogout: handleLogout, alarmCount });
     if (route.name === "signup") return h(AuthView, { mode: "signup", feedback: authFeedback, onSubmitAuth: submitAuth, session, onLogout: handleLogout, alarmCount });

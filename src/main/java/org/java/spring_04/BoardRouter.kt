@@ -49,6 +49,9 @@ class BoardRouter(
         model.addAttribute("mainBoards", mainBoards)
         model.addAttribute("sideBoards", sideBoards)
         model.addAttribute("otherBoards", otherBoards)
+        model.addAttribute("mainTopicGroups", groupBoardsByTopic(mainBoards))
+        model.addAttribute("sideTopicGroups", groupBoardsByTopic(sideBoards))
+        model.addAttribute("otherTopicGroups", groupBoardsByTopic(otherBoards))
         model.addAttribute("currentType", currentType)
         model.addAttribute("totalBoardCount", boards.size)
         model.addAttribute("mainBoardCount", mainBoards.size)
@@ -77,6 +80,9 @@ class BoardRouter(
         model.addAttribute("mainBoards", mainBoards)
         model.addAttribute("sideBoards", sideBoards)
         model.addAttribute("otherBoards", otherBoards)
+        model.addAttribute("mainTopicGroups", groupBoardsByTopic(mainBoards))
+        model.addAttribute("sideTopicGroups", groupBoardsByTopic(sideBoards))
+        model.addAttribute("otherTopicGroups", groupBoardsByTopic(otherBoards))
         model.addAttribute("currentType", currentType)
         model.addAttribute("totalBoardCount", boards.size)
         model.addAttribute("mainBoardCount", mainBoards.size)
@@ -448,6 +454,24 @@ class BoardRouter(
             "m", "side", "minor" -> "side"
             else -> "other"
         }
+    }
+
+    private fun groupBoardsByTopic(boards: List<Map<String, Any?>>): List<Map<String, Any?>> {
+        val groups = LinkedHashMap<String, MutableMap<String, Any?>>()
+        boards.forEach { board ->
+            val topicId = board["topic_id"]?.toString()?.takeIf { it.isNotBlank() } ?: "other"
+            val topicName = board["topic_name"]?.toString()?.takeIf { it.isNotBlank() } ?: topicId
+            val group = groups.getOrPut(topicId) {
+                linkedMapOf(
+                    "topicId" to topicId,
+                    "topicName" to topicName,
+                    "boards" to mutableListOf<Map<String, Any?>>()
+                )
+            }
+            @Suppress("UNCHECKED_CAST")
+            (group["boards"] as MutableList<Map<String, Any?>>).add(board)
+        }
+        return groups.values.toList()
     }
 
     private fun cleanPathSegment(value: String): String =

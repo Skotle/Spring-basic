@@ -42,6 +42,27 @@
   box-shadow: none;
 }
 
+.board-table-list.board-topic-directory {
+  grid-template-columns: repeat(5, minmax(132px, 1fr));
+  gap: 8px 26px;
+  padding: 8px 10px 12px;
+  border: 1px solid var(--accent);
+}
+
+.board-table-list.board-topic-directory .board-card {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.board-table-list.board-topic-directory .board-topic-link {
+  color: #a40000;
+  font-size: 0.86rem;
+  font-weight: 500;
+  line-height: 1.18;
+}
+
 .board-table-list .board-name {
   display: flex;
   align-items: center;

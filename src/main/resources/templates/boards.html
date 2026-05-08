@@ -83,13 +83,21 @@
       <h2>보드</h2>
       <span th:text="${mainBoardCount + '개'}">0개</span>
     </div>
-    <div class="board-grid board-table-list" id="mainBoardList">
-      <a class="board-card"
-         th:each="board : ${mainBoards}"
-         th:href="@{/board/{gid}(gid=${board.gall_id})}"
-         th:data-search="${#strings.toLowerCase((board.gall_id != null ? board.gall_id : '') + ' ' + (board.gall_name != null ? board.gall_name : '') + ' ' + (board.board_tags != null ? board.board_tags : ''))}">
-        <div class="board-name" th:text="${board.gall_name != null ? board.gall_name : board.gall_id}">보드</div>
-      </a>
+    <div class="board-topic-groups board-topic-directory board-table-list" id="mainBoardList">
+      <section class="board-topic-group" th:each="group : ${mainTopicGroups}">
+        <div class="board-topic-head">
+          <strong th:text="${group.topicName}">주제</strong>
+          <span class="chip" th:text="${#lists.size(group.boards) + '개'}">0개</span>
+        </div>
+        <div class="board-topic-links">
+          <a class="board-topic-link board-card"
+             th:each="board : ${group.boards}"
+             th:href="@{/board/{gid}(gid=${board.gall_id})}"
+             th:title="${board.gall_id + ' · ' + (board.post_count != null ? board.post_count : 0) + ' posts'}"
+             th:data-search="${#strings.toLowerCase((board.gall_id != null ? board.gall_id : '') + ' ' + (board.gall_name != null ? board.gall_name : '') + ' ' + (board.topic_id != null ? board.topic_id : '') + ' ' + (board.topic_name != null ? board.topic_name : '') + ' ' + (board.board_tags != null ? board.board_tags : ''))}"
+             th:text="${board.gall_name != null ? board.gall_name : board.gall_id}">보드</a>
+        </div>
+      </section>
       <div th:if="${#lists.isEmpty(mainBoards)}" class="empty-state">표시할 메인 보드가 없습니다.</div>
     </div>
   </section>
@@ -101,13 +109,21 @@
       <h2>사이드보드</h2>
       <span th:text="${sideBoardCount + '개'}">0개</span>
     </div>
-    <div class="board-grid board-table-list" id="sideBoardList">
-      <a class="board-card"
-         th:each="board : ${sideBoards}"
-         th:href="@{/board/{gid}(gid=${board.gall_id})}"
-         th:data-search="${#strings.toLowerCase((board.gall_id != null ? board.gall_id : '') + ' ' + (board.gall_name != null ? board.gall_name : '') + ' ' + (board.board_tags != null ? board.board_tags : ''))}">
-        <div class="board-name" th:text="${board.gall_name != null ? board.gall_name : board.gall_id}">사이드보드</div>
-      </a>
+    <div class="board-topic-groups board-topic-directory board-table-list" id="sideBoardList">
+      <section class="board-topic-group" th:each="group : ${sideTopicGroups}">
+        <div class="board-topic-head">
+          <strong th:text="${group.topicName}">주제</strong>
+          <span class="chip" th:text="${#lists.size(group.boards) + '개'}">0개</span>
+        </div>
+        <div class="board-topic-links">
+          <a class="board-topic-link board-card"
+             th:each="board : ${group.boards}"
+             th:href="@{/board/{gid}(gid=${board.gall_id})}"
+             th:title="${board.gall_id + ' · ' + (board.post_count != null ? board.post_count : 0) + ' posts'}"
+             th:data-search="${#strings.toLowerCase((board.gall_id != null ? board.gall_id : '') + ' ' + (board.gall_name != null ? board.gall_name : '') + ' ' + (board.topic_id != null ? board.topic_id : '') + ' ' + (board.topic_name != null ? board.topic_name : '') + ' ' + (board.board_tags != null ? board.board_tags : ''))}"
+             th:text="${board.gall_name != null ? board.gall_name : board.gall_id}">보드</a>
+        </div>
+      </section>
       <div th:if="${#lists.isEmpty(sideBoards)}" class="empty-state">표시할 사이드보드가 없습니다.</div>
     </div>
   </section>
@@ -119,13 +135,21 @@
       <h2>기타</h2>
       <span th:text="${otherBoardCount + '개'}">0개</span>
     </div>
-    <div class="board-grid board-table-list" id="otherBoardList">
-      <a class="board-card"
-         th:each="board : ${otherBoards}"
-         th:href="@{/board/{gid}(gid=${board.gall_id})}"
-         th:data-search="${#strings.toLowerCase((board.gall_id != null ? board.gall_id : '') + ' ' + (board.gall_name != null ? board.gall_name : '') + ' ' + (board.board_tags != null ? board.board_tags : ''))}">
-        <div class="board-name" th:text="${board.gall_name != null ? board.gall_name : board.gall_id}">기타 보드</div>
-      </a>
+    <div class="board-topic-groups board-topic-directory board-table-list" id="otherBoardList">
+      <section class="board-topic-group" th:each="group : ${otherTopicGroups}">
+        <div class="board-topic-head">
+          <strong th:text="${group.topicName}">주제</strong>
+          <span class="chip" th:text="${#lists.size(group.boards) + '개'}">0개</span>
+        </div>
+        <div class="board-topic-links">
+          <a class="board-topic-link board-card"
+             th:each="board : ${group.boards}"
+             th:href="@{/board/{gid}(gid=${board.gall_id})}"
+             th:title="${board.gall_id + ' · ' + (board.post_count != null ? board.post_count : 0) + ' posts'}"
+             th:data-search="${#strings.toLowerCase((board.gall_id != null ? board.gall_id : '') + ' ' + (board.gall_name != null ? board.gall_name : '') + ' ' + (board.topic_id != null ? board.topic_id : '') + ' ' + (board.topic_name != null ? board.topic_name : '') + ' ' + (board.board_tags != null ? board.board_tags : ''))}"
+             th:text="${board.gall_name != null ? board.gall_name : board.gall_id}">보드</a>
+        </div>
+      </section>
       <div th:if="${#lists.isEmpty(otherBoards)}" class="empty-state">표시할 기타 보드가 없습니다.</div>
     </div>
   </section>

@@ -881,19 +881,73 @@ a.m-nick-type:hover {
   border-top: 1px solid var(--line);
 }
 
+.m-board-legacy {
+  display: none;
+}
+
+.m-board-topic-groups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0;
+  border-top: 1px solid var(--line);
+}
+
+.m-board-topic-group {
+  min-width: 0;
+  padding: 8px 10px 10px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: #fff;
+}
+
+.m-board-topic-group:nth-child(2n) {
+  border-right: 0;
+}
+
+.m-board-topic-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 20px;
+  gap: 6px;
+  color: var(--accent);
+  font-size: 0.86rem;
+  font-weight: 900;
+}
+
+.m-board-topic-head strong {
+  overflow: hidden;
+  text-decoration: underline;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.m-board-topic-head span {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.m-board-topic-links {
+  display: grid;
+  gap: 2px;
+  margin-top: 4px;
+}
+
 .m-board-column:first-child {
   border-right: 1px solid var(--line);
 }
 
 .m-board-line {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  align-items: center;
-  min-height: 34px;
-  padding: 0 10px;
-  border-bottom: 1px solid var(--line);
-  color: #111;
+  display: block;
+  overflow: hidden;
+  min-height: 0;
+  padding: 0;
+  border-bottom: 0;
+  color: #a40000;
   font-size: 0.86rem;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .m-board-line span,
@@ -974,12 +1028,11 @@ a.m-nick-type:hover {
 }
 
 .m-board-line.m-board-ssr-card {
-  grid-template-columns: minmax(0, 1fr);
+  display: block;
   gap: 0;
-  min-height: 34px;
-  padding: 0 10px;
-  border-top: 0;
-  border-left: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
   box-shadow: none;
 }
 
@@ -1031,9 +1084,9 @@ a.m-nick-type:hover {
 }
 
 .m-board-directory .m-board-line strong {
-  color: #111;
+  color: #a40000;
   font-size: 0.9rem;
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .m-board-ssr-card > span:last-child {

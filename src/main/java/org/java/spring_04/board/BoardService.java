@@ -271,6 +271,7 @@ public class BoardService {
         if (!columnExists("gallery_setting", "board_tags")) {
             jdbcTemplate.execute("ALTER TABLE gallery_setting ADD COLUMN board_tags TEXT NULL");
         }
+        migrateReservedBoardTagsToTopics();
         if (!columnExists("gallery_setting", "allow_member_image")) {
             jdbcTemplate.execute("ALTER TABLE gallery_setting ADD COLUMN allow_member_image TINYINT(1) NOT NULL DEFAULT 1");
         }
@@ -299,6 +300,30 @@ public class BoardService {
         addPostColumnIfMissing("bumped_at", "DATETIME NULL");
         addPostColumnIfMissing("pin_order", "INT NULL");
         addPostColumnIfMissing("attachment_urls", "TEXT NULL");
+    }
+
+    private void migrateReservedBoardTagsToTopics() {
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList("""
+                SELECT gs.gall_id, gs.board_tags
+                FROM gallery_setting gs
+                WHERE gs.board_tags IS NOT NULL
+                  AND TRIM(gs.board_tags) <> ''
+                """);
+        for (Map<String, Object> row : rows) {
+            String gallId = nullableText(row.get("gall_id"));
+            String currentTags = nullableText(row.get("board_tags"));
+            if (gallId == null || !containsReservedBoardTag(currentTags)) {
+                continue;
+            }
+            String nextTags = normalizeBoardTagsForBoard(gallId, currentTags);
+            if (!sameText(currentTags, nextTags)) {
+                jdbcTemplate.update("""
+                        UPDATE gallery_setting
+                        SET board_tags = ?, updated_at = NOW()
+                        WHERE gall_id = ?
+                        """, nextTags, gallId);
+            }
+        }
     }
 
     private void addPostColumnIfMissing(String columnName, String definition) {
@@ -402,9 +427,12 @@ public class BoardService {
                 LEFT JOIN board_topic bt ON bt.topic_id = g.topic_id
                 LEFT JOIN gallery_setting gs ON gs.gall_id = g.gall_id
                 LEFT JOIN user manager ON manager.uid = g.manager_uid
-                ORDER BY g.gall_id ASC
+                ORDER BY COALESCE(bt.sort_order, 9999) ASC,
+                         COALESCE(bt.topic_name, '기타') ASC,
+                         g.gall_name ASC,
+                         g.gall_id ASC
                 """;
-        return jdbcTemplate.queryForList(sql);
+        return resolveBoardTagRows(jdbcTemplate.queryForList(sql));
     }
 
     public Map<String, Object> getMyBoardDashboard(String uid) {
@@ -805,7 +833,7 @@ public class BoardService {
             String categoryOptions = normalizeCategoryOptions(nullableText(row.get("category_options")));
             defaults.put("category_options", categoryOptions);
             defaults.put("category_options_list", parseCategoryOptions(categoryOptions));
-            defaults.put("board_tags", normalizeBoardTags(nullableText(row.get("board_tags"))));
+            defaults.put("board_tags", normalizeBoardTagsForBoard(boardId, nullableText(row.get("board_tags"))));
             defaults.put("concept_recommend_threshold", normalizeConceptThreshold(row.get("concept_recommend_threshold")));
             defaults.put("allow_guest_post", toBooleanFlag(row.get("allow_guest_post")));
             defaults.put("allow_guest_comment", toBooleanFlag(row.get("allow_guest_comment")));
@@ -848,7 +876,7 @@ public class BoardService {
         String welcomeMessage = nullableTrim(payload.get("welcomeMessage"));
         String coverImageUrl = nullableTrim(payload.get("coverImageUrl"));
         String categoryOptions = normalizeCategoryOptions(payload.get("categoryOptions"));
-        String boardTags = normalizeBoardTags(payload.get("boardTags"));
+        String boardTags = normalizeBoardTagsForBoard(boardId, payload.get("boardTags"));
         String themeColor = normalizeThemeColor(payload.get("themeColor"));
         int conceptRecommendThreshold = normalizeConceptThreshold(payload.get("conceptRecommendThreshold"));
         int allowGuestPost = parseBooleanFlag(payload.get("allowGuestPost"));
@@ -979,6 +1007,103 @@ public class BoardService {
                 WHERE gall_id = ?
                   AND is_deleted = 0
                 """, currentThreshold, boardId);
+    }
+
+    @Transactional
+    public Map<String, Object> renameBoardCategory(String gallId, Map<String, String> payload, String uid, String memberDivision) {
+        String boardId = required(gallId, "보드 ID가 필요합니다.");
+        String actorUid = required(uid, "로그인이 필요합니다.");
+        requireBoardPermission(boardId, actorUid, memberDivision, PERMISSION_MANAGE_CATEGORIES, "말머리를 변경할 권한이 없습니다.");
+
+        String oldName = normalizeCategoryName(payload == null ? null : payload.get("oldName"), "기존 말머리를 입력해 주세요.");
+        String newName = normalizeCategoryName(payload == null ? null : payload.get("newName"), "새 말머리를 입력해 주세요.");
+        if (oldName.equals(newName)) {
+            return Map.of("updatedPosts", 0, "settings", getBoardSettings(boardId));
+        }
+
+        List<String> options = parseCategoryOptions(getBoardSettings(boardId).get("category_options"));
+        if (!options.contains(oldName)) {
+            throw new RuntimeException("기존 말머리를 찾을 수 없습니다.");
+        }
+        if (options.contains(newName)) {
+            throw new RuntimeException("이미 사용 중인 말머리입니다.");
+        }
+        for (int i = 0; i < options.size(); i++) {
+            if (oldName.equals(options.get(i))) {
+                options.set(i, newName);
+                break;
+            }
+        }
+        String nextOptions = String.join("\n", options);
+        jdbcTemplate.update("""
+                INSERT INTO gallery_setting (gall_id, category_options, updated_by, updated_at)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE
+                    category_options = VALUES(category_options),
+                    updated_by = VALUES(updated_by),
+                    updated_at = NOW()
+                """, boardId, nextOptions, actorUid);
+        int updatedPosts = jdbcTemplate.update("""
+                UPDATE post
+                SET category = ?
+                WHERE gall_id = ?
+                  AND category = ?
+                  AND is_deleted = 0
+                """, newName, boardId, oldName);
+        return Map.of("updatedPosts", updatedPosts, "settings", getBoardSettings(boardId));
+    }
+
+    @Transactional
+    public Map<String, Object> renameBoardTag(String gallId, Map<String, String> payload, String uid, String memberDivision) {
+        String boardId = required(gallId, "보드 ID가 필요합니다.");
+        String actorUid = required(uid, "로그인이 필요합니다.");
+        requireBoardPermission(boardId, actorUid, memberDivision, PERMISSION_MANAGE_TAGS, "태그를 변경할 권한이 없습니다.");
+
+        String oldName = normalizeTagName(payload == null ? null : payload.get("oldName"), "기존 태그명을 입력해 주세요.");
+        String newName = normalizeTagName(payload == null ? null : payload.get("newName"), "새 태그명을 입력해 주세요.");
+        if (oldName.equals(newName)) {
+            return Map.of("updatedTags", 0, "settings", getBoardSettings(boardId));
+        }
+
+        List<String> tags = parseBoardTags(getBoardSettings(boardId).get("board_tags"));
+        if (!tags.contains(oldName)) {
+            throw new RuntimeException("기존 태그를 찾을 수 없습니다.");
+        }
+        if (tags.contains(newName)) {
+            throw new RuntimeException("이미 사용 중인 태그입니다.");
+        }
+        for (int i = 0; i < tags.size(); i++) {
+            if (oldName.equals(tags.get(i))) {
+                tags.set(i, newName);
+                break;
+            }
+        }
+        String nextTags = normalizeBoardTagsForBoard(boardId, tags.isEmpty() ? null : String.join(" ", tags));
+        jdbcTemplate.update("""
+                INSERT INTO gallery_setting (gall_id, board_tags, updated_by, updated_at)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE
+                    board_tags = VALUES(board_tags),
+                    updated_by = VALUES(updated_by),
+                    updated_at = NOW()
+                """, boardId, nextTags, actorUid);
+        return Map.of("updatedTags", 1, "settings", getBoardSettings(boardId));
+    }
+
+    private String normalizeCategoryName(String value, String message) {
+        String normalized = required(nullableTrim(value), message);
+        if (normalized.length() > 20 || normalized.contains(",") || normalized.contains("\n") || normalized.contains("\r") || normalized.startsWith(":")) {
+            throw new RuntimeException("사용할 수 없는 말머리명입니다.");
+        }
+        return normalized;
+    }
+
+    private String normalizeTagName(String value, String message) {
+        String normalized = required(nullableTrim(value), message);
+        if (normalized.length() > 50 || normalized.matches(".*[\\s,]+.*")) {
+            throw new RuntimeException("사용할 수 없는 태그명입니다.");
+        }
+        return normalized;
     }
 
     private void assertBoardSettingPermissions(
@@ -2681,8 +2806,96 @@ public class BoardService {
         if (value == null || value.isBlank()) {
             return null;
         }
+        List<String> tags = parseBoardTags(value);
+        return tags.isEmpty() ? null : String.join(" ", tags);
+    }
+
+    private List<Map<String, Object>> resolveBoardTagRows(List<Map<String, Object>> rows) {
+        for (Map<String, Object> row : rows) {
+            String gallId = nullableText(row.get("gall_id"));
+            String boardTags = nullableText(row.get("board_tags"));
+            row.put("board_tags", normalizeBoardTagsForBoard(gallId, boardTags));
+        }
+        return rows;
+    }
+
+    private String normalizeBoardTagsForBoard(String gallId, String value) {
+        List<String> tags = parseBoardTags(value);
+        String topicTagText = getBoardTopicTagText(gallId);
+        if (tags.isEmpty()) {
+            return topicTagText;
+        }
+        List<String> resolved = new ArrayList<>();
+        for (String tag : tags) {
+            if (isReservedBoardTag(tag)) {
+                for (String topicToken : parseBoardTags(topicTagText)) {
+                    if (!resolved.contains(topicToken)) {
+                        resolved.add(topicToken);
+                    }
+                }
+                continue;
+            }
+            if (!resolved.contains(tag)) {
+                resolved.add(tag);
+            }
+        }
+        return resolved.isEmpty() ? topicTagText : String.join(" ", resolved);
+    }
+
+    private String getBoardTopicTagText(String gallId) {
+        try {
+            Map<String, Object> topic = jdbcTemplate.queryForMap("""
+                    SELECT COALESCE(b.topic_id, 'other') AS topic_id,
+                           COALESCE(bt.topic_name, '기타') AS topic_name
+                    FROM board b
+                    LEFT JOIN board_topic bt ON bt.topic_id = b.topic_id
+                    WHERE b.gall_id = ?
+                    """, gallId);
+            String topicId = nullableText(topic.get("topic_id"));
+            String topicName = nullableText(topic.get("topic_name"));
+            return String.join(" ", parseBoardTags((firstNonBlank(topicId, "other") + " " + firstNonBlank(topicName, "기타"))));
+        } catch (Exception ignored) {
+            return "other 기타";
+        }
+    }
+
+    private boolean containsReservedBoardTag(String value) {
+        for (String tag : parseBoardTags(value)) {
+            if (isReservedBoardTag(tag)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isReservedBoardTag(String tag) {
+        if (tag == null) {
+            return false;
+        }
+        String normalized = tag.trim().toLowerCase(Locale.ROOT);
+        String compact = normalized
+                .replace("#", "")
+                .replace("[", "")
+                .replace("]", "")
+                .replace("(", "")
+                .replace(")", "")
+                .replace("{", "")
+                .replace("}", "")
+                .replace("_", "")
+                .replace("-", "")
+                .replace(".", "");
+        return "dc".equals(compact)
+                || "dcinside".equals(compact)
+                || "디시".equals(compact);
+    }
+
+    private List<String> parseBoardTags(Object value) {
+        String raw = nullableText(value);
+        if (raw == null || raw.isBlank()) {
+            return new ArrayList<>();
+        }
         List<String> tags = new ArrayList<>();
-        for (String token : value.split("[,\\r\\n\\t ]+")) {
+        for (String token : raw.split("[,\\r\\n\\t ]+")) {
             String tag = token.trim();
             if (!tag.isBlank() && tag.length() <= 50 && !tags.contains(tag)) {
                 tags.add(tag);
@@ -2691,7 +2904,7 @@ public class BoardService {
                 break;
             }
         }
-        return tags.isEmpty() ? null : String.join(" ", tags);
+        return tags;
     }
 
     private List<String> parseCategoryOptions(Object value) {

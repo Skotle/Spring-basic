@@ -5,9 +5,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 @Service
@@ -247,6 +249,63 @@ public class ProfileService {
         );
 
         return getProfile(actorUid, actorUid);
+    }
+
+    @Transactional
+    public Map<String, Object> deleteMyHistory(String uid, String scope) {
+        String actorUid = required(uid, "로그인이 필요합니다.");
+        String normalizedScope = normalizeHistoryScope(scope);
+        Map<String, Object> result = new LinkedHashMap<>();
+
+        if ("posts".equals(normalizedScope) || "all".equals(normalizedScope)) {
+            int posts = jdbcTemplate.update("""
+                    UPDATE post
+                    SET is_deleted = 1
+                    WHERE writer_uid = ?
+                      AND is_deleted = 0
+                    """, actorUid);
+            result.put("posts", posts);
+        }
+        if ("comments".equals(normalizedScope) || "all".equals(normalizedScope)) {
+            int comments = jdbcTemplate.update("""
+                    UPDATE comment
+                    SET is_deleted = 1
+                    WHERE writer_uid = ?
+                      AND is_deleted = 0
+                    """, actorUid);
+            result.put("comments", comments);
+        }
+        if ("scraps".equals(normalizedScope) || "all".equals(normalizedScope)) {
+            int scraps = jdbcTemplate.update("DELETE FROM post_scrap WHERE uid = ?", actorUid);
+            result.put("scraps", scraps);
+        }
+        if ("follows".equals(normalizedScope) || "all".equals(normalizedScope)) {
+            int follows = jdbcTemplate.update("DELETE FROM user_follow WHERE follower_uid = ?", actorUid);
+            result.put("follows", follows);
+        }
+        if ("blocks".equals(normalizedScope) || "all".equals(normalizedScope)) {
+            int blocks = jdbcTemplate.update("DELETE FROM user_block WHERE blocker_uid = ?", actorUid);
+            result.put("blocks", blocks);
+        }
+        if ("profile".equals(normalizedScope) || "all".equals(normalizedScope)) {
+            int profile = jdbcTemplate.update("DELETE FROM user_profile_setting WHERE uid = ?", actorUid);
+            result.put("profileSettings", profile);
+        }
+
+        result.put("scope", normalizedScope);
+        return result;
+    }
+
+    private String normalizeHistoryScope(String scope) {
+        String normalized = nullableTrim(scope);
+        if (normalized == null) {
+            return "all";
+        }
+        String lower = normalized.toLowerCase(Locale.ROOT);
+        return switch (lower) {
+            case "posts", "comments", "scraps", "follows", "blocks", "profile", "all" -> lower;
+            default -> throw new RuntimeException("삭제할 기록 범위가 올바르지 않습니다.");
+        };
     }
 
     private Map<String, Object> getProfileSettings(String uid) {

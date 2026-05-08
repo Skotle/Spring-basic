@@ -688,9 +688,27 @@
       }
       return true;
     });
-    const filtered = typed.filter((board) => !q || String(board.gall_id || "").toLowerCase().includes(q) || String(board.gall_name || "").toLowerCase().includes(q));
-    const half = Math.ceil(filtered.length / 2);
-    const columns = [filtered.slice(0, half), filtered.slice(half)];
+    const filtered = typed.filter((board) => {
+      const haystack = [
+        board.gall_id,
+        board.gall_name,
+        board.topic_id,
+        board.topic_name,
+        board.board_tags
+      ].map((value) => String(value || "").toLowerCase()).join(" ");
+      return !q || haystack.includes(q);
+    });
+    const topicGroups = filtered.reduce((groups, board) => {
+      const topicId = String(board.topic_id || "other");
+      const topicName = String(board.topic_name || board.topic_id || "기타");
+      let group = groups.find((item) => item.topicId === topicId);
+      if (!group) {
+        group = { topicId, topicName, boards: [] };
+        groups.push(group);
+      }
+      group.boards.push(board);
+      return groups;
+    }, []);
     const boardHeading = boardTypeFilter === "side" ? "사이드 보드" : boardTypeFilter === "main" ? "보드" : "전체 보드";
 
     return h(React.Fragment, null,
@@ -730,14 +748,22 @@
                                     h("strong", null, "전체 보드"),
                                     h("span", { className: "chip" }, `${filtered.length}개`)
                                 ),
-                                h("div", { className: "board-directory-columns" },
-                                    columns.map((items, columnIndex) =>
-                                        h("div", { className: "board-directory-column", key: `column-${columnIndex}` },
-                                            items.map((board, index) =>
-                                                h(Link, { href: `/board/${encodeURIComponent(board.gall_id)}`, className: "board-directory-entry", key: board.gall_id, reload: true },
-                                                    h("span", { className: "board-directory-rank" }, `${columnIndex === 0 ? index + 1 : half + index + 1}.`),
-                                                    h("strong", { className: "board-directory-name" }, board.gall_name || board.gall_id),
-                                                    h("span", { className: "board-directory-sub" }, `${board.gall_id} · ${board.post_count ?? 0} posts`)
+                                h("div", { className: "board-topic-groups board-topic-directory" },
+                                    topicGroups.map((group) =>
+                                        h("section", { className: "board-topic-group", key: group.topicId },
+                                            h("div", { className: "board-topic-head" },
+                                                h("strong", null, group.topicName),
+                                                h("span", { className: "chip" }, `${group.boards.length}개`)
+                                            ),
+                                            h("div", { className: "board-topic-links" },
+                                                group.boards.map((board) =>
+                                                    h(Link, {
+                                                      href: `/board/${encodeURIComponent(board.gall_id)}`,
+                                                      className: "board-topic-link",
+                                                      key: board.gall_id,
+                                                      reload: true,
+                                                      title: `${board.gall_id} · ${board.post_count ?? 0} posts`
+                                                    }, board.gall_name || board.gall_id)
                                                 )
                                             )
                                         )
@@ -1290,7 +1316,7 @@
     );
   }
 
-  function BoardSettingsPanel({ settings, feedback, onSave }) {
+  function BoardSettingsPanel({ settings, feedback, onSave, onRenameCategory, onRenameTag }) {
     const fileInputRef = useRef(null);
     const [boardNotice, setBoardNotice] = useState(settings?.board_notice || "");
     const [welcomeMessage, setWelcomeMessage] = useState(settings?.welcome_message || "");
@@ -1374,9 +1400,27 @@
                 h("label", { htmlFor: "board-setting-categories-v2" }, "말머리 목록"),
                 h("textarea", { id: "board-setting-categories-v2", rows: 4, value: categoryOptions, onChange: (event) => setCategoryOptions(event.target.value), placeholder: "한 줄에 하나씩 입력하거나 쉼표로 구분" })
             ),
+            h("div", { className: "inline-actions" },
+                h("button", { type: "button", className: "btn btn-secondary btn-compact", onClick: () => {
+                    const oldName = window.prompt("변경할 기존 말머리명을 입력하세요.");
+                    if (!oldName) return;
+                    const newName = window.prompt("새 말머리명을 입력하세요.");
+                    if (!newName) return;
+                    onRenameCategory?.(oldName, newName);
+                } }, "말머리명 변경")
+            ),
             h("div", { className: "field" },
                 h("label", { htmlFor: "board-setting-tags-v2" }, "검색 태그"),
                 h("textarea", { id: "board-setting-tags-v2", rows: 3, value: boardTags, onChange: (event) => setBoardTags(event.target.value), placeholder: "검색에만 사용됩니다. 화면에는 표시하지 않습니다." })
+            ),
+            h("div", { className: "inline-actions" },
+                h("button", { type: "button", className: "btn btn-secondary btn-compact", onClick: () => {
+                    const oldName = window.prompt("변경할 기존 태그명을 입력하세요.");
+                    if (!oldName) return;
+                    const newName = window.prompt("새 태그명을 입력하세요.");
+                    if (!newName) return;
+                    onRenameTag?.(oldName, newName);
+                } }, "태그명 변경")
             ),
             h("div", { className: "field" },
                 h("label", { htmlFor: "board-setting-color-v2" }, "테마 색상"),
@@ -1564,7 +1608,7 @@
     );
   }
 
-  function BoardManageView({ session, gid, board, manageData, feedback, submanagerFeedback, onSaveSettings, onSaveSubmanagerPermissions, onAppointSubmanager, onRevokeSubmanager, onTransferManager, onLogout, alarmCount }) {
+  function BoardManageView({ session, gid, board, manageData, feedback, submanagerFeedback, onSaveSettings, onRenameCategory, onRenameTag, onSaveSubmanagerPermissions, onAppointSubmanager, onRevokeSubmanager, onTransferManager, onLogout, alarmCount }) {
     const permissions = manageData?.permissions || {};
     const settings = manageData?.settings || { gall_id: gid, theme_color: "#ff8fab", concept_recommend_threshold: 10, allow_guest_post: true, allow_guest_comment: true };
     const submanagers = Array.isArray(manageData?.submanagers) ? manageData.submanagers : [];
@@ -1586,7 +1630,7 @@
                         { action: "부매니저 임명/해임", required: "관리자 또는 현재 매니저", available: !!permissions.canAssignSubmanager }
                       ] }),
                     permissions.canEditSettings
-                        ? h(BoardSettingsPanel, { settings, feedback, onSave: onSaveSettings })
+                        ? h(BoardSettingsPanel, { settings, feedback, onSave: onSaveSettings, onRenameCategory, onRenameTag })
                         : h("article", { className: "card board-settings-card" }, h("div", { className: "error-box" }, "이 보드 설정을 변경할 권한이 없습니다.")),
                     (permissions.canAssignSubmanager || permissions.canManageSubmanager || permissions.isAdmin)
                         ? h(PendingStaffRequestList, { requests: pendingRequests })
@@ -2237,7 +2281,7 @@
     );
   }
 
-  function ProfileView({ session, profileData, feedback, onSaveProfile, onFollowProfile, onUnfollowProfile, onLogout, alarmCount }) {
+  function ProfileView({ session, profileData, feedback, onSaveProfile, onDeleteHistory, onFollowProfile, onUnfollowProfile, onLogout, alarmCount }) {
     const [statusMessage, setStatusMessage] = useState(profileData?.statusMessage || "");
     const [bio, setBio] = useState(profileData?.bio || "");
     const [accentColor, setAccentColor] = useState(profileData?.accentColor || "#ff8fab");
@@ -2383,7 +2427,15 @@
                                 h("label", { className: "check-row" }, h("input", { type: "checkbox", checked: showFollowers, onChange: (event) => setShowFollowers(event.target.checked) }), h("span", null, "팔로워 목록 공개")),
                                 h("label", { className: "check-row" }, h("input", { type: "checkbox", checked: showFollowing, onChange: (event) => setShowFollowing(event.target.checked) }), h("span", null, "팔로잉 목록 공개")),
                                 h(Feedback, { feedback }),
-                                h("div", { className: "inline-actions" }, h("button", { type: "button", className: "btn btn-primary", onClick: () => onSaveProfile({ statusMessage, bio, accentColor, avatarUrl, bannerUrl, showPosts, showComments, showFollowers, showFollowing }) }, "프로필 저장"))
+                                h("div", { className: "inline-actions" }, h("button", { type: "button", className: "btn btn-primary", onClick: () => onSaveProfile({ statusMessage, bio, accentColor, avatarUrl, bannerUrl, showPosts, showComments, showFollowers, showFollowing }) }, "프로필 저장")),
+                                h("div", { className: "inline-actions" },
+                                    h("button", { type: "button", className: "btn btn-secondary btn-danger", onClick: () => {
+                                        const scope = window.prompt("삭제 범위 입력: posts, comments, scraps, follows, blocks, profile, all", "all");
+                                        if (!scope) return;
+                                        if (!window.confirm("선택한 기록을 삭제합니다. 계속할까요?")) return;
+                                        onDeleteHistory?.(scope);
+                                    } }, "기록 삭제")
+                                )
                             )
                         )
                         : null,
@@ -2949,6 +3001,34 @@
       }).catch((error) => setSettingsFeedback({ type: "error", message: error.message || "설정 저장에 실패했습니다." }));
     }
 
+    function renameBoardCategory(oldName, newName) {
+      api(`/api/board/manage/${encodeURIComponent(route.params.gid)}/category/rename`, {
+        method: "POST",
+        body: JSON.stringify({ oldName, newName })
+      }).then((result) => {
+        if (!result?.success) {
+          setSettingsFeedback({ type: "error", message: result?.message || "말머리명 변경에 실패했습니다." });
+          return;
+        }
+        setBoardManageData((current) => current ? { ...current, settings: result.data.settings } : { settings: result.data.settings, permissions: {} });
+        setSettingsFeedback({ type: "success", message: `말머리명을 변경했습니다. 기존 글 ${result.data.updatedPosts ?? 0}개가 반영됐습니다.` });
+      }).catch((error) => setSettingsFeedback({ type: "error", message: error.message || "말머리명 변경에 실패했습니다." }));
+    }
+
+    function renameBoardTag(oldName, newName) {
+      api(`/api/board/manage/${encodeURIComponent(route.params.gid)}/tags/rename`, {
+        method: "POST",
+        body: JSON.stringify({ oldName, newName })
+      }).then((result) => {
+        if (!result?.success) {
+          setSettingsFeedback({ type: "error", message: result?.message || "태그명 변경에 실패했습니다." });
+          return;
+        }
+        setBoardManageData((current) => current ? { ...current, settings: result.data.settings } : { settings: result.data.settings, permissions: {} });
+        setSettingsFeedback({ type: "success", message: "태그명을 변경했습니다." });
+      }).catch((error) => setSettingsFeedback({ type: "error", message: error.message || "태그명 변경에 실패했습니다." }));
+    }
+
     function managerPasswordForStaffAction(actionName) {
       const permissions = boardManageData?.permissions || {};
       if (permissions.isAdmin) return "";
@@ -3073,6 +3153,23 @@
           .catch((error) => setProfileFeedback({ type: "error", message: error.message || "프로필 설정 저장에 실패했습니다." }));
     }
 
+    function deleteProfileHistory(scope) {
+      if (!profileData?.canEdit) {
+        setProfileFeedback({ type: "error", message: "기록을 삭제할 권한이 없습니다." });
+        return;
+      }
+      api("/api/profile/me/history/delete", { method: "POST", body: JSON.stringify({ scope }) })
+          .then((result) => {
+            if (!result?.success) {
+              setProfileFeedback({ type: "error", message: result?.message || "기록 삭제에 실패했습니다." });
+              return;
+            }
+            setProfileFeedback({ type: "success", message: "기록을 삭제했습니다." });
+            refreshProfile(targetProfileUid);
+          })
+          .catch((error) => setProfileFeedback({ type: "error", message: error.message || "기록 삭제에 실패했습니다." }));
+    }
+
     function followProfile(targetUid) {
       if (!session?.loggedIn) {
         setProfileFeedback({ type: "error", message: "로그인해야 팔로우할 수 있습니다." });
@@ -3184,10 +3281,10 @@
     if (route.name === "search") return h(SearchResultsView, { session, boards, posts: searchResults, searchQuery, onLogout: handleLogout, alarmCount });
     if (route.name === "boardRequests") return h(BoardRequestsView, { session, feedback: boardRequestFeedback, boardDashboard, onSubmitSideBoardRequest: submitSideBoardRequest, onLogout: handleLogout, alarmCount });
     if (route.name === "board") return h(BoardView, { session, gid: route.params.gid, board: currentBoard, posts: boardPosts, page, manageData: boardManageData, settingsFeedback, listFeedback: boardPostsFeedback, onPrevPage: () => navigate(`/board/${encodeURIComponent(route.params.gid)}?page=${Math.max(1, page - 1)}`), onNextPage: () => navigate(`/board/${encodeURIComponent(route.params.gid)}?page=${page + 1}`), onLogout: handleLogout, alarmCount });
-    if (route.name === "boardManage") return h(BoardManageView, { session, gid: route.params.gid, board: currentBoard, manageData: boardManageData, feedback: settingsFeedback, submanagerFeedback, onSaveSettings: submitBoardSettings, onSaveSubmanagerPermissions: submitSubmanagerPermissions, onAppointSubmanager: appointSubmanager, onRevokeSubmanager: revokeSubmanager, onTransferManager: transferManager, onLogout: handleLogout, alarmCount });
+    if (route.name === "boardManage") return h(BoardManageView, { session, gid: route.params.gid, board: currentBoard, manageData: boardManageData, feedback: settingsFeedback, submanagerFeedback, onSaveSettings: submitBoardSettings, onRenameCategory: renameBoardCategory, onRenameTag: renameBoardTag, onSaveSubmanagerPermissions: submitSubmanagerPermissions, onAppointSubmanager: appointSubmanager, onRevokeSubmanager: revokeSubmanager, onTransferManager: transferManager, onLogout: handleLogout, alarmCount });
     if (route.name === "boardStaffManage") return h(BoardStaffManageView, { session, gid: route.params.gid, board: currentBoard, manageData: boardManageData, feedback: submanagerFeedback, onSaveSubmanagerPermissions: submitSubmanagerPermissions, onAppointSubmanager: appointSubmanager, onRevokeSubmanager: revokeSubmanager, onTransferManager: transferManager, onLogout: handleLogout, alarmCount });
     if (route.name === "post") return h(PostView, { session, gid: route.params.gid, post: postData.post, comments: postData.comments, feedback: commentFeedback, deleteFeedback, voteFeedback, voteState: postData.voteState, manageData: boardManageData, onSubmitComment: submitComment, onDeletePost: submitDeletePost, onDeleteComment: submitDeleteComment, onVote: submitVote, onScrapPost: scrapPost, onReportPost: reportPost, onLikeComment: likeComment, onReportComment: reportComment, onCancelConcept: cancelConcept, onSetConcept: setConcept, onBumpPost: bumpPost, onSetNotice: setNotice, onLogout: handleLogout, alarmCount });
-    if (route.name === "profile") return h(ProfileView, { session, profileData, feedback: profileFeedback, onSaveProfile: submitProfileSettings, onFollowProfile: followProfile, onUnfollowProfile: unfollowProfile, onLogout: handleLogout, alarmCount });
+    if (route.name === "profile") return h(ProfileView, { session, profileData, feedback: profileFeedback, onSaveProfile: submitProfileSettings, onDeleteHistory: deleteProfileHistory, onFollowProfile: followProfile, onUnfollowProfile: unfollowProfile, onLogout: handleLogout, alarmCount });
     if (route.name === "write") return h(WriteView, { session, gid: route.params.gid, feedback: writeFeedback, manageData: boardManageData, onSubmitPost: submitPost, onLogout: handleLogout, alarmCount });
     if (route.name === "login") return h(AuthView, { mode: "login", feedback: authFeedback, onSubmitAuth: submitAuth, session, onLogout: handleLogout, alarmCount });
     if (route.name === "adminLogin") return h(AdminLoginView, { feedback: authFeedback, onSubmitAuth: submitAuth, session, onLogout: handleLogout, alarmCount });
