@@ -2,7 +2,6 @@
   const h = React.createElement;
   const { useEffect, useMemo, useRef, useState } = React;
 
-  const MAX_IMAGE_UPLOAD_BYTES = 50 * 1024 * 1024;
   const isUnsafeMethod = (method) => ["POST", "PUT", "PATCH", "DELETE"].includes(String(method || "GET").toUpperCase());
 
   const randomRequestId = () => {
@@ -342,9 +341,6 @@
     if (!file) {
       throw new Error("업로드할 파일이 없습니다.");
     }
-    if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
-      throw new Error("이미지는 최대 50MB까지 업로드할 수 있습니다.");
-    }
     const formData = new FormData();
     formData.append("file", file);
     if (gallId) {
@@ -357,12 +353,22 @@
     return result.url;
   }
 
+  function isLikelyImageFile(file) {
+    if (!file) return false;
+    const type = String(file.type || "").toLowerCase();
+    if (type.startsWith("image/") || type === "application/octet-stream" || type === "") {
+      const name = String(file.name || "").toLowerCase();
+      return !name || /\.(jpe?g|png|gif|webp|avif|heic|heif)$/i.test(name) || type.startsWith("image/");
+    }
+    return false;
+  }
+
   function MHtmlEditor({ id, value, onChange, placeholder, gallId, canUploadImage = window.__mobileWriteCanUploadImage !== false }) {
     const editorRef = useRef(null);
     const fileInputRef = useRef(null);
     const [uploadFeedback, setUploadFeedback] = useState(null);
     const [imageUploading, setImageUploading] = useState(false);
-    const resolvedGallId = gallId || window.location.pathname.split("/")[3] || "";
+    const resolvedGallId = gallId || normalizeMobilePathname(window.location.pathname).split("/")[3] || "";
 
     useEffect(() => {
       if (editorRef.current && editorRef.current.innerHTML !== value) {
@@ -381,29 +387,37 @@
       onChange(editorRef.current.innerHTML);
     }
 
-    async function uploadEditorImage(file) {
-      if (!file) return;
+    async function uploadEditorImages(files) {
+      const imageFiles = Array.from(files || []).filter(isLikelyImageFile);
+      if (!imageFiles.length) {
+        setUploadFeedback({ type: "error", message: "선택한 파일을 이미지로 인식하지 못했습니다." });
+        return;
+      }
       setUploadFeedback(null);
       if (!canUploadImage) {
         setUploadFeedback({ type: "error", message: "현재 권한에서는 이미지 첨부를 사용할 수 없습니다." });
         return;
       }
       setImageUploading(true);
+      let uploaded = 0;
       try {
-        const imageUrl = await uploadImageFile(file, resolvedGallId);
-        insertImage(imageUrl);
-        setUploadFeedback({ type: "success", message: "이미지를 업로드했습니다." });
+        for (const file of imageFiles) {
+          const imageUrl = await uploadImageFile(file, resolvedGallId);
+          insertImage(imageUrl);
+          uploaded += 1;
+        }
+        setUploadFeedback({ type: "success", message: `${uploaded}개 이미지를 업로드했습니다.` });
       } catch (error) {
-        setUploadFeedback({ type: "error", message: error.message || "이미지 업로드에 실패했습니다." });
+        setUploadFeedback({ type: "error", message: uploaded ? `${uploaded}개 업로드 후 실패했습니다. ${error.message || ""}`.trim() : (error.message || "이미지 업로드에 실패했습니다.") });
       } finally {
         setImageUploading(false);
       }
     }
 
     async function handleFileChange(event) {
-      const file = event.target.files?.[0];
+      const files = event.target.files;
       try {
-        await uploadEditorImage(file);
+        await uploadEditorImages(files);
       } finally {
         event.target.value = "";
       }
@@ -411,11 +425,13 @@
 
     async function handlePaste(event) {
       const items = Array.from(event.clipboardData?.items || []);
-      const imageItem = items.find((item) => item.kind === "file" && String(item.type || "").startsWith("image/"));
-      const file = imageItem?.getAsFile();
-      if (!file) return;
+      const files = items
+        .filter((item) => item.kind === "file" && (String(item.type || "").startsWith("image/") || !item.type))
+        .map((item) => item.getAsFile())
+        .filter(isLikelyImageFile);
+      if (!files.length) return;
       event.preventDefault();
-      await uploadEditorImage(file);
+      await uploadEditorImages(files);
     }
 
     return h("div", { className: "m-editor-shell" },
@@ -425,7 +441,7 @@
       h("div", { className: canUploadImage ? "m-inline-actions" : "m-inline-actions is-upload-disabled" },
         h("button", { type: "button", className: "m-btn m-btn-secondary", onClick: () => fileInputRef.current?.click(), disabled: imageUploading }, imageUploading ? "업로드 중" : "이미지")
       ),
-      h("input", { ref: fileInputRef, type: "file", accept: "image/*", hidden: true, disabled: !canUploadImage, onChange: handleFileChange }),
+      h("input", { ref: fileInputRef, type: "file", accept: "image/*", multiple: true, hidden: true, disabled: !canUploadImage, onChange: handleFileChange }),
       h("div", {
         id,
         ref: editorRef,
@@ -1216,7 +1232,7 @@
               )
             : null,
           h("div", { className: "m-field" }, h("label", { htmlFor: "m-write-title" }, "제목"), h("input", { id: "m-write-title", type: "text", value: title, onChange: (event) => setTitle(event.target.value) })),
-          h("div", { className: "m-field" }, h("label", { htmlFor: "m-write-content" }, "본문"), h(MHtmlEditor, { id: "m-write-content", value: content, onChange: setContent, placeholder: "모바일에서도 바로 작성하면 HTML로 저장됩니다." })),
+          h("div", { className: "m-field" }, h("label", { htmlFor: "m-write-content" }, "본문"), h(MHtmlEditor, { id: "m-write-content", value: content, onChange: setContent, gallId: gid, placeholder: "모바일에서도 바로 작성하면 HTML로 저장됩니다." })),
           h("div", { className: "m-write-count" }, `제목 ${title.trim().length}/120 · 본문 ${plainContent.length.toLocaleString("ko-KR")}자`),
           h(MFeedback, { feedback }),
           h("button", {

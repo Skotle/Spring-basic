@@ -62,7 +62,7 @@ public class FeatureService {
         addColumnIfMissing("gallery_setting", "read_visibility", "VARCHAR(20) NOT NULL DEFAULT 'inherit'");
         addColumnIfMissing("gallery_setting", "pinned_notice_count", "INT NOT NULL DEFAULT 3");
         addColumnIfMissing("gallery_setting", "allowed_attachment_types", "VARCHAR(255) NULL");
-        addColumnIfMissing("gallery_setting", "attachment_max_bytes", "BIGINT NOT NULL DEFAULT 10485760");
+        addColumnIfMissing("gallery_setting", "attachment_max_bytes", "BIGINT NOT NULL DEFAULT 0");
         addColumnIfMissing("gallery_setting", "side_board_approval_policy", "VARCHAR(20) NOT NULL DEFAULT 'operator'");
         addColumnIfMissing("gallery_setting", "dormant_after_days", "INT NOT NULL DEFAULT 180");
 

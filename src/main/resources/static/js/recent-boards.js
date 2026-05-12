@@ -19,6 +19,14 @@
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(items.slice(0, MAX_ITEMS)));
   };
 
+  const removeRecentBoard = (gid) => {
+    const target = String(gid || "").trim();
+    if (!target) return;
+    writeRecentBoards(readRecentBoards().filter((item) => item.gid !== target));
+    window.dispatchEvent(new CustomEvent("irisen:recent-boards-updated"));
+    renderRecentBoards();
+  };
+
   const boardFromPath = () => {
     const match = window.location.pathname.match(/^\/board\/([^/]+)/);
     if (!match) return null;
@@ -75,7 +83,23 @@
       link.href = `/board/${encodeURIComponent(item.gid)}`;
       link.textContent = item.name || item.gid;
       link.title = item.gid;
-      strip.appendChild(link);
+      const itemWrap = document.createElement("span");
+      itemWrap.className = "recent-board-item";
+      itemWrap.appendChild(link);
+
+      const deleteButton = document.createElement("button");
+      deleteButton.type = "button";
+      deleteButton.className = "recent-board-delete";
+      deleteButton.textContent = "×";
+      deleteButton.title = `${item.name || item.gid} 방문기록 삭제`;
+      deleteButton.setAttribute("aria-label", `${item.name || item.gid} 방문기록 삭제`);
+      deleteButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        removeRecentBoard(item.gid);
+      });
+      itemWrap.appendChild(deleteButton);
+      strip.appendChild(itemWrap);
     });
   };
 

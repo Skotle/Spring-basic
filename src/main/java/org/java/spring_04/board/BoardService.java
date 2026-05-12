@@ -888,7 +888,7 @@ public class BoardService {
         String readVisibility = normalizeChoice(payload.get("readVisibility"), List.of("inherit", "public", "private", "members"), "inherit");
         int pinnedNoticeCount = normalizeNonNegativeInt(payload.get("pinnedNoticeCount"), 3);
         String allowedAttachmentTypes = nullableTrim(payload.get("allowedAttachmentTypes"));
-        long attachmentMaxBytes = normalizeLong(payload.get("attachmentMaxBytes"), 10_485_760L);
+        long attachmentMaxBytes = normalizeLong(payload.get("attachmentMaxBytes"), 0L);
         String sideBoardApprovalPolicy = normalizeChoice(payload.get("sideBoardApprovalPolicy"), List.of("operator", "auto"), "operator");
         int dormantAfterDays = normalizeNonNegativeInt(payload.get("dormantAfterDays"), 180);
 
@@ -1198,22 +1198,25 @@ public class BoardService {
 
     public void assertAttachmentPolicy(String gallId, String contentType, long size) {
         Map<String, Object> settings = getBoardSettings(gallId);
-        long maxBytes = normalizeLong(settings.get("attachment_max_bytes"), 10_485_760L);
-        if (maxBytes > 0 && size > maxBytes) {
-            throw new RuntimeException("요청을 처리할 수 없습니다.");
-        }
         String allowedTypes = nullableText(settings.get("allowed_attachment_types"));
         if (allowedTypes == null) {
             return;
         }
         String normalizedType = nullableText(contentType);
         if (normalizedType == null) {
-            throw new RuntimeException("요청을 처리할 수 없습니다.");
+            return;
+        }
+        normalizedType = normalizedType.trim().toLowerCase(Locale.ROOT);
+        if ("application/octet-stream".equals(normalizedType)) {
+            return;
+        }
+        if ("image/jpg".equals(normalizedType) || "image/pjpeg".equals(normalizedType)) {
+            normalizedType = "image/jpeg";
         }
         boolean allowed = false;
         for (String item : allowedTypes.split("[,\\r\\n]+")) {
-            String allowedType = item.trim();
-            if (!allowedType.isBlank() && allowedType.equalsIgnoreCase(normalizedType)) {
+            String allowedType = item.trim().toLowerCase(Locale.ROOT);
+            if (!allowedType.isBlank() && (allowedType.equals(normalizedType) || ("image/*".equals(allowedType) && normalizedType.startsWith("image/")))) {
                 allowed = true;
                 break;
             }
@@ -2699,7 +2702,7 @@ public class BoardService {
         settings.put("read_visibility", "inherit");
         settings.put("pinned_notice_count", 3);
         settings.put("allowed_attachment_types", null);
-        settings.put("attachment_max_bytes", 10_485_760L);
+        settings.put("attachment_max_bytes", 0L);
         settings.put("side_board_approval_policy", "operator");
         settings.put("dormant_after_days", 180);
         settings.put("updated_by", null);

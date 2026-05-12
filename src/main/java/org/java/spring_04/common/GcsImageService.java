@@ -18,8 +18,6 @@ import java.util.UUID;
 
 @Service
 public class GcsImageService {
-    private static final long MAX_IMAGE_BYTES = 50L * 1024L * 1024L;
-
     private static final List<String> ALLOWED_CONTENT_TYPES = List.of(
             "image/jpeg",
             "image/png",
@@ -59,10 +57,6 @@ public class GcsImageService {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("이미지 파일이 필요합니다.");
         }
-        if (file.getSize() > MAX_IMAGE_BYTES) {
-            throw new IllegalArgumentException("이미지 파일은 최대 50MB까지 업로드할 수 있습니다.");
-        }
-
         byte[] bytes = file.getBytes();
         String contentType = detectContentType(bytes);
         if (!ALLOWED_CONTENT_TYPES.contains(contentType)) {
@@ -103,7 +97,7 @@ public class GcsImageService {
         if ("avif".equals(brand) || "avis".equals(brand)) {
             return "image/avif";
         }
-        if (List.of("heic", "heix", "hevc", "hevx").contains(brand)) {
+        if (List.of("heic", "heix", "hevc", "hevx", "heim", "heis", "hevm", "hevs").contains(brand)) {
             return "image/heic";
         }
         if (List.of("mif1", "msf1").contains(brand)) {

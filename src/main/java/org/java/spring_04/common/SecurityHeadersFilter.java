@@ -34,9 +34,10 @@ public class SecurityHeadersFilter extends OncePerRequestFilter {
         response.setHeader("Content-Security-Policy",
                 "default-src 'self' https://storage.googleapis.com; " +
                         "connect-src 'self'; " +
-                        "img-src 'self' data: https://storage.googleapis.com; " +
+                        "img-src 'self' data: https://storage.googleapis.com https://*.googlesyndication.com https://*.googleusercontent.com https://*.gstatic.com https://*.kakaocdn.net https://*.kakao.com; " +
                         "style-src 'self' 'unsafe-inline'; " +
-                        "script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net; " +
+                        "script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net https://pagead2.googlesyndication.com https://t1.kakaocdn.net; " +
+                        "frame-src 'self' https://*.googlesyndication.com https://*.google.com https://*.doubleclick.net https://*.kakao.com; " +
                         "font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'");
         filterChain.doFilter(request, response);
     }

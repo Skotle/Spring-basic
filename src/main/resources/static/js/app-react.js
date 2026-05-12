@@ -2,7 +2,6 @@
   const h = React.createElement;
   const { useEffect, useRef, useState } = React;
 
-  const MAX_IMAGE_UPLOAD_BYTES = 50 * 1024 * 1024;
   const isMobilePath = window.location.pathname === "/m" || window.location.pathname.startsWith("/m/");
   const isUnsafeMethod = (method) => ["POST", "PUT", "PATCH", "DELETE"].includes(String(method || "GET").toUpperCase());
 
@@ -94,9 +93,6 @@
     if (!file) {
       throw new Error("업로드할 파일이 없습니다.");
     }
-    if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
-      throw new Error("이미지는 최대 50MB까지 업로드할 수 있습니다.");
-    }
     const formData = new FormData();
     formData.append("file", file);
     if (gallId) {
@@ -107,6 +103,16 @@
       throw new Error(result?.message || "이미지 업로드에 실패했습니다.");
     }
     return result.url;
+  }
+
+  function isLikelyImageFile(file) {
+    if (!file) return false;
+    const type = String(file.type || "").toLowerCase();
+    if (type.startsWith("image/") || type === "application/octet-stream" || type === "") {
+      const name = String(file.name || "").toLowerCase();
+      return !name || /\.(jpe?g|png|gif|webp|avif|heic|heif)$/i.test(name) || type.startsWith("image/");
+    }
+    return false;
   }
 
   const appHref = (href) => {
@@ -133,9 +139,11 @@
   ];
 
   const normalizePathname = (pathname) => {
-    if (pathname === "/m") return "/";
-    if (pathname.startsWith("/m/")) return pathname.slice(2) || "/";
-    return pathname;
+    let normalized = String(pathname || "/").split("?")[0].replace(/\/+$/, "") || "/";
+    normalized = normalized.split("/").map((segment) => segment.split(";")[0]).join("/") || "/";
+    if (normalized === "/m") return "/";
+    if (normalized.startsWith("/m/")) return normalized.slice(2) || "/";
+    return normalized;
   };
 
   const formatDate = (value) => {
@@ -368,6 +376,13 @@
     window.dispatchEvent(new CustomEvent("irisen:recent-boards-updated"));
   };
 
+  const removeRecentBoardVisit = (gid) => {
+    const target = String(gid || "").trim();
+    if (!target) return;
+    window.localStorage.setItem(RECENT_BOARDS_KEY, JSON.stringify(readRecentBoards().filter((item) => item.gid !== target)));
+    window.dispatchEvent(new CustomEvent("irisen:recent-boards-updated"));
+  };
+
   function RecentBoardStrip() {
     const [items, setItems] = useState(readRecentBoards);
 
@@ -386,13 +401,25 @@
         h("span", { className: "recent-board-label" }, "최근 방문"),
         items.map((item, index) => [
           index > 0 ? h("span", { className: "recent-board-separator", key: `sep-${item.gid}` }, "×") : null,
-          h(Link, {
-            key: item.gid,
-            href: `/board/${encodeURIComponent(item.gid)}`,
-            className: "recent-board-link",
-            title: item.gid,
-            reload: true
-          }, item.name || item.gid)
+          h("span", { className: "recent-board-item", key: item.gid },
+              h(Link, {
+                href: `/board/${encodeURIComponent(item.gid)}`,
+                className: "recent-board-link",
+                title: item.gid,
+                reload: true
+              }, item.name || item.gid),
+              h("button", {
+                type: "button",
+                className: "recent-board-delete",
+                title: `${item.name || item.gid} 방문기록 삭제`,
+                "aria-label": `${item.name || item.gid} 방문기록 삭제`,
+                onClick(event) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  removeRecentBoardVisit(item.gid);
+                }
+              }, "×")
+          )
         ])
     );
   }
@@ -565,7 +592,7 @@
     const fileInputRef = useRef(null);
     const [uploadFeedback, setUploadFeedback] = useState(null);
     const [imageUploading, setImageUploading] = useState(false);
-    const resolvedGallId = gallId || window.location.pathname.split("/")[2] || "";
+    const resolvedGallId = gallId || normalizePathname(window.location.pathname).split("/")[2] || "";
 
     useEffect(() => {
       if (editorRef.current && editorRef.current.innerHTML !== value) {
@@ -580,33 +607,37 @@
       onChange(editorRef.current.innerHTML);
     }
 
-    async function uploadEditorImage(file) {
-      if (!file) return;
+    async function uploadEditorImages(files) {
+      const imageFiles = Array.from(files || []).filter(isLikelyImageFile);
+      if (!imageFiles.length) {
+        setUploadFeedback({ type: "error", message: "선택한 파일을 이미지로 인식하지 못했습니다." });
+        return;
+      }
       setUploadFeedback(null);
       if (!canUploadImage) {
         setUploadFeedback({ type: "error", message: "현재 권한에서는 이미지 첨부를 사용할 수 없습니다." });
         return;
       }
-      if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
-        setUploadFeedback({ type: "error", message: "이미지는 최대 50MB까지 업로드할 수 있습니다." });
-        return;
-      }
       setImageUploading(true);
+      let uploaded = 0;
       try {
-        const imageUrl = await uploadImageFile(file, resolvedGallId);
-        insertImage(imageUrl);
-        setUploadFeedback({ type: "success", message: "이미지를 업로드했습니다." });
+        for (const file of imageFiles) {
+          const imageUrl = await uploadImageFile(file, resolvedGallId);
+          insertImage(imageUrl);
+          uploaded += 1;
+        }
+        setUploadFeedback({ type: "success", message: `${uploaded}개 이미지를 업로드했습니다.` });
       } catch (error) {
-        setUploadFeedback({ type: "error", message: error.message || "이미지 업로드에 실패했습니다." });
+        setUploadFeedback({ type: "error", message: uploaded ? `${uploaded}개 업로드 후 실패했습니다. ${error.message || ""}`.trim() : (error.message || "이미지 업로드에 실패했습니다.") });
       } finally {
         setImageUploading(false);
       }
     }
 
     async function handleFileChange(event) {
-      const file = event.target.files?.[0];
+      const files = event.target.files;
       try {
-        await uploadEditorImage(file);
+        await uploadEditorImages(files);
       } finally {
         event.target.value = "";
       }
@@ -614,16 +645,18 @@
 
     async function handlePaste(event) {
       const items = Array.from(event.clipboardData?.items || []);
-      const imageItem = items.find((item) => item.kind === "file" && String(item.type || "").startsWith("image/"));
-      const file = imageItem?.getAsFile();
-      if (!file) return;
+      const files = items
+          .filter((item) => item.kind === "file" && (String(item.type || "").startsWith("image/") || !item.type))
+          .map((item) => item.getAsFile())
+          .filter(isLikelyImageFile);
+      if (!files.length) return;
       event.preventDefault();
-      await uploadEditorImage(file);
+      await uploadEditorImages(files);
     }
 
     return h("div", { className: "editor-shell" },
         h(EditorToolbar, { imageUploading, onImageSelect: () => fileInputRef.current?.click() }),
-        h("input", { ref: fileInputRef, type: "file", accept: "image/*", hidden: true, onChange: handleFileChange }),
+        h("input", { ref: fileInputRef, type: "file", accept: "image/*", multiple: true, hidden: true, onChange: handleFileChange }),
         h("div", {
           id,
           ref: editorRef,
@@ -1332,7 +1365,7 @@
     const [readVisibility, setReadVisibility] = useState(settings?.read_visibility || "inherit");
     const [pinnedNoticeCount, setPinnedNoticeCount] = useState(String(settings?.pinned_notice_count ?? 3));
     const [allowedAttachmentTypes, setAllowedAttachmentTypes] = useState(settings?.allowed_attachment_types || "");
-    const [attachmentMaxBytes, setAttachmentMaxBytes] = useState(String(settings?.attachment_max_bytes || 10485760));
+    const [attachmentMaxBytes, setAttachmentMaxBytes] = useState(String(settings?.attachment_max_bytes || 0));
     const [coverUploadFeedback, setCoverUploadFeedback] = useState(null);
     const [coverUploading, setCoverUploading] = useState(false);
     const [allowMemberImage, setAllowMemberImage] = useState(settings?.allow_member_image !== false);
@@ -1353,7 +1386,7 @@
       setReadVisibility(settings?.read_visibility || "inherit");
       setPinnedNoticeCount(String(settings?.pinned_notice_count ?? 3));
       setAllowedAttachmentTypes(settings?.allowed_attachment_types || "");
-      setAttachmentMaxBytes(String(settings?.attachment_max_bytes || 10485760));
+      setAttachmentMaxBytes(String(settings?.attachment_max_bytes || 0));
       setCoverUploadFeedback(null);
       setCoverUploading(false);
       setAllowMemberImage(settings?.allow_member_image !== false);
@@ -1463,7 +1496,7 @@
                 h("input", { id: "board-setting-attachment-types-v2", type: "text", value: allowedAttachmentTypes, onChange: (event) => setAllowedAttachmentTypes(event.target.value), placeholder: "예: image/png,image/jpeg" })
             ),
             h("div", { className: "field" },
-                h("label", { htmlFor: "board-setting-attachment-size-v2" }, "첨부 최대 용량(bytes)"),
+                h("label", { htmlFor: "board-setting-attachment-size-v2" }, "첨부 최대 용량(bytes, 0은 제한 없음)"),
                 h("input", { id: "board-setting-attachment-size-v2", type: "number", min: 0, step: 1, value: attachmentMaxBytes, onChange: (event) => setAttachmentMaxBytes(event.target.value) })
             ),
             h("label", { className: "check-row" },
@@ -1904,7 +1937,7 @@
                             )
                             : null,
                         h("div", { className: "field" }, h("label", { htmlFor: "write-title" }, "제목"), h("input", { id: "write-title", type: "text", value: title, onChange: (event) => setTitle(event.target.value) })),
-                        h("div", { className: "field" }, h("label", { htmlFor: "write-content" }, "본문"), h(HtmlEditor, { id: "write-content", value: content, onChange: setContent, placeholder: "글 내용을 입력해주세요." })),
+                        h("div", { className: "field" }, h("label", { htmlFor: "write-content" }, "본문"), h(HtmlEditor, { id: "write-content", value: content, onChange: setContent, gallId: gid, placeholder: "글 내용을 입력해주세요." })),
                         h("div", { className: "field" }, h("label", { htmlFor: "write-attachments" }, "첨부 URL"), h("textarea", { id: "write-attachments", rows: 2, value: attachments, onChange: (event) => setAttachments(event.target.value), placeholder: "쉼표 또는 줄바꿈으로 여러 개 입력" })),
                         h("label", { className: "check-row" }, h("input", { type: "checkbox", checked: isDraft, onChange: (event) => setIsDraft(event.target.checked) }), h("span", null, "임시저장")),
                         h("label", { className: "check-row" }, h("input", { type: "checkbox", checked: isSecret, onChange: (event) => setIsSecret(event.target.checked) }), h("span", null, "비밀글")),

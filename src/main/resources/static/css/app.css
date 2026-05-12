@@ -288,6 +288,37 @@ button {
   white-space: nowrap;
 }
 
+.recent-board-item {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  max-width: 184px;
+}
+
+.recent-board-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid #efc6d2;
+  border-radius: 999px;
+  background: #fff;
+  color: #b54161;
+  font-size: 0.78rem;
+  font-weight: 900;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.recent-board-delete:hover {
+  border-color: var(--accent-deep);
+  background: #fff0f5;
+  color: var(--accent-deep);
+}
+
 .recent-board-link:hover {
   color: var(--accent-deep);
 }
