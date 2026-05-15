@@ -738,6 +738,53 @@ public class FeatureService {
     }
 
     @Transactional
+    public Map<String, Object> banFromBoardManaged(String gallId, String targetUid, String targetIp, String reason, String expiresAt, String actorUid, String memberDivision) {
+        String boardId = required(gallId, "보드 ID가 필요합니다.");
+        if (!boardService.hasBoardPermission(boardId, actorUid, memberDivision, BoardService.PERMISSION_BAN_USER)) {
+            return Map.of("success", false, "message", "차단 권한이 없습니다.");
+        }
+        String uid = nullable(targetUid);
+        String ip = nullable(targetIp);
+        if (uid == null && ip == null) {
+            return Map.of("success", false, "message", "차단할 UID 또는 IP가 필요합니다.");
+        }
+        jdbcTemplate.update("""
+                INSERT INTO board_ban (gall_id, target_uid, target_ip, banned_by, reason, expires_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """, boardId, uid, ip == null ? null : normalizedIp(ip), actorUid, nullable(reason), normalizeDateTime(expiresAt));
+        logModeration(boardId, actorUid, uid, ip, "board_ban", reason);
+        return Map.of("success", true, "data", getBoardBans(boardId, actorUid, memberDivision));
+    }
+
+    public Map<String, Object> getBoardBans(String gallId, String actorUid, String memberDivision) {
+        String boardId = required(gallId, "보드 ID가 필요합니다.");
+        if (!boardService.hasBoardPermission(boardId, actorUid, memberDivision, BoardService.PERMISSION_BAN_USER)) {
+            return Map.of("success", false, "message", "차단 목록을 볼 권한이 없습니다.", "bans", List.of());
+        }
+        return Map.of("success", true, "bans", activeBoardBans(boardId));
+    }
+
+    @Transactional
+    public Map<String, Object> unbanFromBoard(Long banId, String actorUid, String memberDivision) {
+        if (banId == null) {
+            return Map.of("success", false, "message", "차단 ID가 필요합니다.");
+        }
+        Map<String, Object> ban;
+        try {
+            ban = jdbcTemplate.queryForMap("SELECT ban_id, gall_id, target_uid, target_ip FROM board_ban WHERE ban_id = ?", banId);
+        } catch (EmptyResultDataAccessException e) {
+            return Map.of("success", false, "message", "차단 기록을 찾을 수 없습니다.");
+        }
+        String boardId = text(ban.get("gall_id"), "");
+        if (!boardService.hasBoardPermission(boardId, actorUid, memberDivision, BoardService.PERMISSION_BAN_USER)) {
+            return Map.of("success", false, "message", "차단 해제 권한이 없습니다.");
+        }
+        int updated = jdbcTemplate.update("DELETE FROM board_ban WHERE ban_id = ?", banId);
+        logModeration(boardId, actorUid, nullable(ban.get("target_uid")), nullable(ban.get("target_ip")), "board_unban", "ban_id=" + banId);
+        return Map.of("success", true, "updated", updated, "data", getBoardBans(boardId, actorUid, memberDivision));
+    }
+
+    @Transactional
     public Map<String, Object> withdrawUser(String uid) {
         String actor = required(uid, "로그인이 필요합니다.");
         jdbcTemplate.update("UPDATE post SET writer_uid = NULL, name = '탈퇴한 사용자' WHERE writer_uid = ?", actor);
@@ -832,6 +879,40 @@ public class FeatureService {
                   )
                 """, Integer.class, gallId, uid, normalizedIp(ip));
         if (count != null && count > 0) throw new RuntimeException("해당 보드에서 차단된 사용자입니다.");
+    }
+
+    private List<Map<String, Object>> activeBoardBans(String gallId) {
+        return jdbcTemplate.queryForList("""
+                SELECT bb.ban_id,
+                       bb.gall_id,
+                       bb.target_uid,
+                       tu.nick AS target_nick,
+                       bb.target_ip,
+                       bb.banned_by,
+                       bu.nick AS banned_by_nick,
+                       bb.reason,
+                       bb.banned_at,
+                       bb.expires_at
+                FROM board_ban bb
+                LEFT JOIN user tu ON tu.uid = bb.target_uid
+                LEFT JOIN user bu ON bu.uid = bb.banned_by
+                WHERE bb.gall_id = ?
+                  AND (bb.expires_at IS NULL OR bb.expires_at > NOW())
+                ORDER BY bb.banned_at DESC, bb.ban_id DESC
+                LIMIT 200
+                """, gallId);
+    }
+
+    private String normalizeDateTime(String value) {
+        String text = nullable(value);
+        if (text == null) {
+            return null;
+        }
+        String normalized = text.replace('T', ' ');
+        if (normalized.length() == 16) {
+            normalized += ":00";
+        }
+        return normalized;
     }
 
     private void assertNotSuspended(String uid) {

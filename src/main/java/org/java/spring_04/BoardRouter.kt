@@ -162,8 +162,11 @@ class BoardRouter(
     }
 
     @GetMapping("/m/board/{gid}")
-    fun mobileBoardDetail(@PathVariable gid: String): String {
-        logRequest("MOBILE BOARD $gid")
+    fun mobileBoardDetail(@PathVariable gid: String, model: Model): String {
+        val boardId = cleanPathSegment(gid)
+        logRequest("MOBILE BOARD $boardId")
+        model.addAttribute("crawlerBoards", boardService.getBoardList().filter { it["gall_id"]?.toString() == boardId })
+        model.addAttribute("crawlerPosts", boardService.getPostsByGallery(boardId, 1))
         return "mobile"
     }
 
@@ -335,8 +338,12 @@ class BoardRouter(
     }
 
     @GetMapping("/m/board/{gid}/{postNo}")
-    fun mobilePostDetail(@PathVariable gid: String, @PathVariable postNo: Long): String {
-        logRequest("MOBILE POST $gid/$postNo")
+    fun mobilePostDetail(@PathVariable gid: String, @PathVariable postNo: Long, model: Model): String {
+        val boardId = cleanPathSegment(gid)
+        logRequest("MOBILE POST $boardId/$postNo")
+        val post = postService.getPostDetail(boardId, postNo)
+        model.addAttribute("crawlerBoards", boardService.getBoardList().filter { it["gall_id"]?.toString() == boardId })
+        model.addAttribute("crawlerPosts", if (post == null) emptyList<Map<String, Any?>>() else listOf(post))
         return "mobile"
     }
 

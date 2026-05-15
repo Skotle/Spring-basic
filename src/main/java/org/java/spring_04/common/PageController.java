@@ -1,17 +1,26 @@
 package org.java.spring_04.common;
 
 import jakarta.servlet.http.HttpSession;
+import org.java.spring_04.board.BoardService;
+import org.java.spring_04.post.PostService;
 import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
 
 @Controller
 public class PageController {
     private final AdminAccessService adminAccessService;
+    private final BoardService boardService;
+    private final PostService postService;
 
-    public PageController(AdminAccessService adminAccessService) {
+    public PageController(AdminAccessService adminAccessService, BoardService boardService, PostService postService) {
         this.adminAccessService = adminAccessService;
+        this.boardService = boardService;
+        this.postService = postService;
     }
 
     private void logRequest(String pageName) {
@@ -19,8 +28,9 @@ public class PageController {
     }
 
     @GetMapping("/")
-    public String index() {
+    public String index(Model model) {
         logRequest("INDEX");
+        addCrawlerSnapshot(model);
         return "index";
     }
 
@@ -37,8 +47,9 @@ public class PageController {
     }
 
     @GetMapping("/m")
-    public String mobileIndex() {
+    public String mobileIndex(Model model) {
         logRequest("MOBILE INDEX");
+        addCrawlerSnapshot(model);
         return "mobile";
     }
 
@@ -108,5 +119,19 @@ public class PageController {
         adminAccessService.assertAdmin(session);
         logRequest("ADMIN");
         return "admin";
+    }
+
+    private void addCrawlerSnapshot(Model model) {
+        try {
+            List<Map<String, Object>> boards = boardService.getBoardList();
+            model.addAttribute("crawlerBoards", boards.stream().limit(120).toList());
+        } catch (Exception e) {
+            model.addAttribute("crawlerBoards", List.of());
+        }
+        try {
+            model.addAttribute("crawlerPosts", postService.getTopRecommendedPosts().stream().limit(50).toList());
+        } catch (Exception e) {
+            model.addAttribute("crawlerPosts", List.of());
+        }
     }
 }

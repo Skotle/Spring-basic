@@ -268,6 +268,20 @@
     </div>
 </main>
 
+<section class="crawler-snapshot"
+         aria-label="crawler board data"
+         style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;">
+    <h1 th:text="${boardInfo.gall_name != null ? boardInfo.gall_name : gid}">board</h1>
+    <p th:text="${settings.welcome_message != null ? settings.welcome_message : ''}">summary</p>
+    <article th:each="post : ${posts}"
+             th:attr="data-crawler-gid=${gid},data-crawler-post-no=${post.post_no},data-crawler-category=${post.category},data-crawler-comments=${post.comment_count}">
+        <a th:href="@{/board/{gid}/{postNo}(gid=${gid},postNo=${post.post_no},page=${currentPage})}"
+           th:text="${post.title != null ? post.title : '제목 없음'}">post</a>
+        <span th:text="${post.name != null ? post.name : ''}">author</span>
+        <time th:text="${post.writed_at != null ? post.writed_at : post.created_at}">date</time>
+    </article>
+</section>
+
 <script>
 (() => {
   const table = document.querySelector('.dc-post-table-wrap');

@@ -1641,11 +1641,62 @@
     );
   }
 
-  function BoardManageView({ session, gid, board, manageData, feedback, submanagerFeedback, onSaveSettings, onRenameCategory, onRenameTag, onSaveSubmanagerPermissions, onAppointSubmanager, onRevokeSubmanager, onTransferManager, onLogout, alarmCount }) {
+  function BoardBanPanel({ bans = [], permissions = {}, feedback, onBan, onUnban }) {
+    const [targetUid, setTargetUid] = useState("");
+    const [targetIp, setTargetIp] = useState("");
+    const [reason, setReason] = useState("");
+    const [expiresAt, setExpiresAt] = useState("");
+    const canBan = !!permissions.canBanUser || !!permissions.isAdmin;
+    return h("article", { className: "card board-settings-card" },
+        h(SectionHead, { eyebrow: "Moderation", title: "사용자 차단/해제" }),
+        h(PermissionMatrix, { items: [
+          { action: "사용자 차단", required: "관리자, 매니저, 사용자 차단 권한 부매니저", available: canBan },
+          { action: "차단 해제", required: "관리자, 매니저, 사용자 차단 권한 부매니저", available: canBan }
+        ] }),
+        canBan ? h("div", { className: "stack compact-stack" },
+            h("div", { className: "form-grid two" },
+                h("div", { className: "field" }, h("label", { htmlFor: "ban-target-uid" }, "회원 UID"), h("input", { id: "ban-target-uid", value: targetUid, onChange: (event) => setTargetUid(event.target.value), placeholder: "회원 차단 시 입력" })),
+                h("div", { className: "field" }, h("label", { htmlFor: "ban-target-ip" }, "IP"), h("input", { id: "ban-target-ip", value: targetIp, onChange: (event) => setTargetIp(event.target.value), placeholder: "비회원/IP 차단 시 입력" })),
+                h("div", { className: "field" }, h("label", { htmlFor: "ban-reason" }, "사유"), h("input", { id: "ban-reason", value: reason, onChange: (event) => setReason(event.target.value), placeholder: "운영 기록용 사유" })),
+                h("div", { className: "field" }, h("label", { htmlFor: "ban-expires-at" }, "만료 시각"), h("input", { id: "ban-expires-at", type: "datetime-local", value: expiresAt, onChange: (event) => setExpiresAt(event.target.value) }))
+            ),
+            h("div", { className: "inline-actions" },
+                h("button", {
+                  type: "button",
+                  className: "btn btn-primary",
+                  onClick() {
+                    if (!targetUid.trim() && !targetIp.trim()) return;
+                    onBan({ targetUid: targetUid.trim(), targetIp: targetIp.trim(), reason: reason.trim(), expiresAt }, () => {
+                      setTargetUid("");
+                      setTargetIp("");
+                      setReason("");
+                      setExpiresAt("");
+                    });
+                  }
+                }, "차단 등록")
+            )
+        ) : h("div", { className: "error-box" }, "사용자 차단 권한이 없습니다."),
+        bans.length
+            ? h("div", { className: "stack" }, bans.map((ban) =>
+                h("section", { className: "mini-link-card", key: `ban-${ban.ban_id}` },
+                    h("div", { className: "board-title" }, ban.target_uid ? `${ban.target_nick || ban.target_uid} (${ban.target_uid})` : `IP ${ban.target_ip || ""}`),
+                    h("div", { className: "muted" }, `사유: ${ban.reason || "없음"}`),
+                    h("div", { className: "muted" }, `차단자: ${ban.banned_by_nick || ban.banned_by || "-"} · ${formatDate(ban.banned_at)}`),
+                    h("div", { className: "muted" }, ban.expires_at ? `만료: ${formatDate(ban.expires_at)}` : "만료 없음"),
+                    canBan ? h("div", { className: "inline-actions" }, h("button", { type: "button", className: "btn btn-secondary btn-compact", onClick: () => onUnban(ban.ban_id) }, "해제")) : null
+                )
+            ))
+            : h("div", { className: "empty-box" }, "현재 활성 차단 기록이 없습니다."),
+        h(Feedback, { feedback })
+    );
+  }
+
+  function BoardManageView({ session, gid, board, manageData, feedback, submanagerFeedback, onSaveSettings, onRenameCategory, onRenameTag, onBanBoardUser, onUnbanBoardUser, onSaveSubmanagerPermissions, onAppointSubmanager, onRevokeSubmanager, onTransferManager, onLogout, alarmCount }) {
     const permissions = manageData?.permissions || {};
     const settings = manageData?.settings || { gall_id: gid, theme_color: "#ff8fab", concept_recommend_threshold: 10, allow_guest_post: true, allow_guest_comment: true };
     const submanagers = Array.isArray(manageData?.submanagers) ? manageData.submanagers : [];
     const pendingRequests = Array.isArray(manageData?.pendingStaffRequests) ? manageData.pendingStaffRequests : [];
+    const boardBans = Array.isArray(manageData?.boardBans) ? manageData.boardBans : [];
     return h(React.Fragment, null,
         h(TopbarV2, { session, onLogout, alarmCount }),
         h("main", { className: "shell" },
@@ -1665,6 +1716,9 @@
                     permissions.canEditSettings
                         ? h(BoardSettingsPanel, { settings, feedback, onSave: onSaveSettings, onRenameCategory, onRenameTag })
                         : h("article", { className: "card board-settings-card" }, h("div", { className: "error-box" }, "이 보드 설정을 변경할 권한이 없습니다.")),
+                    (permissions.canBanUser || permissions.isAdmin)
+                        ? h(BoardBanPanel, { bans: boardBans, permissions, feedback, onBan: onBanBoardUser, onUnban: onUnbanBoardUser })
+                        : null,
                     (permissions.canAssignSubmanager || permissions.canManageSubmanager || permissions.isAdmin)
                         ? h(PendingStaffRequestList, { requests: pendingRequests })
                         : null,
@@ -1761,7 +1815,7 @@
     );
   }
 
-  function PostView({ session, gid, post, comments, feedback, deleteFeedback, voteFeedback, voteState, manageData, onSubmitComment, onDeletePost, onDeleteComment, onVote, onScrapPost, onReportPost, onLikeComment, onReportComment, onCancelConcept, onSetConcept, onBumpPost, onSetNotice, onLogout, alarmCount }) {
+  function PostView({ session, gid, post, comments, feedback, deleteFeedback, voteFeedback, voteState, manageData, onSubmitComment, onDeletePost, onDeleteComment, onVote, onScrapPost, onReportPost, onLikeComment, onReportComment, onBanBoardUser, onCancelConcept, onSetConcept, onBumpPost, onSetNotice, onLogout, alarmCount }) {
     const [content, setContent] = useState("");
     const [guestName, setGuestName] = useState("");
     const [guestPassword, setGuestPassword] = useState("");
@@ -1780,6 +1834,22 @@
     const canDeleteByRole = (kind) => isAdmin || (kind === "post" ? !!permissions.canDeletePost : !!permissions.canDeleteComment);
     const canRenderDelete = (item, kind) => item && !isDeletedComment(item) && (!session?.loggedIn ? !item.writer_uid : isOwnedBySession(item) || canDeleteByRole(kind));
     const requiresDeletePassword = (item, kind) => item && !item.writer_uid && !(session?.loggedIn && canDeleteByRole(kind));
+    const canBanAuthor = !!permissions.canBanUser || isAdmin;
+    const banAuthor = (item, sourceLabel) => {
+      const targetUid = String(item?.writer_uid || "").trim();
+      const targetIp = String(item?.ip || "").trim();
+      if (!targetUid && !targetIp) {
+        setDeleteFeedback({ type: "error", message: "차단할 UID 또는 IP를 찾을 수 없습니다." });
+        return;
+      }
+      onBanBoardUser?.({
+        gallId: gid,
+        targetUid,
+        targetIp: targetUid ? "" : targetIp,
+        reason: `${sourceLabel} 작성자 직접 차단`,
+        expiresAt: ""
+      });
+    };
 
     useEffect(() => {
       if (post) {
@@ -1830,6 +1900,7 @@
                             h("button", { type: "button", className: "btn btn-secondary btn-compact", onClick: () => onReportPost(post) }, "신고"),
                             permissions.canBumpPost || isAdmin ? h("button", { type: "button", className: "btn btn-ghost btn-compact", onClick: () => onBumpPost(post) }, "끌올") : null,
                             permissions.canManageNotice || isAdmin ? h("button", { type: "button", className: "btn btn-ghost btn-compact", onClick: () => onSetNotice(post, Number(post.is_notice || post.notice || 0) !== 1) }, Number(post.is_notice || post.notice || 0) === 1 ? "공지 해제" : "공지 등록") : null,
+                            canBanAuthor && (post.writer_uid || post.ip) ? h("button", { type: "button", className: "btn btn-ghost btn-compact", onClick: () => banAuthor(post, "게시글") }, post.writer_uid ? "작성자 UID 차단" : "작성자 IP 차단") : null,
                             permissions.canManageConcept || isAdmin
                                 ? Number(post.is_concept || 0) === 1
                                     ? h("button", { type: "button", className: "btn btn-ghost btn-compact", onClick: () => onCancelConcept(post) }, "개념글 취소")
@@ -1851,7 +1922,8 @@
                                 isDeletedComment(comment) ? null : h("div", { className: "preview comment-preview", dangerouslySetInnerHTML: { __html: comment.content || "" } }),
                                 isDeletedComment(comment) ? null : h("div", { className: "inline-actions" },
                                     h("button", { type: "button", className: "btn btn-secondary btn-compact", onClick: () => onLikeComment(comment) }, `공감 ${comment.like_count ?? 0}`),
-                                    h("button", { type: "button", className: "btn btn-ghost btn-compact", onClick: () => onReportComment(comment) }, "신고")
+                                    h("button", { type: "button", className: "btn btn-ghost btn-compact", onClick: () => onReportComment(comment) }, "신고"),
+                                    canBanAuthor && (comment.writer_uid || comment.ip) ? h("button", { type: "button", className: "btn btn-ghost btn-compact", onClick: () => banAuthor(comment, "댓글") }, comment.writer_uid ? "UID 차단" : "IP 차단") : null
                                 ),
                                 isDeletedComment(comment) ? null : (canRenderDelete(comment, "comment") ? h(PopupDeleteControl, { session, buttonLabel: "댓글 삭제", requirePassword: requiresDeletePassword(comment, "comment"), onDelete: (password, reset) => onDeleteComment({ commentId: comment.id || comment.comment_id, password }, reset) }) : null)
                             )))
@@ -3016,6 +3088,50 @@
       }).catch((error) => setVoteFeedback({ type: "error", message: "공지 상태 변경에 실패했습니다." }));
     }
 
+    function banBoardUser(payload, reset) {
+      if (!boardManageData?.permissions?.canBanUser && !boardManageData?.permissions?.isAdmin) {
+        setSettingsFeedback({ type: "error", message: "사용자 차단 권한이 없습니다." });
+        return;
+      }
+      if (!importantActionConfirm("사용자 차단", [
+        "해당 UID 또는 IP는 이 보드에서 글쓰기, 댓글, 추천 등 참여 동작이 제한됩니다.",
+        "차단 사유와 만료 시각은 운영 기록으로 남습니다."
+      ])) return;
+      api("/api/features/moderation/board-ban", {
+        method: "POST",
+        body: JSON.stringify({ gallId: payload.gallId || route.params.gid, ...payload })
+      }).then((result) => {
+        if (!result?.success) {
+          setSettingsFeedback({ type: "error", message: result?.message || "사용자 차단에 실패했습니다." });
+          return;
+        }
+        reset?.();
+        setBoardManageData((current) => current ? { ...current, boardBans: result.data?.bans || current.boardBans || [] } : current);
+        setSettingsFeedback({ type: "success", message: "사용자를 차단했습니다." });
+      }).catch((error) => setSettingsFeedback({ type: "error", message: error.message || "사용자 차단에 실패했습니다." }));
+    }
+
+    function unbanBoardUser(banId) {
+      if (!boardManageData?.permissions?.canBanUser && !boardManageData?.permissions?.isAdmin) {
+        setSettingsFeedback({ type: "error", message: "사용자 차단 해제 권한이 없습니다." });
+        return;
+      }
+      if (!importantActionConfirm("차단 해제", [
+        "선택한 차단 기록을 삭제합니다.",
+        "해제 후 해당 사용자는 보드 설정에 따라 다시 참여할 수 있습니다."
+      ])) return;
+      api(`/api/features/moderation/board-ban/${encodeURIComponent(banId)}`, { method: "DELETE" })
+          .then((result) => {
+            if (!result?.success) {
+              setSettingsFeedback({ type: "error", message: result?.message || "차단 해제에 실패했습니다." });
+              return;
+            }
+            setBoardManageData((current) => current ? { ...current, boardBans: result.data?.bans || current.boardBans?.filter((ban) => String(ban.ban_id) !== String(banId)) || [] } : current);
+            setSettingsFeedback({ type: "success", message: "차단을 해제했습니다." });
+          })
+          .catch((error) => setSettingsFeedback({ type: "error", message: error.message || "차단 해제에 실패했습니다." }));
+    }
+
     function submitBoardSettings(payload) {
       if (!boardManageData?.permissions?.canEditSettings) {
         setSettingsFeedback({ type: "error", message: "보드 설정을 변경할 권한이 없습니다." });
@@ -3314,9 +3430,9 @@
     if (route.name === "search") return h(SearchResultsView, { session, boards, posts: searchResults, searchQuery, onLogout: handleLogout, alarmCount });
     if (route.name === "boardRequests") return h(BoardRequestsView, { session, feedback: boardRequestFeedback, boardDashboard, onSubmitSideBoardRequest: submitSideBoardRequest, onLogout: handleLogout, alarmCount });
     if (route.name === "board") return h(BoardView, { session, gid: route.params.gid, board: currentBoard, posts: boardPosts, page, manageData: boardManageData, settingsFeedback, listFeedback: boardPostsFeedback, onPrevPage: () => navigate(`/board/${encodeURIComponent(route.params.gid)}?page=${Math.max(1, page - 1)}`), onNextPage: () => navigate(`/board/${encodeURIComponent(route.params.gid)}?page=${page + 1}`), onLogout: handleLogout, alarmCount });
-    if (route.name === "boardManage") return h(BoardManageView, { session, gid: route.params.gid, board: currentBoard, manageData: boardManageData, feedback: settingsFeedback, submanagerFeedback, onSaveSettings: submitBoardSettings, onRenameCategory: renameBoardCategory, onRenameTag: renameBoardTag, onSaveSubmanagerPermissions: submitSubmanagerPermissions, onAppointSubmanager: appointSubmanager, onRevokeSubmanager: revokeSubmanager, onTransferManager: transferManager, onLogout: handleLogout, alarmCount });
+    if (route.name === "boardManage") return h(BoardManageView, { session, gid: route.params.gid, board: currentBoard, manageData: boardManageData, feedback: settingsFeedback, submanagerFeedback, onSaveSettings: submitBoardSettings, onRenameCategory: renameBoardCategory, onRenameTag: renameBoardTag, onBanBoardUser: banBoardUser, onUnbanBoardUser: unbanBoardUser, onSaveSubmanagerPermissions: submitSubmanagerPermissions, onAppointSubmanager: appointSubmanager, onRevokeSubmanager: revokeSubmanager, onTransferManager: transferManager, onLogout: handleLogout, alarmCount });
     if (route.name === "boardStaffManage") return h(BoardStaffManageView, { session, gid: route.params.gid, board: currentBoard, manageData: boardManageData, feedback: submanagerFeedback, onSaveSubmanagerPermissions: submitSubmanagerPermissions, onAppointSubmanager: appointSubmanager, onRevokeSubmanager: revokeSubmanager, onTransferManager: transferManager, onLogout: handleLogout, alarmCount });
-    if (route.name === "post") return h(PostView, { session, gid: route.params.gid, post: postData.post, comments: postData.comments, feedback: commentFeedback, deleteFeedback, voteFeedback, voteState: postData.voteState, manageData: boardManageData, onSubmitComment: submitComment, onDeletePost: submitDeletePost, onDeleteComment: submitDeleteComment, onVote: submitVote, onScrapPost: scrapPost, onReportPost: reportPost, onLikeComment: likeComment, onReportComment: reportComment, onCancelConcept: cancelConcept, onSetConcept: setConcept, onBumpPost: bumpPost, onSetNotice: setNotice, onLogout: handleLogout, alarmCount });
+    if (route.name === "post") return h(PostView, { session, gid: route.params.gid, post: postData.post, comments: postData.comments, feedback: commentFeedback, deleteFeedback, voteFeedback, voteState: postData.voteState, manageData: boardManageData, onSubmitComment: submitComment, onDeletePost: submitDeletePost, onDeleteComment: submitDeleteComment, onVote: submitVote, onScrapPost: scrapPost, onReportPost: reportPost, onLikeComment: likeComment, onReportComment: reportComment, onBanBoardUser: banBoardUser, onCancelConcept: cancelConcept, onSetConcept: setConcept, onBumpPost: bumpPost, onSetNotice: setNotice, onLogout: handleLogout, alarmCount });
     if (route.name === "profile") return h(ProfileView, { session, profileData, feedback: profileFeedback, onSaveProfile: submitProfileSettings, onDeleteHistory: deleteProfileHistory, onFollowProfile: followProfile, onUnfollowProfile: unfollowProfile, onLogout: handleLogout, alarmCount });
     if (route.name === "write") return h(WriteView, { session, gid: route.params.gid, feedback: writeFeedback, manageData: boardManageData, onSubmitPost: submitPost, onLogout: handleLogout, alarmCount });
     if (route.name === "login") return h(AuthView, { mode: "login", feedback: authFeedback, onSubmitAuth: submitAuth, session, onLogout: handleLogout, alarmCount });

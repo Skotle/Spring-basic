@@ -755,8 +755,31 @@ public class BoardService {
         permissions.put("canAssignSubmanager", canAssignBoardStaff(gallId, viewerUid, viewerDivision));
         permissions.put("canTransferManager", canTransferBoardManager(gallId, viewerUid, viewerDivision));
         result.put("permissions", permissions);
+        result.put("boardBans", hasBoardPermission(gallId, viewerUid, viewerDivision, PERMISSION_BAN_USER) ? getActiveBoardBans(gallId) : List.of());
         result.put("roleLabels", resolveBoardRoleLabels(gallId, viewerUid, viewerDivision));
         return result;
+    }
+
+    private List<Map<String, Object>> getActiveBoardBans(String gallId) {
+        return jdbcTemplate.queryForList("""
+                SELECT bb.ban_id,
+                       bb.gall_id,
+                       bb.target_uid,
+                       tu.nick AS target_nick,
+                       bb.target_ip,
+                       bb.banned_by,
+                       bu.nick AS banned_by_nick,
+                       bb.reason,
+                       bb.banned_at,
+                       bb.expires_at
+                FROM board_ban bb
+                LEFT JOIN user tu ON tu.uid = bb.target_uid
+                LEFT JOIN user bu ON bu.uid = bb.banned_by
+                WHERE bb.gall_id = ?
+                  AND (bb.expires_at IS NULL OR bb.expires_at > NOW())
+                ORDER BY bb.banned_at DESC, bb.ban_id DESC
+                LIMIT 200
+                """, gallId);
     }
 
     private List<Map<String, Object>> getPendingBoardStaffRequests(String gallId) {

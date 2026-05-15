@@ -19,6 +19,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.HexFormat;
+import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Pattern;
 
@@ -33,9 +34,11 @@ public class ApiRequestSecurityFilter extends OncePerRequestFilter {
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
 
     private final ObjectMapper objectMapper;
+    private final RequestReplayGuard replayGuard;
 
-    public ApiRequestSecurityFilter(ObjectMapper objectMapper) {
+    public ApiRequestSecurityFilter(ObjectMapper objectMapper, RequestReplayGuard replayGuard) {
         this.objectMapper = objectMapper;
+        this.replayGuard = replayGuard;
     }
 
     @Override
@@ -80,9 +83,10 @@ public class ApiRequestSecurityFilter extends OncePerRequestFilter {
             return false;
         }
         String uri = request.getRequestURI();
-        return uri.startsWith("/api/")
-                || "/login".equals(uri)
-                || "/admin/login".equals(uri);
+        String normalizedUri = cleanRequestPath(uri).toLowerCase(Locale.ROOT);
+        return normalizedUri.startsWith("/api/")
+                || "/login".equals(normalizedUri)
+                || "/admin/login".equals(normalizedUri);
     }
 
     private boolean isUnsafeMethod(String method) {
@@ -120,6 +124,11 @@ public class ApiRequestSecurityFilter extends OncePerRequestFilter {
     }
 
     private SecurityEnvelope validateHeaderEnvelope(HttpServletRequest request) {
+        String securityRequest = requireHeader(request, "X-Security-Request");
+        if (!"1".equals(securityRequest)) {
+            throw new IllegalArgumentException("Invalid security request marker.");
+        }
+
         String requestedWith = requireHeader(request, "X-Requested-With");
         if (!"XMLHttpRequest".equals(requestedWith)) {
             throw new IllegalArgumentException("Invalid request marker.");
@@ -134,6 +143,9 @@ public class ApiRequestSecurityFilter extends OncePerRequestFilter {
         long now = System.currentTimeMillis();
         if (Math.abs(now - timestamp) > MAX_CLOCK_SKEW.toMillis()) {
             throw new IllegalArgumentException("Expired request timestamp.");
+        }
+        if (!replayGuard.markIfNew(request, requestId, MAX_CLOCK_SKEW.plusMinutes(1))) {
+            throw new IllegalArgumentException("Replayed request id.");
         }
 
         String clientPath = requireHeader(request, "X-Client-Path");
@@ -268,6 +280,23 @@ public class ApiRequestSecurityFilter extends OncePerRequestFilter {
             return port;
         }
         return "https".equalsIgnoreCase(scheme) ? 443 : 80;
+    }
+
+    private String cleanRequestPath(String uri) {
+        if (uri == null || uri.isBlank()) {
+            return "/";
+        }
+        String[] segments = uri.split("/");
+        StringBuilder builder = new StringBuilder();
+        for (String segment : segments) {
+            if (segment.isEmpty()) {
+                continue;
+            }
+            int semicolon = segment.indexOf(';');
+            String cleanSegment = semicolon >= 0 ? segment.substring(0, semicolon) : segment;
+            builder.append('/').append(cleanSegment);
+        }
+        return builder.length() == 0 ? "/" : builder.toString();
     }
 
     private String sha256Hex(byte[] body) {

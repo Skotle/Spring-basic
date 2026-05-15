@@ -283,6 +283,27 @@
         </div>
     </div>
 </main>
+<section class="crawler-snapshot"
+         th:if="${post != null}"
+         aria-label="crawler post data"
+         style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;">
+    <article th:attr="data-crawler-gid=${gid},data-crawler-post-no=${post.post_no},data-crawler-category=${post.category},data-crawler-view-count=${post.view_count},data-crawler-recommend-count=${post.recommend_count}">
+        <a th:href="@{/board/{gid}/{postNo}(gid=${gid},postNo=${post.post_no})}"
+           th:text="${post.title != null ? post.title : '제목 없음'}">post</a>
+        <span th:text="${post.name != null ? post.name : ''}">author</span>
+        <time th:text="${post.writed_at != null ? post.writed_at : post.created_at}">date</time>
+        <div th:utext="${post.content}">content</div>
+    </article>
+    <section aria-label="crawler comments">
+        <article th:each="comment : ${comments}"
+                 th:if="${comment.is_deleted != 1}"
+                 th:attr="data-crawler-comment-id=${comment.id},data-crawler-parent-id=${comment.parent_id},data-crawler-depth=${comment.reply_depth}">
+            <span th:text="${comment.name != null ? comment.name : ''}">author</span>
+            <time th:text="${comment.writed_at != null ? comment.writed_at : comment.created_at}">date</time>
+            <div th:utext="${comment.content}">comment</div>
+        </article>
+    </section>
+</section>
 <script src="/js/security-request.js"></script>
 <script>
 (() => {

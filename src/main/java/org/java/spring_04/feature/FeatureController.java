@@ -232,7 +232,7 @@ public class FeatureController {
                                             @SessionAttribute(name = "uid", required = false) String uid,
                                             @SessionAttribute(name = "memberDivision", required = false) String memberDivision) {
         try {
-            return featureService.banFromBoard(
+            return featureService.banFromBoardManaged(
                     payload.get("gallId"),
                     payload.get("targetUid"),
                     payload.get("targetIp"),
@@ -241,6 +241,28 @@ public class FeatureController {
                     uid,
                     memberDivision
             );
+        } catch (Exception e) {
+            return Map.of("success", false, "message", e.getMessage());
+        }
+    }
+
+    @GetMapping("/moderation/board-ban")
+    public Map<String, Object> getBoardBans(@RequestParam("gallId") String gallId,
+                                            @SessionAttribute(name = "uid", required = false) String uid,
+                                            @SessionAttribute(name = "memberDivision", required = false) String memberDivision) {
+        try {
+            return featureService.getBoardBans(gallId, uid, memberDivision);
+        } catch (Exception e) {
+            return Map.of("success", false, "message", e.getMessage(), "bans", List.of());
+        }
+    }
+
+    @DeleteMapping("/moderation/board-ban/{banId}")
+    public Map<String, Object> unbanFromBoard(@PathVariable("banId") Long banId,
+                                              @SessionAttribute(name = "uid", required = false) String uid,
+                                              @SessionAttribute(name = "memberDivision", required = false) String memberDivision) {
+        try {
+            return featureService.unbanFromBoard(banId, uid, memberDivision);
         } catch (Exception e) {
             return Map.of("success", false, "message", e.getMessage());
         }
